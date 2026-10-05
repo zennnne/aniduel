@@ -57,8 +57,12 @@ The AniList setting that decides which scale the user sees: 100 points, 10 point
 _Avoid_: Scale, rating system
 
 **Score Step**:
-The smallest gap between the scores a title can get, chosen by the user: either every level of the Score Format (fine) or only some of them (human, e.g. every 0.5 on 10 points with decimals, every 5 on 100 points). Best and worst scores always sit on the Score Step.
+The smallest gap between the scores a title can get: every level of the Score Format (fine), every 0.5 on 10 points with decimals or every 5 on 100 points (human), or whole points, every 1 on 10 points with decimals or every 10 on 100 points (whole). The Full Ranking Sort Goal lets the user choose fine or human; the Scores Sort Goal always uses whole. Formats without decimals have only one step. Best and worst scores always sit on the Score Step.
 _Avoid_: Precision, rounding, granularity
+
+**Sort Goal**:
+How far the Duels go, chosen by the user: Scores (the default) stops once every title's score is settled, so titles with the same score have no order among themselves; Full Ranking keeps going until every title has its own place. The user can switch either way at any time without losing answers.
+_Avoid_: Mode, fast mode, quick mode
 
 **Preview**:
 The screen that shows every title's old and new score before an Import, where the user ticks which titles to write and fixes the Ranking.

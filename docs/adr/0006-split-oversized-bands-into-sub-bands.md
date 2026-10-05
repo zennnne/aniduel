@@ -14,7 +14,7 @@ Most of the Duel count comes from one oversized Band, not from the engine. A beg
 
 ## Considered Options
 
-- **Score-level aware sorting** (sort only finely enough to fix each title's score): rejected. In simulation it saved only 10–15% on POINT_10 and nothing once the user changed best/worst or the Distribution. It also made the next prompt depend on the settings, and it broke ADR 0005, because removing one title shifted every score boundary.
+- **Score-level aware sorting** (sort only finely enough to fix each title's score): rejected. In simulation it saved only 10–15% on POINT_10 and nothing once the user changed best/worst or the Distribution. It also made the next prompt depend on the settings, and it broke ADR 0005, because removing one title shifted every score boundary. _Revisited in ADR 0007:_ the low savings came from the algorithm. With a better one and whole-point scores it saves 27–42%, and it now ships as the Scores Sort Goal, with the settings stored in the Duel log.
 - **Random spot-check Duels to catch wrong answers**: rejected. They caught only about 40% of real misplacements and raised more false alarms than true ones.
 - **More Bands from the start** (for example 7 buttons): rejected. Beginners still pile titles into the top button.
 - **Split on the first tap** (ask "how much?" right after 😍): rejected. Every user would pay a second tap, even when no Band ends up oversized.
