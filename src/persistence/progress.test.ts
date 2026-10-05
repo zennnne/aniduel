@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { replay, startLog } from '../ranking/engine.ts'
 import {
   deleteDuelLog,
+  deleteImportState,
   deleteSavedProgress,
   loadDuelLog,
+  loadImportState,
+  saveImportState,
   loadLastMediaType,
   loadPoolSettings,
   loadScoringSettings,
@@ -100,6 +103,47 @@ describe('Scoring settings', () => {
     for (const bad of ['nope', '{"format":"POINT_7","settings":{"distribution":"bell","best":9,"worst":2}}', '{"format":"POINT_10","settings":{"distribution":"zigzag","best":9,"worst":2}}', '{"format":"POINT_10","settings":{"distribution":"bell","best":9,"worst":0}}']) {
       storage.setItem(key, bad)
       expect(loadScoringSettings(storage, anime)).toBeNull()
+    }
+  })
+})
+
+describe('Import state', () => {
+  const state = {
+    hash: 'abc',
+    format: 'POINT_10' as const,
+    writes: [
+      { mediaId: 1, scoreRaw: 90, oldScore100: 0, status: 'done' as const },
+      { mediaId: 2, scoreRaw: 70, oldScore100: 50, status: 'failed' as const, error: 'network error' },
+      { mediaId: 3, scoreRaw: 30, oldScore100: 80, status: 'pending' as const },
+    ],
+  }
+
+  it('keeps the status of each write for each Media Type, so a resumed Import knows what is done', () => {
+    const storage = memoryStorage()
+    expect(loadImportState(storage, anime)).toBeNull()
+    saveImportState(storage, anime, state)
+    expect(loadImportState(storage, anime)).toEqual(state)
+    expect(loadImportState(storage, { userId: 7, mediaType: 'MANGA' })).toBeNull()
+  })
+
+  it('is gone after it is deleted, and with the rest of the user progress on logout', () => {
+    const storage = memoryStorage()
+    saveImportState(storage, anime, state)
+    deleteImportState(storage, anime)
+    expect(loadImportState(storage, anime)).toBeNull()
+
+    saveImportState(storage, anime, state)
+    deleteSavedProgress(storage, 7)
+    expect(loadImportState(storage, anime)).toBeNull()
+  })
+
+  it('ignores a saved Import it does not understand', () => {
+    const storage = memoryStorage()
+    saveImportState(storage, anime, state)
+    const key = storage.key(0)!
+    for (const bad of ['nope', '{"hash":"a","format":"POINT_10"}', '{"hash":"a","format":"POINT_7","writes":[]}', '{"hash":"a","format":"POINT_10","writes":[{"mediaId":1,"scoreRaw":90,"oldScore100":0,"status":"maybe"}]}']) {
+      storage.setItem(key, bad)
+      expect(loadImportState(storage, anime)).toBeNull()
     }
   })
 })

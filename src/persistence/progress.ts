@@ -1,6 +1,7 @@
 // Persistence: localStorage keys for a user's saved progress, keyed by AniList user id and Media Type.
 // Every key belonging to one user starts with `aniduel/progress/<userId>/`, so logout can delete them all.
 import type { ListStatus, MediaType } from '../anilist/types.ts'
+import { parseImportState, type ImportState } from '../import/runner.ts'
 import { OFFERED_STATUSES } from '../pool/pool.ts'
 import type { DuelLog } from '../ranking/engine.ts'
 import { parseSavedScoring, type SavedScoring } from '../ranking/scoring.ts'
@@ -105,6 +106,28 @@ export function loadScoringSettings(storage: Storage, key: RankingKey): SavedSco
   } catch {
     return null
   }
+}
+
+const IMPORT_PART = 'import'
+
+/** Saves the Import plan, its hash and the status of each write. Called after every write. */
+export function saveImportState(storage: Storage, key: RankingKey, state: ImportState): void {
+  saveProgressPart(storage, { ...key, part: IMPORT_PART }, JSON.stringify(state))
+}
+
+/** The saved Import, or null if none or unreadable. */
+export function loadImportState(storage: Storage, key: RankingKey): ImportState | null {
+  const raw = loadProgressPart(storage, { ...key, part: IMPORT_PART })
+  if (raw === null) return null
+  try {
+    return parseImportState(JSON.parse(raw))
+  } catch {
+    return null
+  }
+}
+
+export function deleteImportState(storage: Storage, key: RankingKey): void {
+  storage.removeItem(progressStorageKey({ ...key, part: IMPORT_PART }))
 }
 
 function lastMediaTypeKey(userId: number): string {
