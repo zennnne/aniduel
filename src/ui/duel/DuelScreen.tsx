@@ -1,0 +1,161 @@
+import { useEffect, useEffectEvent, useState } from 'react'
+import type { ListEntry, MediaType, TitleLanguage } from '../../anilist/types.ts'
+import { displayTitle } from '../../pool/pool.ts'
+import type { Prompt, RankingState } from '../../ranking/engine.ts'
+import { BAND_UI } from '../bands.ts'
+import { EXT_ICON, SAME_ICON, UNDO_ICON } from '../icons.tsx'
+import { Kao } from '../Kao.tsx'
+import { metaLine } from '../meta.ts'
+import './duel.css'
+
+type DuelPrompt = Extract<Prompt, { kind: 'duel' }>
+
+/** Duels left for this insertion at most: binary search over the remaining lo..hi slots. */
+function spotsLeft(bounds: DuelPrompt['bounds']): number {
+  return Math.ceil(Math.log2(bounds.hi - bounds.lo + 1))
+}
+
+function Card(props: {
+  id: number
+  side: 'l' | 'r'
+  entry: ListEntry | undefined
+  titleLanguage: TitleLanguage
+  mediaType: MediaType
+  onPick: () => void
+  onForget: () => void
+}) {
+  const { id, side, entry, titleLanguage, mediaType, onPick, onForget } = props
+  const name = entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
+  const backdrop = entry?.bannerUrl ?? entry?.coverUrl ?? null
+  const key = side === 'l' ? '←' : '→'
+  return (
+    <div className="card" onClick={onPick} role="button" tabIndex={-1} aria-label={`Pick ${name}`}>
+      <div
+        className={backdrop ? 'bg' : 'bg ph'}
+        style={backdrop ? { backgroundImage: `url("${backdrop}")` } : { ['--c' as string]: entry?.coverColor ?? undefined }}
+      />
+      {entry?.coverUrl ? (
+        <img className="cv" src={entry.coverUrl} alt="" style={{ background: entry.coverColor ?? undefined }} />
+      ) : (
+        <div className="cv ph" style={{ ['--c' as string]: entry?.coverColor ?? undefined }} />
+      )}
+      <div className="info">
+        <div className="t">{name}</div>
+        {entry && <div className="m">{metaLine(entry, mediaType)}</div>}
+        <span className="kbd">{key}</span>
+      </div>
+      <div className={`corner ${side}`} onClick={(e) => e.stopPropagation()}>
+        <button className="ibtn tip" data-tip={`Don't remember (F${key})`} aria-label={`Don't remember ${name}`} onClick={onForget}>
+          <span className="q">?</span>
+        </button>
+        {entry && (
+          <a className="ibtn tip" data-tip="Open on AniList" aria-label={`Open ${name} on AniList`} href={entry.siteUrl} target="_blank" rel="noreferrer">
+            {EXT_ICON}
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Duel = split-bleed (issue #4): two full-height cards, an "about the same" seam button in the middle,
+ * Don't remember and AniList on each card's corner, Undo at the bottom.
+ * Keys: ← / → pick, ↓ about the same, F then ← / → Don't remember, Backspace undo.
+ */
+export function DuelScreen(props: {
+  state: RankingState
+  prompt: DuelPrompt
+  entries: ReadonlyMap<number, ListEntry>
+  titleLanguage: TitleLanguage
+  mediaType: MediaType
+  onPick: (winner: number) => void
+  onTie: () => void
+  onForget: (id: number) => void
+  onUndo: () => void
+}) {
+  const { state, prompt, entries, titleLanguage, mediaType, onPick, onTie, onForget, onUndo } = props
+  const [forgetting, setForgetting] = useState(false)
+  const progress = state.progress.bands[prompt.band]
+  const overall = state.progress.ranked
+
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]')) return
+    const side = e.key === 'ArrowLeft' ? prompt.left : e.key === 'ArrowRight' ? prompt.right : null
+    if (side !== null) {
+      e.preventDefault()
+      if (forgetting) onForget(side)
+      else onPick(side)
+      setForgetting(false)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setForgetting(false)
+      onTie()
+    } else if (e.key === 'Backspace') {
+      e.preventDefault()
+      setForgetting(false)
+      if (state.canUndo) onUndo()
+    } else if (e.key === 'f' || e.key === 'F') {
+      setForgetting((on) => !on)
+    } else if (e.key === 'Escape') {
+      setForgetting(false)
+    }
+  })
+
+  useEffect(() => {
+    const listener = (e: KeyboardEvent) => onKey(e)
+    window.addEventListener('keydown', listener)
+    return () => window.removeEventListener('keydown', listener)
+  }, [])
+
+  const card = (id: number, side: 'l' | 'r') => (
+    <Card
+      key={id}
+      id={id}
+      side={side}
+      entry={entries.get(id)}
+      titleLanguage={titleLanguage}
+      mediaType={mediaType}
+      onPick={() => onPick(id)}
+      onForget={() => onForget(id)}
+    />
+  )
+  const spots = spotsLeft(prompt.bounds)
+
+  return (
+    <div className="duel">
+      <div className="topline">
+        <i style={{ width: `${overall.total ? (overall.done / overall.total) * 100 : 100}%` }} />
+      </div>
+      <div className="float-info">
+        <span className="pill" aria-live="polite">
+          <Kao band={prompt.band} size={10} /> {BAND_UI[prompt.band].label} · {progress.done}/{progress.total} · {spots}{' '}
+          {spots === 1 ? 'spot' : 'spots'} left
+          {forgetting && (
+            <>
+              {' '}
+              · <b>F: pick ← or →</b>
+            </>
+          )}
+        </span>
+      </div>
+      <div className="pair">
+        {card(prompt.left, 'l')}
+        {card(prompt.right, 'r')}
+        <button className="seam" onClick={onTie} aria-label="About the same">
+          {SAME_ICON}
+          <span>Same</span>
+          <span className="kbd">↓</span>
+        </button>
+      </div>
+      <div className="float-undo">
+        <button className="pill" onClick={onUndo} disabled={!state.canUndo}>
+          {UNDO_ICON} Undo <span className="kbd">⌫</span>
+        </button>
+      </div>
+    </div>
+  )
+}

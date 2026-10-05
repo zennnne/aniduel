@@ -398,6 +398,36 @@ a {
   background: #ffffff14;
   color: var(--on-overlay);
 }
+/* The current Band's Ranking so far: one row per Tier ("1. A = B") */
+.rank {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+.rank div {
+  padding: 4px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+.rank .inb {
+  background: #3db4f222;
+  color: var(--on-overlay);
+}
+.rank .piv {
+  background: var(--blue);
+  color: var(--nav);
+  font-weight: 700;
+}
+.rank .out {
+  opacity: 0.35;
+}
 @media (max-width: 720px) {
   .hide-m {
     display: none !important;

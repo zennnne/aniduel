@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { ReplayError, replay, startLog, type DuelLog, type LogEvent } from './engine.ts'
+import { ReplayError, replay, startLog, type BandState, type DuelLog, type LogEvent } from './engine.ts'
+
+/** Every title in a Band, placed or not, in the order it joined (true while no Duel has been answered). */
+const inBand = (band: BandState) => [...band.tiers.flat(), ...band.unplaced]
 
 const header = { seed: 42, userId: 7, mediaType: 'ANIME' as const }
 
@@ -21,20 +24,20 @@ describe('Rough Sort', () => {
     )
     expect(state.prompt).toEqual({ kind: 'rough-sort', id: 30 })
     expect(state.progress.roughSort).toEqual({ done: 2, total: 3 })
-    expect(state.bands.map((b) => b.titles)).toEqual([[20], [], [10], [], []])
+    expect(state.bands.map(inBand)).toEqual([[20], [], [10], [], []])
   })
 
   it('keeps titles in a Band in the order they were assigned', () => {
     const state = replay(
       logOf([1, 2, 3], { type: 'band-assigned', id: 1, band: 4 }, { type: 'band-assigned', id: 2, band: 1 }, { type: 'band-assigned', id: 3, band: 4 }),
     )
-    expect(state.bands[4].titles).toEqual([1, 3])
-    expect(state.bands[1].titles).toEqual([2])
+    expect(inBand(state.bands[4])).toEqual([1, 3])
+    expect(inBand(state.bands[1])).toEqual([2])
   })
 
-  it('reports Rough Sort as done once every title has a Band', () => {
+  it('is done once every title has a Band; with one title per Band no Duel is needed', () => {
     const state = replay(logOf([1, 2], { type: 'band-assigned', id: 1, band: 0 }, { type: 'band-assigned', id: 2, band: 3 }))
-    expect(state.prompt).toEqual({ kind: 'rough-sort-done' })
+    expect(state.prompt).toEqual({ kind: 'all-complete' })
     expect(state.progress.roughSort).toEqual({ done: 2, total: 2 })
   })
 })
@@ -45,14 +48,14 @@ describe('Forgotten', () => {
     expect(state.prompt).toEqual({ kind: 'rough-sort', id: 2 })
     expect(state.forgotten).toEqual([1])
     expect(state.progress.roughSort).toEqual({ done: 1, total: 3 })
-    expect(state.bands.flatMap((b) => b.titles)).toEqual([])
+    expect(state.bands.flatMap(inBand)).toEqual([])
   })
 
   it('takes a title that already has a Band out of that Band', () => {
     const state = replay(
       logOf([1, 2, 3], { type: 'band-assigned', id: 1, band: 0 }, { type: 'band-assigned', id: 2, band: 0 }, { type: 'forgotten', id: 1 }),
     )
-    expect(state.bands[0].titles).toEqual([2])
+    expect(inBand(state.bands[0])).toEqual([2])
     expect(state.forgotten).toEqual([1])
     expect(state.prompt).toEqual({ kind: 'rough-sort', id: 3 })
   })
@@ -64,7 +67,7 @@ describe('Undo', () => {
   it('cancels the last Band choice and prompts that title again', () => {
     const state = replay(logOf([1, 2], { type: 'band-assigned', id: 1, band: 0 }, undo))
     expect(state.prompt).toEqual({ kind: 'rough-sort', id: 1 })
-    expect(state.bands[0].titles).toEqual([])
+    expect(inBand(state.bands[0])).toEqual([])
     expect(state.progress.roughSort).toEqual({ done: 0, total: 2 })
   })
 
@@ -81,15 +84,15 @@ describe('Undo', () => {
     )
     expect(state.prompt).toEqual({ kind: 'rough-sort', id: 2 })
     expect(state.forgotten).toEqual([])
-    expect(state.bands.map((b) => b.titles)).toEqual([[1], [], [], [], []])
+    expect(state.bands.map(inBand)).toEqual([[1], [], [], [], []])
   })
 
   it('lets the user answer again after an undo', () => {
     const state = replay(
       logOf([1, 2], { type: 'band-assigned', id: 1, band: 0 }, undo, { type: 'band-assigned', id: 1, band: 3 }),
     )
-    expect(state.bands[3].titles).toEqual([1])
-    expect(state.bands[0].titles).toEqual([])
+    expect(inBand(state.bands[3])).toEqual([1])
+    expect(inBand(state.bands[0])).toEqual([])
     expect(state.prompt).toEqual({ kind: 'rough-sort', id: 2 })
   })
 
@@ -105,7 +108,7 @@ describe('Undo', () => {
     const state = replay(
       logOf([1, 2], { type: 'band-assigned', id: 1, band: 0 }, { type: 'titles-added', ids: [3] }, undo),
     )
-    expect(state.bands[0].titles).toEqual([1])
+    expect(inBand(state.bands[0])).toEqual([1])
     expect(state.canUndo).toBe(false)
     expect(state.progress.roughSort).toEqual({ done: 1, total: 3 })
   })
@@ -156,9 +159,25 @@ describe('a golden log', () => {
   it('replays to the same state every time', () => {
     const expected = {
       prompt: { kind: 'rough-sort', id: 106 },
-      bands: [{ titles: [102] }, { titles: [] }, { titles: [105] }, { titles: [] }, { titles: [104] }],
+      bands: [
+        { tiers: [[102]], unplaced: [] },
+        { tiers: [], unplaced: [] },
+        { tiers: [[105]], unplaced: [] },
+        { tiers: [], unplaced: [] },
+        { tiers: [[104]], unplaced: [] },
+      ],
       forgotten: [103, 101],
-      progress: { roughSort: { done: 5, total: 7 } },
+      progress: {
+        roughSort: { done: 5, total: 7 },
+        bands: [
+          { done: 1, total: 1 },
+          { done: 0, total: 0 },
+          { done: 1, total: 1 },
+          { done: 0, total: 0 },
+          { done: 1, total: 1 },
+        ],
+        ranked: { done: 3, total: 3 },
+      },
       canUndo: true,
     }
     expect(replay(golden)).toEqual(expected)
