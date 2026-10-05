@@ -1,0 +1,128 @@
+import type { ListStatus, MediaType } from '../../anilist/types.ts'
+import type { BandIndex, RankingState } from '../../ranking/engine.ts'
+import { BAND_UI } from '../bands.ts'
+import { MEDIA_LABEL } from '../meta.ts'
+import { statusLabel } from '../start/statusLabel.ts'
+import type { MenuItem } from './menuItems.ts'
+
+/** What the menu depends on: the open Ranking and where the user is. */
+export type MenuContext = {
+  mediaType: MediaType
+  statuses: readonly ListStatus[]
+  /** A usable Duel log is open (there is something to back up). */
+  hasLog: boolean
+  /** Saved progress exists, usable or not (Start over can throw it away). */
+  hasProgress: boolean
+  ranking: RankingState | null
+  /** The Band choice is showing. */
+  choosingBand: boolean
+  /** Bands that qualify for a split now (ADR 0006). */
+  splitOffers: readonly BandIndex[]
+}
+
+export type MenuActions = {
+  switchMediaType: (type: MediaType) => void
+  changeStatuses: () => void
+  saveBackup: () => void
+  chooseBand: () => void
+  splitBand: (band: BandIndex) => void
+  restore: () => void
+  startOver: () => void
+  toggleTheme: () => void
+  logout: () => void
+}
+
+/** The one list behind the account menu and the Ctrl+K palette, for a logged-in user. */
+export function buildMenuItems(context: MenuContext, actions: MenuActions): MenuItem[] {
+  const { mediaType, statuses, ranking } = context
+  const other: MediaType = mediaType === 'ANIME' ? 'MANGA' : 'ANIME'
+  const items: MenuItem[] = [
+    {
+      id: 'switch-media-type',
+      group: 'This Ranking',
+      icon: '⇆',
+      title: `Switch to ${MEDIA_LABEL[other]}`,
+      description: 'Each Media Type keeps its own Ranking',
+      run: () => actions.switchMediaType(other),
+    },
+    {
+      id: 'statuses',
+      group: 'This Ranking',
+      icon: '☰',
+      title: 'Change list statuses',
+      description: `${statuses.map((st) => statusLabel(st, mediaType)).join(', ')} · titles join or leave the Ranking`,
+      run: actions.changeStatuses,
+    },
+  ]
+  if (context.hasLog) {
+    items.push({
+      id: 'backup',
+      group: 'This Ranking',
+      icon: '↓',
+      title: 'Save Backup file',
+      description: 'Download your Duel log and settings',
+      run: actions.saveBackup,
+    })
+  }
+  if (ranking?.prompt.kind === 'duel' && !ranking.bandChoice && !context.choosingBand) {
+    items.push({
+      id: 'choose-band',
+      group: 'This Ranking',
+      icon: '▤',
+      title: 'Choose a Band',
+      description: 'Pick which Band to Duel in next',
+      run: actions.chooseBand,
+    })
+  }
+  // Split offers after Rough Sort, under the same rule as the automatic offer (ADR 0006).
+  if (ranking && ranking.prompt.kind !== 'rough-sort') {
+    for (const band of context.splitOffers) {
+      items.push({
+        id: `split-band-${band}`,
+        group: 'This Ranking',
+        icon: '⫼',
+        title: `Split ${BAND_UI[band].label} into Sub-bands`,
+        description: `${ranking.bands[band].unplaced.length} titles without a place: Best / Middle / Lowest cuts the Duels`,
+        run: () => actions.splitBand(band),
+      })
+    }
+  }
+  items.push({
+    id: 'restore',
+    group: 'This Ranking',
+    icon: '↑',
+    title: 'Restore from Backup',
+    description: 'Load a Backup file from another browser',
+    run: actions.restore,
+  })
+  if (context.hasProgress) {
+    items.push({
+      id: 'start-over',
+      group: 'This Ranking',
+      icon: '↺',
+      title: 'Start this Ranking over',
+      description: `Throws away all Duels for ${MEDIA_LABEL[mediaType]}`,
+      danger: true,
+      run: actions.startOver,
+    })
+  }
+  items.push(
+    {
+      id: 'theme',
+      group: 'App',
+      icon: '◐',
+      title: 'Light / dark theme',
+      description: 'Follows your system unless you pick one',
+      run: actions.toggleTheme,
+    },
+    {
+      id: 'logout',
+      group: 'Account',
+      icon: '⎋',
+      title: 'Log out',
+      description: 'Removes your AniList token from this browser',
+      run: actions.logout,
+    },
+  )
+  return items
+}

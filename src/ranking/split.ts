@@ -1,11 +1,25 @@
 // Splitting an oversized Band into Sub-bands (ADR 0006): when to offer it, and what it saves.
-// Pure functions over RankingState; the split itself is the engine's `band-split` event.
-import { BANDS, type BandIndex, type BandState, type RankingState } from './engine.ts'
+// Pure functions over RankingState (and the log, for when to offer); the split itself is the engine's `band-split` event.
+import { BANDS, type BandIndex, type BandState, type DuelLog, type RankingState } from './engine.ts'
 
 /** A split is offered for a Band with at least this many titles without a place yet. */
 export const SPLIT_OFFER_THRESHOLD = 90
 /** Below this estimate, pressing Done on the Split screen asks "Keep sorting" / "Finish anyway". */
 export const LOW_SAVINGS = 100
+
+/**
+ * Whether the split offer may show on its own (it still needs a qualifying Band and a Duel prompt): no Duel has
+ * been answered since titles last joined the Pool, i.e. right after the first Rough Sort or after a sync added
+ * titles (#13). Later, splitting is only offered from the menu.
+ */
+export function autoOfferDue(log: DuelLog): boolean {
+  for (let i = log.events.length - 1; i >= 0; i--) {
+    const type = log.events[i].type
+    if (type === 'duel-answered') return false
+    if (type === 'titles-added') return true
+  }
+  return true
+}
 
 /** One Segment for the estimate: places it already has (Tiers) and titles still to insert. */
 export type SegmentSize = { places: number; unplaced: number }

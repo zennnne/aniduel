@@ -26,6 +26,11 @@ export type AniListGateway = {
   viewer(): Promise<Viewer>
   /** The user's whole list for one Media Type and set of statuses, following every chunk. */
   mediaList(query: MediaListQuery): Promise<ListEntry[]>
+  /**
+   * Writes one title's score with `SaveMediaListEntry`. Only `mediaId` and `scoreRaw` are sent: spike #3 found every
+   * other field of the entry is kept.
+   */
+  saveScore(mediaId: number, scoreRaw: number): Promise<void>
   /** Rate-limit headers from the most recent response. */
   rateLimit(): RateLimit
 }
@@ -61,6 +66,12 @@ const MEDIA_LIST_QUERY = `query ($userId: Int, $type: MediaType, $statusIn: [Med
         }
       }
     }
+  }
+}`
+
+const SAVE_SCORE_MUTATION = `mutation ($mediaId: Int, $scoreRaw: Int) {
+  SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw) {
+    mediaId
   }
 }`
 
@@ -188,6 +199,10 @@ export function createAniListGateway(deps: { fetch: typeof fetch; token: string 
         if (!collection.hasNextChunk) break
       }
       return [...byMediaId.values()]
+    },
+
+    async saveScore(mediaId, scoreRaw) {
+      await request<{ SaveMediaListEntry: { mediaId: number } }>(SAVE_SCORE_MUTATION, { mediaId, scoreRaw })
     },
 
     rateLimit: () => lastRateLimit,

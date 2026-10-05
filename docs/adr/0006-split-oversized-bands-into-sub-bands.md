@@ -23,5 +23,5 @@ Most of the Duel count comes from one oversized Band, not from the engine. A beg
 ## Consequences
 
 - A wrong split tap becomes a hard boundary until the user moves that title. Move therefore has to reach Sub-bands directly.
-- The engine version must be bumped when `Band split` is introduced (ADR 0005). It is now 2. Version 2 replays every version 1 log exactly as before, so the engine accepts both, but refuses `Band split` or a Sub-band target in a log whose header says 1. Appending any event stamps version 2 on the header, so an older app refuses the log instead of silently skipping a split it doesn't know.
+- The engine version must be bumped when `Band split` is introduced (ADR 0005). `Band split` and Sub-band targets came with version 2; later versions add other events (the current one is `ENGINE_VERSION` in `src/ranking/engine.ts`). Each version replays every older log exactly as before, so the engine accepts all of them, but refuses `Band split` or a Sub-band target in a log whose header says 1. Appending any event stamps the current version on the header, so an older app refuses the log instead of silently skipping a split it doesn't know.
 - Simulations used for this decision: 200 titles on POINT_10 with a 150/12/12/13/13 Rough Sort; with Tiers, splitting saves about 150–220 Duels.

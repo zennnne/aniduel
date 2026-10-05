@@ -1,0 +1,165 @@
+/* Import: "cover grid" + confirm card (issue #4 prototype, section 8). */
+.im {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  position: relative;
+  padding: 26px 30px;
+  color: var(--tx);
+}
+.im .h2,
+.imconf .h2 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--tx-strong);
+}
+.im-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.imconf {
+  background: var(--fg);
+  border-radius: 18px;
+  padding: 26px;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 20px 60px #0006;
+  color: var(--tx);
+}
+.imconf .row {
+  gap: 14px;
+}
+.imtop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.imtop .col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.improg {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--fg2);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.improg i {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  transition: width 0.4s;
+}
+.cgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  gap: 6px;
+  margin-bottom: 16px;
+}
+.cg {
+  position: relative;
+}
+.cg .cv {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 5px;
+  filter: grayscale(1) brightness(0.45);
+  transition: filter 0.4s;
+}
+.cg.ok .cv {
+  filter: none;
+}
+.cg.fail .cv {
+  filter: grayscale(1) brightness(0.4);
+  outline: 2px solid var(--bad);
+}
+.cg.now .cv {
+  filter: none;
+  outline: 2px solid var(--blue);
+  animation: im-pulse 1s infinite alternate;
+}
+@keyframes im-pulse {
+  to {
+    outline-color: transparent;
+  }
+}
+.cg .badge {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  font-size: 11px;
+  font-weight: 900;
+  color: #fff;
+  background: #0009;
+  border-radius: 999px;
+  min-width: 18px;
+  text-align: center;
+}
+.cg.ok .badge {
+  background: var(--good);
+}
+.cg.fail .badge {
+  background: #e05555;
+}
+.cg .sc {
+  position: absolute;
+  bottom: 3px;
+  left: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #fff;
+  background: #000a;
+  border-radius: 3px;
+  padding: 0 3px;
+}
+.imsum {
+  display: flex;
+  gap: 10px;
+}
+.imsum div {
+  background: var(--fg);
+  border-radius: 12px;
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  min-width: 90px;
+}
+.imsum b {
+  font-size: 24px;
+  color: var(--tx-strong);
+}
+.imsum span {
+  font-size: 11px;
+}
+.imsum .bad b {
+  color: var(--bad);
+}
+/* The "Couldn't save" and "Skipped" lists after an Import. */
+.imfail,
+.imskip {
+  background: var(--fg);
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 520px;
+  margin-bottom: 14px;
+}
+.imfail .frow,
+.imskip .frow {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+.imback {
+  display: block;
+}

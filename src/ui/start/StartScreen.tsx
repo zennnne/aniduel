@@ -1,15 +1,9 @@
 import type { ListEntry, ListStatus, MediaType, Viewer } from '../../anilist/types.ts'
 import { OFFERED_STATUSES, displayTitle, estimateMinutes, type Pool } from '../../pool/pool.ts'
+import { MEDIA_LABEL, pluralWord } from '../meta.ts'
 import './start.css'
+import { statusLabel } from './statusLabel.ts'
 
-const STATUS_LABEL: Record<(typeof OFFERED_STATUSES)[number], string> = {
-  COMPLETED: 'Completed',
-  REPEATING: 'Repeating',
-  CURRENT: 'Watching',
-  PAUSED: 'Paused',
-  DROPPED: 'Dropped',
-}
-const MANGA_LABEL: Partial<typeof STATUS_LABEL> = { CURRENT: 'Reading' }
 
 const PLACEHOLDER_COLOURS = ['#3db4f2', '#c063ff', '#ffb3c8', '#bfe8c9', '#ffe08a', '#c9d4ff']
 
@@ -26,6 +20,8 @@ export type PoolForm = {
   onStartRoughSort?: () => void
   /** Rough Sort progress of the Ranking saved for this Media Type, if there is one. */
   saved?: { done: number; total: number } | null
+  /** Expected Duels from the saved Ranking's real Band sizes once its Rough Sort is done (#1 US8); else equal Bands are assumed. */
+  bandDuels?: number | null
   /** Opens Restore from Backup (e.g. on a new browser). */
   onRestore?: () => void
 }
@@ -122,9 +118,9 @@ function Collage({ covers, viewer }: { covers: readonly ListEntry[]; viewer: Vie
 function PoolSetup(form: PoolForm) {
   const { viewer, mediaType, statuses, pool } = form
   const chosen = new Set(statuses)
-  const label = (s: (typeof OFFERED_STATUSES)[number]) =>
-    (mediaType === 'MANGA' && MANGA_LABEL[s]) || STATUS_LABEL[s]
+  const label = (s: (typeof OFFERED_STATUSES)[number]) => statusLabel(s, mediaType)
   const n = pool?.titles.length ?? 0
+  const duels = form.bandDuels ?? pool?.expectedDuels ?? 0
 
   return (
     <>
@@ -145,7 +141,7 @@ function PoolSetup(form: PoolForm) {
             className={mediaType === type ? 'on' : ''}
             onClick={() => form.onMediaType(type)}
           >
-            {type === 'ANIME' ? 'Anime' : 'Manga'}
+            {MEDIA_LABEL[type]}
           </button>
         ))}
       </div>
@@ -169,9 +165,10 @@ function PoolSetup(form: PoolForm) {
       <div className="est" aria-live="polite">
         {pool ? (
           <>
-            <b>{n}</b> titles · about <b>{pool.expectedDuels}</b> Duels
+            <b>{n}</b> {pluralWord(n, 'title')} · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
             <span className="small">
-              (~{estimateMinutes(pool.expectedDuels)} min at 3 s each, spread over as many sittings as you like)
+              ({form.bandDuels != null ? 'from your Band sizes, ' : ''}~{estimateMinutes(duels)} min at 3 s each, spread over
+              as many sittings as you like)
             </span>
           </>
         ) : (
@@ -180,7 +177,8 @@ function PoolSetup(form: PoolForm) {
       </div>
       {form.saved && (
         <div className="small">
-          You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a Band.
+          You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a Band. On Continue,
+          titles that now match these statuses join Rough Sort and titles that no longer match leave the Ranking.
         </div>
       )}
       <button

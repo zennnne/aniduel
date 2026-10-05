@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import { BANDS, type RankingState } from '../../ranking/engine.ts'
 import { importPlan, isTicked, previewRows, type PendingWrite, type PreviewRow, type TickOverrides } from '../../ranking/preview.ts'
 import { formatLevel, levelOfRaw, levels, score, type ScoringSettings } from '../../ranking/scoring.ts'
@@ -8,6 +7,7 @@ import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
 import './preview.css'
+import { count, titleName } from '../meta.ts'
 
 
 type Filter = 'changing' | 'all'
@@ -15,7 +15,7 @@ type Filter = 'changing' | 'all'
 /**
  * Preview ("score rows", issue #4): best / worst / Distribution, one row per score level with the covers
  * that get it, each Band's level range, and the Forgotten titles. Everything recomputes live.
- * Re-rank, Move Band and Bring back stay disabled until their handlers are passed (#11); Import until #10.
+ * Re-rank, Move Band, Bring back and Import are disabled while their handler is not passed (Import while one runs).
  */
 export function PreviewScreen(props: {
   state: RankingState
@@ -42,10 +42,7 @@ export function PreviewScreen(props: {
   const plan = importPlan(rows, overrides)
   const changing = rows.filter((r) => r.changed).length
   const label = (level: number) => formatLevel(format, level)
-  const name = (id: number) => {
-    const entry = entries.get(id)
-    return entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
-  }
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
 
   // Score rows: only levels that have titles, highest first.
   const byLevel = new Map<number, PreviewRow[]>()
@@ -113,7 +110,7 @@ export function PreviewScreen(props: {
         </div>
         <div className="grow" />
         <button className="go" disabled={!props.onImport || plan.length === 0} onClick={() => props.onImport?.(plan)}>
-          Import {plan.length} {plan.length === 1 ? 'score' : 'scores'} →
+          Import {count(plan.length, 'score')} →
         </button>
       </div>
 

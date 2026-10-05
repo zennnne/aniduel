@@ -2,10 +2,17 @@ import { describe, expect, it } from 'vitest'
 import { replay, startLog } from '../ranking/engine.ts'
 import {
   deleteDuelLog,
+  deleteImportState,
   deleteSavedProgress,
+  deleteTickOverrides,
+  loadTickOverrides,
+  saveTickOverrides,
   loadDuelLog,
+  loadImportState,
+  saveImportState,
   loadLastMediaType,
   loadPoolSettings,
+  loadScoringFor,
   loadScoringSettings,
   saveDuelLog,
   saveScoringSettings,
@@ -101,6 +108,90 @@ describe('Scoring settings', () => {
       storage.setItem(key, bad)
       expect(loadScoringSettings(storage, anime)).toBeNull()
     }
+  })
+
+  it('gives the settings for the current Score Format, converting and saving them when it changed (ADR 0003)', () => {
+    const storage = memoryStorage()
+    saveScoringSettings(storage, anime, saved)
+    expect(loadScoringFor(storage, anime, 'POINT_10')).toEqual({ settings: saved.settings, converted: false })
+
+    const converted = loadScoringFor(storage, anime, 'POINT_5')
+
+    // 9 / 2 of 10 is 90 / 20 of 100: 5 / 1 star.
+    expect(converted).toEqual({ settings: { distribution: 'bell', best: 5, worst: 1 }, converted: true })
+    expect(loadScoringSettings(storage, anime)).toEqual({ format: 'POINT_5', settings: converted.settings })
+    expect(loadScoringFor(storage, anime, 'POINT_5').converted).toBe(false)
+  })
+})
+
+describe('Import state', () => {
+  const state = {
+    hash: 'abc',
+    format: 'POINT_10' as const,
+    writes: [
+      { mediaId: 1, scoreRaw: 90, oldScore100: 0, status: 'done' as const },
+      { mediaId: 2, scoreRaw: 70, oldScore100: 50, status: 'failed' as const, error: 'network error' },
+      { mediaId: 3, scoreRaw: 30, oldScore100: 80, status: 'pending' as const },
+    ],
+  }
+
+  it('keeps the status of each write for each Media Type, so a resumed Import knows what is done', () => {
+    const storage = memoryStorage()
+    expect(loadImportState(storage, anime)).toBeNull()
+    saveImportState(storage, anime, state)
+    expect(loadImportState(storage, anime)).toEqual(state)
+    expect(loadImportState(storage, { userId: 7, mediaType: 'MANGA' })).toBeNull()
+  })
+
+  it('is gone after it is deleted, and with the rest of the user progress on logout', () => {
+    const storage = memoryStorage()
+    saveImportState(storage, anime, state)
+    deleteImportState(storage, anime)
+    expect(loadImportState(storage, anime)).toBeNull()
+
+    saveImportState(storage, anime, state)
+    deleteSavedProgress(storage, 7)
+    expect(loadImportState(storage, anime)).toBeNull()
+  })
+
+  it('ignores a saved Import it does not understand', () => {
+    const storage = memoryStorage()
+    saveImportState(storage, anime, state)
+    const key = storage.key(0)!
+    for (const bad of ['nope', '{"hash":"a","format":"POINT_10"}', '{"hash":"a","format":"POINT_7","writes":[]}', '{"hash":"a","format":"POINT_10","writes":[{"mediaId":1,"scoreRaw":90,"oldScore100":0,"status":"maybe"}]}']) {
+      storage.setItem(key, bad)
+      expect(loadImportState(storage, anime)).toBeNull()
+    }
+  })
+})
+
+describe('Import ticks', () => {
+  it('remembers the ticks the user changed on Preview, for each Media Type', () => {
+    const storage = memoryStorage()
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map())
+    saveTickOverrides(storage, anime, new Map([[1, false], [2, true]]))
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map([[1, false], [2, true]]))
+    expect(loadTickOverrides(storage, { userId: 7, mediaType: 'MANGA' })).toEqual(new Map())
+  })
+
+  it('are gone after Start over deletes them, and with the rest of the user progress on logout', () => {
+    const storage = memoryStorage()
+    saveTickOverrides(storage, anime, new Map([[1, false]]))
+    deleteTickOverrides(storage, anime)
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map())
+    saveTickOverrides(storage, anime, new Map([[1, false]]))
+    deleteSavedProgress(storage, 7)
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map())
+  })
+
+  it('ignores saved ticks it does not understand', () => {
+    const storage = memoryStorage()
+    saveTickOverrides(storage, anime, new Map([[1, false]]))
+    const key = storage.key(0)!
+    storage.setItem(key, '[[1,false],["x",true],[2,"no"],[3,true]]')
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map([[1, false], [3, true]]))
+    storage.setItem(key, 'nope')
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map())
   })
 })
 
