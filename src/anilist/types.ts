@@ -44,4 +44,7 @@ export type ListEntry = {
   siteUrl: string
 }
 
+/** What a cover tile needs. A ListEntry is one; so is a trending title from before login. */
+export type Cover = Pick<ListEntry, 'mediaId' | 'title' | 'coverUrl' | 'coverColor'>
+
 export type RateLimit = { remaining: number | null; resetAt: number | null }

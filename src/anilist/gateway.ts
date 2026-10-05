@@ -1,5 +1,5 @@
 // AniList Gateway: a thin GraphQL client over an injected `fetch`.
-import type { ListEntry, ListStatus, MediaType, RateLimit, Viewer } from './types.ts'
+import type { Cover, ListEntry, ListStatus, MediaType, RateLimit, Viewer } from './types.ts'
 
 export const ANILIST_GRAPHQL_URL = 'https://graphql.anilist.co'
 
@@ -127,53 +127,92 @@ function numberHeader(headers: Headers, name: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+async function request<T>(
+  deps: { fetch: typeof fetch; token: string | null },
+  query: string,
+  variables: Record<string, unknown> = {},
+  onHeaders?: (headers: Headers) => void,
+): Promise<T> {
+  let response: Response
+  try {
+    response = await deps.fetch(ANILIST_GRAPHQL_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(deps.token ? { Authorization: `Bearer ${deps.token}` } : {}),
+      },
+      body: JSON.stringify({ query, variables }),
+    })
+  } catch (cause) {
+    throw new AniListError('unreachable', `AniList is unreachable: ${String(cause)}`)
+  }
+  onHeaders?.(response.headers)
+
+  const body = (await response.json().catch(() => null)) as {
+    data?: T
+    errors?: Array<{ message: string; status?: number }>
+  } | null
+  const message = body?.errors?.map((e) => e.message).join('; ') || `HTTP ${response.status}`
+
+  // A revoked token gets 401; a malformed one gets 400 "Invalid token". Either way the user must log in again.
+  const authFailed =
+    response.status === 401 ||
+    body?.errors?.some((e) => e.status === 401 || /invalid token|unauthori[sz]ed/i.test(e.message))
+  if (authFailed) {
+    throw new AniListError('auth', message, 401)
+  }
+  if (response.status === 429) throw new AniListError('rate-limited', message, 429)
+  if (!response.ok || !body?.data || body.errors?.length) {
+    throw new AniListError('api', message, response.status)
+  }
+  return body.data
+}
+
+const TRENDING_QUERY = `query ($perPage: Int) {
+  Page(perPage: $perPage) {
+    media(type: ANIME, sort: TRENDING_DESC, isAdult: false) {
+      id
+      title { romaji english native }
+      coverImage { large color }
+    }
+  }
+}`
+
+type RawTrending = {
+  id: number
+  title: Cover['title']
+  coverImage: { large: string | null; color: string | null } | null
+}
+
+/** Covers of what is trending on AniList now. Needs no login, so Start can show real anime before one. */
+export async function trendingCovers(deps: { fetch: typeof fetch }, count: number): Promise<Cover[]> {
+  const data = await request<{ Page: { media: RawTrending[] } }>({ fetch: deps.fetch, token: null }, TRENDING_QUERY, {
+    perPage: count,
+  })
+  return data.Page.media.map((m) => ({
+    mediaId: m.id,
+    title: m.title,
+    coverUrl: m.coverImage?.large ?? null,
+    coverColor: m.coverImage?.color ?? null,
+  }))
+}
+
 export function createAniListGateway(deps: { fetch: typeof fetch; token: string }): AniListGateway {
   let lastRateLimit: RateLimit = { remaining: null, resetAt: null }
 
-  async function request<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-    let response: Response
-    try {
-      response = await deps.fetch(ANILIST_GRAPHQL_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          Authorization: `Bearer ${deps.token}`,
-        },
-        body: JSON.stringify({ query, variables }),
-      })
-    } catch (cause) {
-      throw new AniListError('unreachable', `AniList is unreachable: ${String(cause)}`)
-    }
-
-    lastRateLimit = {
-      remaining: numberHeader(response.headers, 'X-RateLimit-Remaining'),
-      resetAt: numberHeader(response.headers, 'X-RateLimit-Reset'),
-    }
-
-    const body = (await response.json().catch(() => null)) as {
-      data?: T
-      errors?: Array<{ message: string; status?: number }>
-    } | null
-    const message = body?.errors?.map((e) => e.message).join('; ') || `HTTP ${response.status}`
-
-    // A revoked token gets 401; a malformed one gets 400 "Invalid token". Either way the user must log in again.
-    const authFailed =
-      response.status === 401 ||
-      body?.errors?.some((e) => e.status === 401 || /invalid token|unauthori[sz]ed/i.test(e.message))
-    if (authFailed) {
-      throw new AniListError('auth', message, 401)
-    }
-    if (response.status === 429) throw new AniListError('rate-limited', message, 429)
-    if (!response.ok || !body?.data || body.errors?.length) {
-      throw new AniListError('api', message, response.status)
-    }
-    return body.data
+  function authed<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
+    return request<T>(deps, query, variables, (headers) => {
+      lastRateLimit = {
+        remaining: numberHeader(headers, 'X-RateLimit-Remaining'),
+        resetAt: numberHeader(headers, 'X-RateLimit-Reset'),
+      }
+    })
   }
 
   return {
     async viewer() {
-      const { Viewer: v } = await request<{ Viewer: RawViewer }>(VIEWER_QUERY)
+      const { Viewer: v } = await authed<{ Viewer: RawViewer }>(VIEWER_QUERY)
       return {
         id: v.id,
         name: v.name,
@@ -186,7 +225,7 @@ export function createAniListGateway(deps: { fetch: typeof fetch; token: string 
     async mediaList({ userId, type, statuses }) {
       const byMediaId = new Map<number, ListEntry>()
       for (let chunk = 1; ; chunk++) {
-        const { MediaListCollection: collection } = await request<{ MediaListCollection: RawCollection }>(
+        const { MediaListCollection: collection } = await authed<{ MediaListCollection: RawCollection }>(
           MEDIA_LIST_QUERY,
           { userId, type, statusIn: statuses, chunk, perChunk: PER_CHUNK },
         )
@@ -202,7 +241,7 @@ export function createAniListGateway(deps: { fetch: typeof fetch; token: string 
     },
 
     async saveScore(mediaId, scoreRaw) {
-      await request<{ SaveMediaListEntry: { mediaId: number } }>(SAVE_SCORE_MUTATION, { mediaId, scoreRaw })
+      await authed<{ SaveMediaListEntry: { mediaId: number } }>(SAVE_SCORE_MUTATION, { mediaId, scoreRaw })
     },
 
     rateLimit: () => lastRateLimit,

@@ -1,7 +1,7 @@
 // Screens are chosen from app state, not by a router (ADR 0004).
 import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from 'react'
-import { AniListError, createAniListGateway } from '../anilist/gateway.ts'
-import type { ListEntry, ListStatus, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
+import { AniListError, createAniListGateway, trendingCovers } from '../anilist/gateway.ts'
+import type { Cover, ListEntry, ListStatus, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
@@ -63,6 +63,9 @@ type DialogName = 'logout' | 'restore' | 'start-over'
 
 const TOAST_MS = 4000
 
+/** Tiles in the Start collage. */
+const COLLAGE_TILES = 36
+
 function loginRedirect() {
   window.location.assign(authorizeUrl(aniListClientId({ dev: import.meta.env.DEV })))
 }
@@ -78,6 +81,8 @@ export function App() {
   )
   const [viewer, setViewer] = useState<Viewer | null>(null)
   const [lists, setLists] = useState<Partial<Record<MediaType, ListEntry[]>>>({})
+  // Covers for Start before login. Left empty on failure: the collage falls back to placeholders.
+  const [trending, setTrending] = useState<readonly Cover[]>([])
   const [mediaType, setMediaType] = useState<MediaType>('ANIME')
   const [statuses, setStatuses] = useState<readonly ListStatus[]>(DEFAULT_STATUSES)
   const duelLog = useDuelLog(localStorage)
@@ -131,6 +136,18 @@ export function App() {
         return { ...prev, [key.mediaType]: current.map((e) => (written.has(e.mediaId) ? { ...e, oldScore100: written.get(e.mediaId)! } : e)) }
       }),
   })
+
+  const needTrending = !token && trending.length === 0
+  useEffect(() => {
+    if (!needTrending) return
+    let cancelled = false
+    trendingCovers({ fetch: window.fetch.bind(window) }, COLLAGE_TILES)
+      .then((covers) => !cancelled && setTrending(covers))
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [needTrending])
 
   const showToast = (message: ReactNode) => setToast({ message })
   useEffect(() => {
@@ -676,7 +693,7 @@ export function App() {
       ) : (
         <StartScreen
           form={form}
-          covers={pool?.titles ?? list ?? []}
+          covers={pool?.titles ?? list ?? trending}
           loggingIn={Boolean(token) && !viewer && !notice}
           onLogin={loginRedirect}
           theme={theme}

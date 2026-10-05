@@ -1,4 +1,4 @@
-import type { ListEntry, ListStatus, MediaType, Viewer } from '../../anilist/types.ts'
+import type { Cover, ListStatus, MediaType, Viewer } from '../../anilist/types.ts'
 import { OFFERED_STATUSES, displayTitle, estimateMinutes, type Pool } from '../../pool/pool.ts'
 import { MEDIA_LABEL, pluralWord } from '../meta.ts'
 import './start.css'
@@ -29,7 +29,7 @@ export type PoolForm = {
 /** Start = "Hero split" (issue #4): a cover collage on the left, one card on the right that holds login, then the Pool form. */
 export function StartScreen(props: {
   form: PoolForm | null
-  covers: readonly ListEntry[]
+  covers: readonly Cover[]
   loggingIn: boolean
   onLogin: () => void
   theme: 'light' | 'dark'
@@ -85,7 +85,7 @@ function Reassure() {
   )
 }
 
-function Collage({ covers, viewer }: { covers: readonly ListEntry[]; viewer: Viewer | null }) {
+function Collage({ covers, viewer }: { covers: readonly Cover[]; viewer: Viewer | null }) {
   const tiles = covers.filter((c) => c.coverUrl).slice(0, 36)
   return (
     <div className="collage-bg" aria-hidden="true">

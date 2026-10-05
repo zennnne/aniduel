@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { AniListError, createAniListGateway } from './gateway.ts'
+import { AniListError, createAniListGateway, trendingCovers } from './gateway.ts'
 
 type Call = { url: string; init: RequestInit; body: { query: string; variables: Record<string, unknown> } }
 
@@ -238,5 +238,33 @@ describe('AniList Gateway: saving a score', () => {
 
     await expect(gateway.saveScore(7, 85)).rejects.toMatchObject({ kind: 'rate-limited' })
     expect(gateway.rateLimit()).toEqual({ remaining: 0, resetAt: 1760000060 })
+  })
+})
+
+describe('AniList Gateway: trending covers', () => {
+  it('asks for trending non-adult anime without a token', async () => {
+    const { fetch, calls } = fakeFetch({
+      json: {
+        data: {
+          Page: {
+            media: [
+              { id: 1, title: { romaji: 'A', english: null, native: null }, coverImage: { large: 'https://img/1.jpg', color: '#fff' } },
+              { id: 2, title: { romaji: 'B', english: null, native: null }, coverImage: null },
+            ],
+          },
+        },
+      },
+    })
+
+    const covers = await trendingCovers({ fetch }, 36)
+
+    expect(new Headers(calls[0].init.headers).has('Authorization')).toBe(false)
+    expect(calls[0].body.query).toContain('sort: TRENDING_DESC')
+    expect(calls[0].body.query).toContain('isAdult: false')
+    expect(calls[0].body.variables).toEqual({ perPage: 36 })
+    expect(covers).toEqual([
+      { mediaId: 1, title: { romaji: 'A', english: null, native: null }, coverUrl: 'https://img/1.jpg', coverColor: '#fff' },
+      { mediaId: 2, title: { romaji: 'B', english: null, native: null }, coverUrl: null, coverColor: null },
+    ])
   })
 })
