@@ -1,0 +1,133 @@
+/* Band choice = result + chooser (issue #4 prototype, section 4) */
+.bc {
+  flex: 1;
+  overflow: auto;
+  padding: 46px 40px 30px;
+  color: var(--tx);
+}
+.bc .h1 {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--tx-strong);
+}
+.bc .sub {
+  margin: 6px 0 10px;
+}
+.bc-total {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 10px;
+  align-items: center;
+  max-width: 520px;
+  margin-bottom: 22px;
+}
+.prog {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--fg2);
+  overflow: hidden;
+}
+.prog i {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+}
+.prog.full i {
+  background: var(--good);
+}
+/* A split Band: one stripe per Sub-band, each tinted in its colour and filled by its own progress. */
+.prog.segs {
+  display: flex;
+  gap: 2px;
+  background: none;
+}
+.prog.segs > span {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.prog.segs > span > i {
+  background: var(--blue);
+}
+.b-result {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+.b-result.solo {
+  grid-template-columns: minmax(0, 520px);
+}
+.b-result .res {
+  background: var(--fg);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.b-result .res .ln {
+  display: grid;
+  grid-template-columns: 28px 40px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--fg2);
+}
+.b-result .res .ln .cv {
+  width: 40px;
+  height: 56px;
+  border-radius: 4px;
+}
+.b-result .res .ln b {
+  color: var(--tx-strong);
+}
+.b-result .tie {
+  font-size: 11px;
+  color: var(--blue);
+}
+.b-result .ch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.b-result .ch > button {
+  display: grid;
+  grid-template-columns: 110px 1fr 60px;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--fg);
+  text-align: left;
+}
+.b-result .ch > button:hover:not(:disabled),
+.b-result .ch > button.on {
+  box-shadow: 0 0 0 2px var(--blue);
+}
+.b-result .ch > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.b-result .ch .col {
+  gap: 6px;
+}
+.b-result .nx {
+  color: var(--blue);
+}
+.b-result .ch .row {
+  margin-top: 6px;
+}
+@media (max-width: 720px) {
+  .bc {
+    padding: 44px 16px 20px;
+  }
+  .b-result {
+    grid-template-columns: 1fr;
+  }
+  .b-result .ch > button {
+    grid-template-columns: 90px 1fr 48px;
+    min-height: 56px;
+  }
+}

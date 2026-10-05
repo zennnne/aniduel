@@ -1,0 +1,125 @@
+/* Rough Sort "Ladder" (issue #4 prototype, section 3) */
+.rs {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+  background: var(--nav);
+}
+.rs > *:not(.bg) {
+  position: relative;
+  z-index: 1;
+}
+.rs > .topline,
+.rs > .float-info {
+  position: absolute;
+  z-index: 6;
+}
+.rs .bg {
+  position: absolute;
+  inset: -20px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(14px) brightness(0.45);
+  z-index: 0;
+}
+.rs .cv {
+  border-radius: 10px;
+  box-shadow: 0 10px 40px var(--overlay-strong);
+}
+.subrow {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.rs-ladder {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  gap: 30px;
+  padding: 40px 50px;
+  height: 100%;
+}
+.rs-ladder .left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+  text-align: right;
+}
+.rs-ladder .left .cv {
+  height: 56vh;
+  aspect-ratio: 2 / 3;
+}
+.rs-ladder .bands {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 340px;
+}
+.rs-ladder .bandbtn {
+  padding: 14px 16px;
+  justify-content: space-between;
+}
+.rs-ladder .bandbtn:hover {
+  transform: translateX(6px);
+}
+.rs-ladder .bandslot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rs-ladder .bandbtn {
+  width: 100%;
+}
+.rs-ladder .bandbtn.picked {
+  outline: 2px solid var(--on-overlay);
+}
+/* Second tap for a split Band (ADR 0006): Best / Middle / Lowest */
+.subtap {
+  display: flex;
+  gap: 6px;
+  padding-left: 18px;
+}
+.subtap button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--band-ink);
+  font-weight: 800;
+  font-size: 13px;
+}
+.subtap button:hover,
+.subtap button:focus-visible {
+  outline: 2px solid var(--blue);
+}
+@media (max-width: 720px) {
+  .rs-ladder {
+    grid-template-columns: 1fr;
+    padding: 44px 16px 16px;
+    gap: 12px;
+    align-content: start;
+  }
+  .rs-ladder .left {
+    align-items: center;
+    text-align: center;
+  }
+  .rs-ladder .left .cv {
+    height: 24vh;
+    max-height: 220px;
+  }
+  .rs-ladder .bands {
+    max-width: none;
+    gap: 6px;
+  }
+  .rs-ladder .bandbtn {
+    padding: 10px 14px;
+  }
+  .t {
+    font-size: 17px;
+  }
+}
