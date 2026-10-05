@@ -1,11 +1,10 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import type { ListEntry, MediaType, TitleLanguage } from '../../anilist/types.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import { BANDS, SUB_BANDS, type BandIndex, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { EXT_ICON, UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
-import { metaLine } from '../meta.ts'
+import { metaLine, titleName } from '../meta.ts'
 import './roughsort.css'
 
 /**
@@ -70,7 +69,7 @@ export function RoughSortScreen(props: {
   }, [])
 
   const entry = entries.get(id)
-  const name = entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
+  const name = titleName(entry, id, titleLanguage)
   const backdrop = entry?.bannerUrl ?? entry?.coverUrl ?? null
   const percent = total ? (done / total) * 100 : 100
 

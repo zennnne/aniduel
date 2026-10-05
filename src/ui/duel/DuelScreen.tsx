@@ -1,11 +1,10 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import type { ListEntry, MediaType, TitleLanguage } from '../../anilist/types.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import type { BandIndex, Prompt, RankingState, SubBandIndex } from '../../ranking/engine.ts'
 import { BAND_UI } from '../bands.ts'
 import { EXT_ICON, MOVE_ICON, SAME_ICON, UNDO_ICON } from '../icons.tsx'
 import { Kao, SubPill } from '../Kao.tsx'
-import { metaLine } from '../meta.ts'
+import { count, metaLine, titleName } from '../meta.ts'
 import { MoveSheet } from '../move/MoveSheet.tsx'
 import './duel.css'
 
@@ -29,7 +28,7 @@ function Card(props: {
   moving: boolean
 }) {
   const { id, side, entry, titleLanguage, mediaType, onPick, onForget, onMove, moving } = props
-  const name = entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
+  const name = titleName(entry, id, titleLanguage)
   const backdrop = entry?.bannerUrl ?? entry?.coverUrl ?? null
   const key = side === 'l' ? '←' : '→'
   return (
@@ -175,8 +174,7 @@ export function DuelScreen(props: {
               <SubPill sub={prompt.sub} size={10} />
             </>
           )}{' '}
-          · {progress.done}/{progress.total} · {spots}{' '}
-          {spots === 1 ? 'spot' : 'spots'} left
+          · {progress.done}/{progress.total} · {count(spots, 'spot')} left
           {forgetting && (
             <>
               {' '}

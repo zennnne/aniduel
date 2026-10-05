@@ -1,5 +1,6 @@
 import type { ListEntry, ListStatus, MediaType, Viewer } from '../../anilist/types.ts'
 import { OFFERED_STATUSES, displayTitle, estimateMinutes, type Pool } from '../../pool/pool.ts'
+import { MEDIA_LABEL, pluralWord } from '../meta.ts'
 import './start.css'
 import { statusLabel } from './statusLabel.ts'
 
@@ -140,7 +141,7 @@ function PoolSetup(form: PoolForm) {
             className={mediaType === type ? 'on' : ''}
             onClick={() => form.onMediaType(type)}
           >
-            {type === 'ANIME' ? 'Anime' : 'Manga'}
+            {MEDIA_LABEL[type]}
           </button>
         ))}
       </div>
@@ -164,7 +165,7 @@ function PoolSetup(form: PoolForm) {
       <div className="est" aria-live="polite">
         {pool ? (
           <>
-            <b>{n}</b> titles · about <b>{duels}</b> Duels
+            <b>{n}</b> {pluralWord(n, 'title')} · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
             <span className="small">
               ({form.bandDuels != null ? 'from your Band sizes, ' : ''}~{estimateMinutes(duels)} min at 3 s each, spread over
               as many sittings as you like)

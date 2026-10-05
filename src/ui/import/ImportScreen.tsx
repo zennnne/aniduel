@@ -9,8 +9,8 @@ import {
   type ImportState,
   type RunnerStatus,
 } from '../../import/runner.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
+import { count, titleName } from '../meta.ts'
 import './import.css'
 
 export type ImportStage = 'confirm' | 'running' | 'stopped' | 'done'
@@ -36,10 +36,7 @@ export function ImportScreen(props: {
 }) {
   const { stage, state, status, entries, titleLanguage, format } = props
   const summary = importSummary(state)
-  const name = (id: number) => {
-    const entry = entries.get(id)
-    return entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
-  }
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const now = useNow(stage === 'running')
 
   if (stage === 'confirm') {
@@ -48,7 +45,7 @@ export function ImportScreen(props: {
       <div className="im im-center">
         <div className="imconf">
           <div className="h2">
-            Write {n} {n === 1 ? 'score' : 'scores'} to AniList?
+            Write {count(n, 'score')} to AniList?
           </div>
           {props.writtenBefore !== null && (
             <p className="warn">
@@ -65,7 +62,7 @@ export function ImportScreen(props: {
           </p>
           <div className="row">
             <button className="go" disabled={n === 0} onClick={props.onConfirm}>
-              Yes, write {n} {n === 1 ? 'score' : 'scores'}
+              Yes, write {count(n, 'score')}
             </button>
             <button className="link" onClick={props.onBack}>
               Back to Preview
