@@ -9,6 +9,7 @@ import {
   type LogEvent,
   type SubBandIndex,
 } from './engine.ts'
+import { defaultSettings, score } from './scoring.ts'
 
 const header = { seed: 42, userId: 7, mediaType: 'ANIME' as const }
 
@@ -70,6 +71,26 @@ describe('splitting a fresh Band', () => {
     const state = replay(log)
     expect(state.prompt).toEqual({ kind: 'all-complete' })
     expect(state.bands[0].tiers).toEqual([[2], [4], [3], [1], [6], [5]])
+  })
+
+  it('scores a split Band exactly like the same order unsplit: Scoring ignores Sub-bands', () => {
+    const answerAll = (start: DuelLog, value: (id: number) => number) => {
+      let log = start
+      for (let state = replay(log); state.prompt.kind === 'duel'; state = replay(log)) {
+        const { a, b } = state.prompt
+        log = plus(log, duel(a, b, value(a) > value(b) ? 'a' : 'b'))
+      }
+      return replay(log)
+    }
+    const splitRanking = answerAll(plus(freshLoved(), split(0, [0, 1], [[2], [3, 4], [5, 6]])), (id) => id)
+    // The same final order, 2 > 4 > 3 > 1 > 6 > 5, reached without a split.
+    const order = [2, 4, 3, 1, 6, 5]
+    const unsplit = answerAll(freshLoved(), (id) => -order.indexOf(id))
+    expect(unsplit.bands[0].tiers).toEqual(splitRanking.bands[0].tiers)
+    for (const format of ['POINT_10', 'POINT_100', 'POINT_3'] as const) {
+      const settings = defaultSettings(format)
+      expect(score(splitRanking, format, settings)).toEqual(score(unsplit, format, settings))
+    }
   })
 
   it('has no Sub-bands on a Band that was never split', () => {
