@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { replay, startLog, type BandIndex, type DuelLog, type LogEvent } from './engine.ts'
-import { defaultCuts, offerSavings, splitOffers, splitSavings, worstCaseDuels } from './split.ts'
+import { autoOfferDue, defaultCuts, offerSavings, splitOffers, splitSavings, worstCaseDuels } from './split.ts'
 
 const range = (from: number, count: number) => Array.from({ length: count }, (_, i) => from + i)
 
@@ -89,5 +89,33 @@ describe('the default cut points for the ranked titles', () => {
   it('puts a Band with a single Tier into Middle, and an empty Band at [0, 0]', () => {
     expect(defaultCuts([1])).toEqual([0, 1])
     expect(defaultCuts([])).toEqual([0, 0])
+  })
+})
+
+describe('when the split offer shows on its own', () => {
+  const answerFirstDuel = (log: DuelLog): DuelLog => {
+    const p = replay(log).prompt
+    if (p.kind !== 'duel') throw new Error('expected a Duel')
+    return { ...log, events: [...log.events, { type: 'duel-answered', a: p.a, b: p.b, result: 'a' }] }
+  }
+  const push = (log: DuelLog, event: LogEvent): DuelLog => ({ ...log, events: [...log.events, event] })
+
+  it('right after Rough Sort, before any Duel is answered', () => {
+    const log = afterRoughSort([95])
+    expect(autoOfferDue(log)).toBe(true)
+    expect(autoOfferDue(answerFirstDuel(log))).toBe(false)
+  })
+
+  it('again after a sync adds titles, until the next Duel answer', () => {
+    let log = push(answerFirstDuel(afterRoughSort([95])), { type: 'titles-added', ids: [500] })
+    expect(autoOfferDue(log)).toBe(true)
+    log = push(log, { type: 'band-assigned', id: 500, band: 0 })
+    expect(autoOfferDue(log)).toBe(true)
+    expect(autoOfferDue(answerFirstDuel(log))).toBe(false)
+  })
+
+  it('not after a sync that only removed titles', () => {
+    const log = push(answerFirstDuel(afterRoughSort([95])), { type: 'titles-removed', ids: [3] })
+    expect(autoOfferDue(log)).toBe(false)
   })
 })
