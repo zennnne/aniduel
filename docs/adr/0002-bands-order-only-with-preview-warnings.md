@@ -11,4 +11,4 @@ We chose this because the target user is a beginner who tends to put most titles
 
 ## Consequences
 
-- A title can only move across a Band boundary through the explicit "move Band" action, which drops that title's earlier Duels and Re-ranks it.
+- A title can only move across a Band boundary through the explicit "move Band" action, which takes that title out of the Ranking and inserts it again in the new Band. Earlier Duel answers stay in the log (ADR 0005).

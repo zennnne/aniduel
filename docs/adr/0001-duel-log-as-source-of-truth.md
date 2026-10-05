@@ -10,4 +10,5 @@ We store every Duel answer in order as an append-only log and rebuild the Rankin
 ## Consequences
 
 - A single wrong answer puts a title in the wrong place for good, so undo and Re-rank are required features, not optional ones.
-- Any change to the insertion algorithm must still replay old logs the same way, or saved progress breaks. Version the log format.
+- Any change to the insertion algorithm must still replay old logs the same way, or saved progress breaks. Version both the log format and the engine (ADR 0005).
+- How removals, Undo and sync work without rewriting the log is set out in ADR 0005.
