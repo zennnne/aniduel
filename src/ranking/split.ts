@@ -1,0 +1,72 @@
+// Splitting an oversized Band into Sub-bands (ADR 0006): when to offer it, and what it saves.
+// Pure functions over RankingState; the split itself is the engine's `band-split` event.
+import { BANDS, type BandIndex, type BandState, type RankingState } from './engine.ts'
+
+/** A split is offered for a Band with at least this many titles without a place yet. */
+export const SPLIT_OFFER_THRESHOLD = 90
+/** Below this estimate, pressing Done on the Split screen asks "Keep sorting" / "Finish anyway". */
+export const LOW_SAVINGS = 100
+
+/** One Segment for the estimate: places it already has (Tiers) and titles still to insert. */
+export type SegmentSize = { places: number; unplaced: number }
+
+/**
+ * Worst-case Duels to insert every unplaced title: inserting into k places takes at most ⌈log₂(k+1)⌉ Duels,
+ * and each title adds a place (no Tiers assumed). Summed over Segments, because Duels never cross them.
+ */
+export function worstCaseDuels(segments: readonly SegmentSize[]): number {
+  let total = 0
+  for (const { places, unplaced } of segments) {
+    for (let k = places; k < places + unplaced; k++) total += Math.ceil(Math.log2(k + 1))
+  }
+  return total
+}
+
+/** "Up to −X Duels": the worst case for the Band as one Segment minus the worst case for its three Sub-bands. */
+export function splitSavings(whole: SegmentSize, parts: readonly [SegmentSize, SegmentSize, SegmentSize]): number {
+  return worstCaseDuels([whole]) - worstCaseDuels(parts)
+}
+
+/** ¼ / ½ / ¼ of n titles (the quarters rounded, Middle takes the rest). */
+export function quarterSplit(n: number): [number, number, number] {
+  const q = Math.round(n / 4)
+  return [q, n - 2 * q, q]
+}
+
+/** The Tier edge (0 = before the first Tier … tierSizes.length = after the last) nearest to `titles` titles from the top. */
+export function snapToTierEdge(tierSizes: readonly number[], titles: number): number {
+  let best = 0
+  let bestDistance = Math.abs(titles)
+  let above = 0
+  tierSizes.forEach((size, i) => {
+    above += size
+    const distance = Math.abs(above - titles)
+    if (distance < bestDistance) {
+      best = i + 1
+      bestDistance = distance
+    }
+  })
+  return best
+}
+
+/** Default cut points for a Band's ranked titles: about ¼ and ¾ of its titles, on the nearest Tier edges. */
+export function defaultCuts(tierSizes: readonly number[]): [number, number] {
+  const titles = tierSizes.reduce((sum, size) => sum + size, 0)
+  return [snapToTierEdge(tierSizes, titles / 4), snapToTierEdge(tierSizes, (titles * 3) / 4)]
+}
+
+/** Bands offered a split now: not split yet, with at least SPLIT_OFFER_THRESHOLD unplaced titles. */
+export function splitOffers(state: RankingState): BandIndex[] {
+  return BANDS.filter((band) => !state.bands[band].subBands && state.bands[band].unplaced.length >= SPLIT_OFFER_THRESHOLD)
+}
+
+/** The offer's estimate for a Band: its unplaced titles split ¼ / ½ / ¼ and its ranked titles cut at the default cuts. */
+export function offerSavings(band: BandState): number {
+  const [c1, c2] = defaultCuts(band.tiers.map((tier) => tier.length))
+  const [best, middle, lowest] = quarterSplit(band.unplaced.length)
+  return splitSavings({ places: band.tiers.length, unplaced: band.unplaced.length }, [
+    { places: c1, unplaced: best },
+    { places: c2 - c1, unplaced: middle },
+    { places: band.tiers.length - c2, unplaced: lowest },
+  ])
+}
