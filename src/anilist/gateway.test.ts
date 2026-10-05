@@ -91,6 +91,14 @@ describe('AniList Gateway: Viewer', () => {
     expect((error as AniListError).kind).toBe('auth')
   })
 
+  it('reports a malformed token (AniList answers 400 "Invalid token") as an auth error', async () => {
+    const { fetch } = fakeFetch({ status: 400, json: { data: null, errors: [{ message: 'Invalid token', status: 400 }] } })
+    const gateway = createAniListGateway({ fetch, token: 'garbage' })
+
+    const error = await gateway.viewer().catch((e: unknown) => e)
+    expect((error as AniListError).kind).toBe('auth')
+  })
+
   it('reports a network failure as unreachable', async () => {
     const fetch = (async () => {
       throw new TypeError('Failed to fetch')
@@ -144,7 +152,7 @@ describe('AniList Gateway: list', () => {
           completedAt: { year: 2024, month: 3, day: 9 },
           media: {
             title: { romaji: 'Shingeki no Kyojin', english: 'Attack on Titan', native: '進撃の巨人' },
-            coverImage: { large: 'https://img/7.jpg', color: null },
+            coverImage: { extraLarge: 'https://img/7-xl.jpg', large: 'https://img/7.jpg', color: null },
             bannerImage: 'https://img/7-banner.jpg',
             startDate: { year: 2013 },
             format: 'TV',
@@ -165,7 +173,7 @@ describe('AniList Gateway: list', () => {
       oldScore100: 0,
       completedAt: { year: 2024, month: 3, day: 9 },
       title: { romaji: 'Shingeki no Kyojin', english: 'Attack on Titan', native: '進撃の巨人' },
-      coverUrl: 'https://img/7.jpg',
+      coverUrl: 'https://img/7-xl.jpg',
       coverColor: null,
       bannerUrl: 'https://img/7-banner.jpg',
       year: 2013,

@@ -51,7 +51,7 @@ const MEDIA_LIST_QUERY = `query ($userId: Int, $type: MediaType, $statusIn: [Med
         completedAt { year month day }
         media {
           title { romaji english native }
-          coverImage { large color }
+          coverImage { extraLarge large color }
           bannerImage
           startDate { year }
           format
@@ -79,7 +79,7 @@ type RawEntry = {
   completedAt: ListEntry['completedAt'] | null
   media: {
     title: ListEntry['title']
-    coverImage: { large: string | null; color: string | null } | null
+    coverImage: { extraLarge?: string | null; large: string | null; color: string | null } | null
     bannerImage: string | null
     startDate: { year: number | null } | null
     format: string | null
@@ -99,7 +99,7 @@ function toListEntry(raw: RawEntry): ListEntry {
     oldScore100: raw.score ?? 0,
     completedAt: raw.completedAt ?? { year: null, month: null, day: null },
     title: media.title,
-    coverUrl: media.coverImage?.large ?? null,
+    coverUrl: media.coverImage?.extraLarge ?? media.coverImage?.large ?? null,
     coverColor: media.coverImage?.color ?? null,
     bannerUrl: media.bannerImage,
     year: media.startDate?.year ?? null,
@@ -146,7 +146,11 @@ export function createAniListGateway(deps: { fetch: typeof fetch; token: string 
     } | null
     const message = body?.errors?.map((e) => e.message).join('; ') || `HTTP ${response.status}`
 
-    if (response.status === 401 || body?.errors?.some((e) => e.status === 401)) {
+    // A revoked token gets 401; a malformed one gets 400 "Invalid token". Either way the user must log in again.
+    const authFailed =
+      response.status === 401 ||
+      body?.errors?.some((e) => e.status === 401 || /invalid token|unauthori[sz]ed/i.test(e.message))
+    if (authFailed) {
       throw new AniListError('auth', message, 401)
     }
     if (response.status === 429) throw new AniListError('rate-limited', message, 429)
