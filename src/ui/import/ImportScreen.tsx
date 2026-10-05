@@ -4,12 +4,13 @@ import {
   WRITE_SPACING_MS,
   formatDuration,
   importSummary,
+  skippedWrites,
   timeLeftMs,
   type ImportState,
   type RunnerStatus,
 } from '../../import/runner.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
+import { count, titleName } from '../meta.ts'
 import './import.css'
 
 export type ImportStage = 'confirm' | 'running' | 'stopped' | 'done'
@@ -35,10 +36,7 @@ export function ImportScreen(props: {
 }) {
   const { stage, state, status, entries, titleLanguage, format } = props
   const summary = importSummary(state)
-  const name = (id: number) => {
-    const entry = entries.get(id)
-    return entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
-  }
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const now = useNow(stage === 'running')
 
   if (stage === 'confirm') {
@@ -47,7 +45,7 @@ export function ImportScreen(props: {
       <div className="im im-center">
         <div className="imconf">
           <div className="h2">
-            Write {n} {n === 1 ? 'score' : 'scores'} to AniList?
+            Write {count(n, 'score')} to AniList?
           </div>
           {props.writtenBefore !== null && (
             <p className="warn">
@@ -64,7 +62,7 @@ export function ImportScreen(props: {
           </p>
           <div className="row">
             <button className="go" disabled={n === 0} onClick={props.onConfirm}>
-              Yes, write {n} {n === 1 ? 'score' : 'scores'}
+              Yes, write {count(n, 'score')}
             </button>
             <button className="link" onClick={props.onBack}>
               Back to Preview
@@ -97,6 +95,7 @@ export function ImportScreen(props: {
           : `Writing about 1 every ${((status?.phase === 'writing' ? status.spacingMs : WRITE_SPACING_MS) / 1000).toFixed(1)} s to stay inside AniList's limit · ${left} left`
   }
   const failed = state.writes.filter((w) => w.status === 'failed')
+  const skipped = skippedWrites(state)
 
   return (
     <div className="im im-grid">
@@ -124,7 +123,7 @@ export function ImportScreen(props: {
             </div>
             <div>
               <b>{summary.skipped}</b>
-              <span>skipped (changed on AniList)</span>
+              <span>skipped</span>
             </div>
             <div className="bad">
               <b>{summary.failed}</b>
@@ -168,6 +167,17 @@ export function ImportScreen(props: {
           <button className="go" onClick={props.onRetry}>
             Retry {failed.length} failed
           </button>
+        </div>
+      )}
+      {stage === 'done' && skipped.length > 0 && (
+        <div className="imskip">
+          <b className="strong">Skipped</b>
+          {skipped.map((w) => (
+            <div key={w.mediaId} className="frow">
+              <span className="grow">{name(w.mediaId)}</span>
+              <span className="small">{w.reason}</span>
+            </div>
+          ))}
         </div>
       )}
       {stage !== 'running' && (

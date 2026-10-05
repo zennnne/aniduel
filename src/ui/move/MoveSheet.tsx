@@ -1,10 +1,10 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import { BANDS, SUB_BANDS, type BandIndex, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { Kao, SubPill } from '../Kao.tsx'
 import './move.css'
+import { titleName } from '../meta.ts'
 
 type Place = { band: BandIndex; sub?: SubBandIndex }
 
@@ -36,7 +36,7 @@ export function MoveSheet(props: {
   const sheet = useRef<HTMLDivElement>(null)
   useEffect(() => sheet.current?.focus(), [])
   const entry = entries.get(id)
-  const name = entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
+  const name = titleName(entry, id, titleLanguage)
   const here = placeOf(state, id)
   const isHere = (band: BandIndex, sub?: SubBandIndex) => here?.band === band && here.sub === sub
   const stripedBand = BANDS.find((band) => state.bands[band].subBands)

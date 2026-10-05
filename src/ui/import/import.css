@@ -141,7 +141,9 @@
 .imsum .bad b {
   color: var(--bad);
 }
-.imfail {
+/* The "Couldn't save" and "Skipped" lists after an Import. */
+.imfail,
+.imskip {
   background: var(--fg);
   border-radius: 14px;
   padding: 14px;
@@ -151,7 +153,8 @@
   max-width: 520px;
   margin-bottom: 14px;
 }
-.imfail .frow {
+.imfail .frow,
+.imskip .frow {
   display: flex;
   gap: 10px;
   align-items: center;

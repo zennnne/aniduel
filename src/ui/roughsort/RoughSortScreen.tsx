@@ -1,11 +1,10 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import type { ListEntry, MediaType, TitleLanguage } from '../../anilist/types.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import { BANDS, SUB_BANDS, type BandIndex, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { EXT_ICON, UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
-import { metaLine } from '../meta.ts'
+import { metaLine, titleName } from '../meta.ts'
 import './roughsort.css'
 
 /**
@@ -70,7 +69,7 @@ export function RoughSortScreen(props: {
   }, [])
 
   const entry = entries.get(id)
-  const name = entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
+  const name = titleName(entry, id, titleLanguage)
   const backdrop = entry?.bannerUrl ?? entry?.coverUrl ?? null
   const percent = total ? (done / total) * 100 : 100
 
@@ -113,11 +112,11 @@ export function RoughSortScreen(props: {
                   </span>
                   <span className="lab">
                     {BAND_UI[band].label}
-                    {state.bands[band].subBands && pending !== band && <span className="fine"> · 3 groups</span>}
+                    {state.bands[band].subBands && pending !== band && <span className="fine"> · 3 Sub-bands</span>}
                   </span>
                 </button>
                 {pending === band && (
-                  <div className="subtap" role="group" aria-label={`${BAND_UI[band].label}: which group?`}>
+                  <div className="subtap" role="group" aria-label={`${BAND_UI[band].label}: which Sub-band?`}>
                     {SUB_BANDS.map((sub) => (
                       <button key={sub} style={{ background: SUB_BAND_UI[sub].colour }} onClick={() => pickSub(sub)} autoFocus={sub === 0}>
                         {SUB_BAND_UI[sub].label}

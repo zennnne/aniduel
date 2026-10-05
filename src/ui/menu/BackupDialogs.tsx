@@ -2,8 +2,7 @@ import { useRef, useState } from 'react'
 import type { MediaType } from '../../anilist/types.ts'
 import { BackupError, readBackup, type Backup } from '../../persistence/backup.ts'
 import { Dialog } from '../Dialog.tsx'
-
-const MEDIA_LABEL: Record<MediaType, string> = { ANIME: 'Anime', MANGA: 'Manga' }
+import { MEDIA_LABEL, count } from '../meta.ts'
 
 /**
  * Restore from Backup: drop or choose a file; it is checked straight away and the Restore button only
@@ -112,7 +111,6 @@ export function StartOverDialog(props: {
 }) {
   const media = MEDIA_LABEL[props.mediaType]
   const { counts } = props
-  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
   return (
     <Dialog
       title={`Start ${media} over?`}
@@ -126,7 +124,7 @@ export function StartOverDialog(props: {
       <p>
         {counts ? (
           <>
-            All {plural(counts.roughSort, 'Rough Sort choice')} and <b>{plural(counts.duels, 'Duel')}</b> for {media} are
+            All {count(counts.roughSort, 'Rough Sort choice')} and <b>{count(counts.duels, 'Duel')}</b> for {media} are
             thrown away.
           </>
         ) : (

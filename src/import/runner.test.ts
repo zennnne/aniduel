@@ -6,6 +6,7 @@ import {
   newImport,
   retryFailed,
   runImport,
+  skippedWrites,
   timeLeftMs,
   type Clock,
   type ImportState,
@@ -216,6 +217,17 @@ describe('Import Runner: resume', () => {
 
     expect(aniList.writes.map((w) => w.mediaId)).toEqual([1, 2])
     expect(done.writes[2]).toMatchObject({ status: 'skipped', error: 'not on your list' })
+  })
+
+  it('tells each skipped title’s own reason for the summary', async () => {
+    const { deps } = setup({ 1: 0, 2: 65 })
+
+    const done = await runImport(deps, newImport(plan, { hash: 'h', format: 'POINT_100' }))
+
+    expect(skippedWrites(done)).toEqual([
+      { mediaId: 2, reason: 'changed on AniList' },
+      { mediaId: 3, reason: 'not on your list' },
+    ])
   })
 })
 

@@ -1,12 +1,12 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import { BANDS, SUB_BANDS, type BandIndex, type RankingState } from '../../ranking/engine.ts'
 import { duelsLeft } from '../../ranking/estimate.ts'
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import './bandchoice.css'
+import { count, titleName } from '../meta.ts'
 
 /** A Band's progress bar; a split Band's bar is striped, one stripe per Sub-band, each filled by its own progress. */
 export function BandBar({ state, band }: { state: RankingState; band: BandIndex }) {
@@ -57,10 +57,7 @@ export function BandChoiceScreen(props: {
   const [selected, setSelected] = useState<BandIndex>(open.includes(next) ? next : (open[0] ?? next))
   const { done, total } = state.progress.ranked
   const toGo = open.reduce<number>((sum, band) => sum + duelsLeft(state.bands[band]), 0)
-  const name = (id: number) => {
-    const entry = entries.get(id)
-    return entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
-  }
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -96,7 +93,7 @@ export function BandChoiceScreen(props: {
     <div className="bc">
       <div className="h1">Which Band next?</div>
       <div className="sub">
-        {done}/{total} placed · about {toGo} {toGo === 1 ? 'Duel' : 'Duels'} to go
+        {done}/{total} placed · about {count(toGo, 'Duel')} to go
       </div>
       <div className="bc-total">
         <span className="small">Total</span>

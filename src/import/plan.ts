@@ -1,13 +1,18 @@
 // What a saved Import is checked against before it resumes: the Duel log and scoring settings it was planned from.
 import type { ScoreFormat } from '../anilist/types.ts'
 import type { DuelLog } from '../ranking/engine.ts'
-import type { PendingWrite } from '../ranking/preview.ts'
+import type { PendingWrite, TickOverrides } from '../ranking/preview.ts'
 import type { SavedScoring } from '../ranking/scoring.ts'
 import { newImport, type ImportState } from './runner.ts'
 
-/** A short hash (FNV-1a, 32 bit) of the Duel log and scoring settings. Any answer or setting change changes it. */
-export function planHash(log: DuelLog, scoring: SavedScoring): string {
-  const text = JSON.stringify({ log, scoring })
+/**
+ * A short hash (FNV-1a, 32 bit) of the Duel log, scoring settings and the user's tick changes. Any answer, setting
+ * or tick change changes it, so a resumed Import never writes a title unticked since (#1 US52). No tick changes
+ * hash exactly as before ticks were part of it.
+ */
+export function planHash(log: DuelLog, scoring: SavedScoring, ticks: TickOverrides = new Map()): string {
+  const sortedTicks = [...ticks].sort(([a], [b]) => a - b)
+  const text = JSON.stringify(sortedTicks.length === 0 ? { log, scoring } : { log, scoring, ticks: sortedTicks })
   let hash = 0x811c9dc5
   for (let i = 0; i < text.length; i++) {
     hash ^= text.charCodeAt(i)

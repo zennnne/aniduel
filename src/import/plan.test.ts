@@ -20,6 +20,21 @@ describe('Import plan hash', () => {
   it('changes when the scoring settings change', () => {
     expect(planHash(log, { ...scoring, settings: { ...scoring.settings, distribution: 'bell' } })).not.toBe(planHash(log, scoring))
   })
+
+  // A title unticked after the Import was cut off must not be written when it resumes (#1 US52).
+  it('changes when a tick changes, so a resumed Import is recalculated with the new ticks', () => {
+    const unticked = planHash(log, scoring, new Map([[2, false]]))
+    expect(unticked).not.toBe(planHash(log, scoring))
+    expect(planHash(log, scoring, new Map([[2, true]]))).not.toBe(unticked)
+  })
+
+  it('does not depend on the order the ticks were changed in', () => {
+    expect(planHash(log, scoring, new Map([[1, false], [2, true]]))).toBe(planHash(log, scoring, new Map([[2, true], [1, false]])))
+  })
+
+  it('is the same with no tick changes as before ticks were saved', () => {
+    expect(planHash(log, scoring, new Map())).toBe(planHash(log, scoring))
+  })
 })
 
 describe('Resuming an Import', () => {

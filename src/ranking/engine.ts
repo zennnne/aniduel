@@ -4,15 +4,14 @@ import type { MediaType } from '../anilist/types.ts'
 
 export const LOG_FORMAT_VERSION = 1
 /**
- * 2 added `band-split` and `sub` on `band-assigned` (ADR 0006). Version 2 replays every version 1 log exactly as
- * version 1 did, so both are accepted; a version 1 log may not contain version 2 events. `appendEvent` stamps
- * the current version on the header, so an older app refuses a log it would replay differently (ADR 0005).
- * 3 added `band-selected`; it replays every version 1 and 2 log exactly as before.
- * 4 added `titles-removed` (sync, #13); it replays every version 1 to 3 log exactly as before.
- * 5 added `band-moved`, `rerank-requested` and `unforgotten`; it replays every older log exactly as before.
+ * The engine version stamped on a log's header. Every version replays every older log exactly as the older one
+ * did, so all of 1..ENGINE_VERSION are accepted, but a log may not contain events newer than its header says
+ * (`EVENT_RULES[type].since`). `appendEvent` stamps the current version, so an older app refuses a log it would
+ * replay differently (ADR 0005). Adding an event kind or changing replay means bumping this and, for a new kind,
+ * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006).
  */
 export const ENGINE_VERSION = 5
-const KNOWN_ENGINE_VERSIONS: readonly number[] = [1, 2, 3, 4, 5]
+const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VERSION }, (_, i) => i + 1)
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
 export type BandIndex = 0 | 1 | 2 | 3 | 4
@@ -37,7 +36,7 @@ export type LogEvent =
   | { type: 'titles-added'; ids: number[] }
   /**
    * Titles leaving the Pool (a sync, ADR 0005): taken out of wherever they are, Forgotten included. A title
-   * added again later is a new title and starts from Rough Sort. Engine version 4+.
+   * added again later is a new title and starts from Rough Sort.
    */
   | { type: 'titles-removed'; ids: number[] }
   /** `sub` is required when the Band is split (the second tap in Rough Sort) and refused when it isn't. */
@@ -46,7 +45,7 @@ export type LogEvent =
   | { type: 'duel-answered'; a: number; b: number; result: DuelResult }
   | { type: 'forgotten'; id: number }
   /**
-   * The whole split of one Band into three Sub-bands, as one user event (ADR 0006). Engine version 2+.
+   * The whole split of one Band into three Sub-bands, as one user event (ADR 0006).
    * `cuts` are Tier indexes into the Band's Ranking at that moment: Best = Tiers [0, cuts[0]), Middle =
    * [cuts[0], cuts[1]), Lowest = [cuts[1], end). A cut is a Tier index, so it always falls on a Tier edge.
    * `unplaced` lists, per Sub-band, the titles without a place yet. Together they must be exactly the Band's
@@ -54,12 +53,12 @@ export type LogEvent =
    */
   | { type: 'band-split'; band: BandIndex; cuts: [number, number]; unplaced: [number[], number[], number[]] }
   /**
-   * Navigation (ADR 0005): Duels go on in this Band until it has no title left to place. Engine version 3+.
+   * Navigation (ADR 0005): Duels go on in this Band until it has no title left to place.
    * Ignored while Rough Sort isn't done or when the Band has nothing to place. Undo skips over it.
    */
   | { type: 'band-selected'; band: BandIndex }
   /**
-   * Fixing the Ranking (ADR 0005), engine version 4+. `band-moved` takes a title out of its Band (or Sub-band) and
+   * Fixing the Ranking (ADR 0005). `band-moved` takes a title out of its Band (or Sub-band) and
    * puts it at the front of another one's insertion queue; `sub` follows the `band-assigned` rule (required for a
    * split Band, refused otherwise). It may name another Sub-band of the same Band.
    */
@@ -74,6 +73,33 @@ export type LogEvent =
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
+
+/** Every event except Undo itself: what Undo can cancel, and what the engine applies. */
+type RecordedEvent = Exclude<LogEvent, { type: 'undo' }>
+
+/**
+ * How Undo treats an event (ADR 0005): user events can be cancelled; system (sync) events are a barrier that Undo
+ * never reaches past; navigation (`band-selected`) is skipped over, neither a step nor a barrier.
+ */
+type UndoRole = 'user' | 'barrier' | 'navigation'
+
+/**
+ * One row per event kind: the engine version it came with (a log whose header is older refuses it), its name in
+ * that error, and its Undo role. Engine version 2 came with `band-split`, 3 with `band-selected`, 4 with
+ * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`).
+ */
+const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; name: string; undoRole: UndoRole } } = {
+  'titles-added': { since: 1, name: 'Titles added', undoRole: 'barrier' },
+  'titles-removed': { since: 4, name: 'Titles removed', undoRole: 'barrier' },
+  'band-assigned': { since: 1, name: 'Band assigned', undoRole: 'user' },
+  'duel-answered': { since: 1, name: 'Duel answered', undoRole: 'user' },
+  forgotten: { since: 1, name: 'Forgotten', undoRole: 'user' },
+  'band-split': { since: 2, name: 'Band split', undoRole: 'user' },
+  'band-selected': { since: 3, name: 'Band selected', undoRole: 'navigation' },
+  'band-moved': { since: 5, name: 'Band moved', undoRole: 'user' },
+  'rerank-requested': { since: 5, name: 'Re-rank requested', undoRole: 'user' },
+  unforgotten: { since: 5, name: 'Unforgotten', undoRole: 'user' },
+}
 
 export type Prompt =
   | { kind: 'rough-sort'; id: number }
@@ -185,7 +211,7 @@ type Insertion = { id: number; above: Tier | null; below: Tier | null }
 type Segment = { tiers: Tier[]; queue: Insertion[] }
 
 type Machine = {
-  /** The log header's engine version: version 2 events are refused in a version 1 log. */
+  /** The log header's engine version: events that came with a later version are refused. */
   engine: number
   roughSortQueue: number[]
   /** Per Band: one Segment, or three (Best, Middle, Lowest) once it is split. */
@@ -232,10 +258,10 @@ function settle(segment: Segment): void {
 }
 
 /** Takes a title out of wherever it is (Rough Sort queue, an insertion queue, or a Tier). Every other title keeps its order. */
-function takeOut(m: Machine, id: number): void {
-  const at = m.roughSortQueue.indexOf(id)
-  if (at >= 0) m.roughSortQueue.splice(at, 1)
-  for (const segment of m.segments) {
+function takeOut(machine: Machine, id: number): void {
+  const waiting = machine.roughSortQueue.indexOf(id)
+  if (waiting >= 0) machine.roughSortQueue.splice(waiting, 1)
+  for (const segment of machine.segments) {
     const queued = segment.queue.findIndex((insertion) => insertion.id === id)
     if (queued >= 0) segment.queue.splice(queued, 1)
     const t = segment.tiers.findIndex((tier) => tier.members.includes(id))
@@ -257,33 +283,11 @@ function removeTier(segment: Segment, t: number): void {
 }
 
 /**
- * How Undo treats each event (ADR 0005): user events can be cancelled; system (sync) events are a barrier
- * that Undo never reaches past; navigation (`band-selected`) is skipped over, neither a step nor a barrier.
- */
-function undoRole(event: Exclude<LogEvent, { type: 'undo' }>): 'user' | 'barrier' | 'navigation' {
-  switch (event.type) {
-    case 'titles-added':
-    case 'titles-removed':
-      return 'barrier'
-    case 'band-selected':
-      return 'navigation'
-    case 'band-assigned':
-    case 'duel-answered':
-    case 'forgotten':
-    case 'band-split':
-    case 'band-moved':
-    case 'rerank-requested':
-    case 'unforgotten':
-      return 'user'
-  }
-}
-
-/**
  * Resolves every Undo: returns the events that still count, in log order, and whether one more Undo would act.
  * Navigation after the cancelled event goes with it: it was chosen from a state that no longer exists, and this
  * way Undo returns to the prompt the cancelled answer was given at (e.g. the last Duel of a finished Band).
  */
-function resolveUndo(events: readonly LogEvent[]): { effective: Exclude<LogEvent, { type: 'undo' }>[]; canUndo: boolean } {
+function resolveUndo(events: readonly LogEvent[]): { effective: RecordedEvent[]; canUndo: boolean } {
   const cancelled = new Set<number>()
   let undoable: number[] = []
   let navigation: number[] = []
@@ -296,7 +300,7 @@ function resolveUndo(events: readonly LogEvent[]): { effective: Exclude<LogEvent
       navigation = navigation.filter((n) => n < target)
       return
     }
-    const role = undoRole(event)
+    const role = EVENT_RULES[event.type].undoRole
     if (role === 'barrier') {
       undoable = []
       navigation = []
@@ -304,66 +308,72 @@ function resolveUndo(events: readonly LogEvent[]): { effective: Exclude<LogEvent
     else undoable.push(i)
   })
   const effective = events.filter(
-    (event, i): event is Exclude<LogEvent, { type: 'undo' }> => event.type !== 'undo' && !cancelled.has(i),
+    (event, i): event is RecordedEvent => event.type !== 'undo' && !cancelled.has(i),
   )
   return { effective, canUndo: undoable.length > 0 }
 }
 
-function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo' }>): void {
+/** Duel answers that still count after every Undo (cancelled answers are not counted). */
+export function answeredDuels(log: DuelLog): number {
+  return resolveUndo(log.events).effective.filter((event) => event.type === 'duel-answered').length
+}
+
+function apply(machine: Machine, seed: number, event: RecordedEvent): void {
+  const rule = EVENT_RULES[event.type]
+  requireEngine(machine, rule.since, rule.name)
   switch (event.type) {
     case 'titles-added':
       for (const id of event.ids) {
-        if (m.present.has(id)) throw new ReplayError(`Title ${id} was added twice`)
-        m.present.add(id)
+        if (machine.present.has(id)) throw new ReplayError(`Title ${id} was added twice`)
+        machine.present.add(id)
       }
-      m.roughSortQueue.push(...event.ids)
-      m.total += event.ids.length
+      machine.roughSortQueue.push(...event.ids)
+      machine.total += event.ids.length
       return
     case 'titles-removed':
-      requireEngine(m, 4, 'Titles removed')
       for (const id of event.ids) {
-        if (!m.present.has(id)) throw new ReplayError(`Title ${id} was removed, but it is not in the Pool`)
-        takeOut(m, id)
-        const forgotten = m.forgotten.indexOf(id)
-        if (forgotten >= 0) m.forgotten.splice(forgotten, 1)
-        m.present.delete(id)
+        if (!machine.present.has(id)) throw new ReplayError(`Title ${id} was removed, but it is not in the Pool`)
+        takeOut(machine, id)
+        const forgotten = machine.forgotten.indexOf(id)
+        if (forgotten >= 0) machine.forgotten.splice(forgotten, 1)
+        machine.present.delete(id)
         // Added again later, it is a new title (ADR 0005): no last Band to bring it back to.
-        m.lastPlace.delete(id)
-        m.returning.delete(id)
-        m.total--
+        machine.lastPlace.delete(id)
+        machine.returning.delete(id)
+        machine.total--
       }
       return
     case 'band-assigned': {
-      if (m.roughSortQueue[0] !== event.id) {
-        throw new ReplayError(`Band assigned to title ${event.id}, but Rough Sort prompts ${m.roughSortQueue[0] ?? 'nothing'}`)
+      if (machine.roughSortQueue[0] !== event.id) {
+        throw new ReplayError(`Band assigned to title ${event.id}, but Rough Sort prompts ${machine.roughSortQueue[0] ?? 'nothing'}`)
       }
-      const segment = destination(m, event.band, event.sub)
-      takeOut(m, event.id)
+      const segment = destination(machine, event.band, event.sub)
+      takeOut(machine, event.id)
       const place = placeAt(event.band, event.sub)
-      m.lastPlace.set(event.id, place)
-      const resume = m.returning.get(event.id)
+      machine.lastPlace.set(event.id, place)
+      const resume = machine.returning.get(event.id)
       if (!resume) {
         segment.queue.push({ id: event.id, above: null, below: null })
         return
       }
       // A title brought back through Rough Sort is placed next, like any other fix.
-      m.returning.delete(event.id)
+      machine.returning.delete(event.id)
       segment.queue.unshift({ id: event.id, above: null, below: null })
-      if (m.roughSortQueue.length === 0) startDetour(m, event.id, place, resume)
+      if (machine.roughSortQueue.length === 0) startDetour(machine, event.id, place, resume)
       return
     }
     case 'duel-answered': {
-      const at = m.roughSortQueue.length === 0 ? current(m) : null
-      const pivot = at?.segment.tiers[at.pivot]
-      const a = at?.insertion.id
+      const work = machine.roughSortQueue.length === 0 ? current(machine) : null
+      const pivot = work?.segment.tiers[work.pivot]
+      const a = work?.insertion.id
       const b = pivot?.members[0]
-      if (!at || !pivot || !((event.a === a && event.b === b) || (event.a === b && event.b === a))) {
-        const prompt = nextPrompt(m, seed)
+      if (!work || !pivot || !((event.a === a && event.b === b) || (event.a === b && event.b === a))) {
+        const prompt = nextPrompt(machine, seed)
         const expected = prompt.kind === 'duel' ? `${prompt.a} vs ${prompt.b}` : prompt.kind
         throw new ReplayError(`Duel answer for ${event.a} vs ${event.b}, but the engine prompts ${expected}`)
       }
-      const { segment, insertion } = at
-      m.focus = at.band
+      const { segment, insertion } = work
+      machine.focus = work.band
       if (event.result === 'tie') {
         segment.queue.shift()
         pivot.members.push(insertion.id)
@@ -375,67 +385,85 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
       return
     }
     case 'forgotten':
-      if (!m.present.has(event.id) || m.forgotten.includes(event.id)) {
+      if (!machine.present.has(event.id) || machine.forgotten.includes(event.id)) {
         throw new ReplayError(`Title ${event.id} can't be marked Forgotten: it is not in the Ranking or Rough Sort`)
       }
-      takeOut(m, event.id)
-      m.forgotten.push(event.id)
+      takeOut(machine, event.id)
+      machine.forgotten.push(event.id)
       return
     case 'band-split':
-      splitBand(m, event)
+      splitBand(machine, event)
       return
     case 'band-selected':
-      requireEngine(m, 3, 'Band selected')
       if (!BANDS.includes(event.band)) throw new ReplayError(`There is no Band ${String(event.band)}`)
-      if (m.roughSortQueue.length === 0 && hasWork(m.bands[event.band])) {
-        m.focus = event.band
-        m.finished = null
-        m.detour = null
+      if (machine.roughSortQueue.length === 0 && hasWork(machine.bands[event.band])) {
+        machine.focus = event.band
+        machine.finished = null
+        machine.detour = null
       }
       return
-    case 'band-moved': {
-      requireEngine(m, 5, 'Band moved')
-      if (!placeOf(m, event.id)) throw new ReplayError(`Title ${event.id} can't be moved: it is not in a Band`)
-      sendToFront(m, event.id, placeAt(event.band, event.sub))
+    case 'band-moved':
+      if (!placeOf(machine, event.id)) throw new ReplayError(`Title ${event.id} can't be moved: it is not in a Band`)
+      sendToFront(machine, event.id, placeAt(event.band, event.sub))
       return
-    }
     case 'rerank-requested': {
-      requireEngine(m, 5, 'Re-rank requested')
-      const place = placeOf(m, event.id)
+      const place = placeOf(machine, event.id)
       if (!place) throw new ReplayError(`Title ${event.id} can't be re-ranked: it is not in a Band`)
-      sendToFront(m, event.id, place)
+      sendToFront(machine, event.id, place)
       return
     }
     case 'unforgotten': {
-      requireEngine(m, 5, 'Unforgotten')
-      const at = m.forgotten.indexOf(event.id)
-      if (at < 0) throw new ReplayError(`Title ${event.id} can't be brought back: it is not Forgotten`)
-      m.forgotten.splice(at, 1)
-      const last = m.lastPlace.get(event.id)
+      const index = machine.forgotten.indexOf(event.id)
+      if (index < 0) throw new ReplayError(`Title ${event.id} can't be brought back: it is not Forgotten`)
+      machine.forgotten.splice(index, 1)
+      const last = machine.lastPlace.get(event.id)
       // Its last Sub-band only counts if the Band is still split the same way (a Band split since needs a second tap).
-      if (last && (last.sub === undefined) === (m.bands[last.band].length === 1)) {
-        sendToFront(m, event.id, last)
+      if (last && placeStillFits(machine, last)) {
+        sendToFront(machine, event.id, last)
         return
       }
-      m.roughSortQueue.unshift(event.id)
-      m.returning.set(event.id, m.detour?.resume ?? { focus: m.focus, finished: m.finished })
+      machine.roughSortQueue.unshift(event.id)
+      machine.returning.set(event.id, machine.detour?.resume ?? { focus: machine.focus, finished: machine.finished })
       return
     }
   }
 }
 
+/**
+ * `value` with `sub` only when a Sub-band is named: the field is left out rather than undefined, as events, prompts
+ * and places expect (e.g. `withSub({ type: 'band-moved', id, band }, sub)`).
+ */
+export function withSub<const T extends object>(value: T, sub: SubBandIndex | undefined): T & { sub?: SubBandIndex } {
+  return sub === undefined ? value : { ...value, sub }
+}
+
 function placeAt(band: BandIndex, sub: SubBandIndex | undefined): Place {
-  return sub === undefined ? { band } : { band, sub }
+  return withSub({ band }, sub)
+}
+
+/** Whether a Band's Segments are three Sub-bands (ADR 0006) rather than the one whole Band. */
+function isSplit(segments: readonly Segment[]): boolean {
+  return segments.length > 1
+}
+
+/** The Sub-band index of Segment `s` in a Band, or undefined when the Band isn't split. */
+function subOfSegment(segments: readonly Segment[], s: number): SubBandIndex | undefined {
+  return isSplit(segments) ? (s as SubBandIndex) : undefined
+}
+
+/** Whether a stored place still names a Segment: a Sub-band only in a split Band, no Sub-band only in a whole one. */
+function placeStillFits(machine: Machine, place: Place): boolean {
+  return (place.sub !== undefined) === isSplit(machine.bands[place.band])
 }
 
 /** The Band (and Sub-band) a title is in, ranked or waiting in its insertion queue; null if it is in none. */
-function placeOf(m: Machine, id: number): Place | null {
+function placeOf(machine: Machine, id: number): Place | null {
   for (const band of BANDS) {
-    const segments = m.bands[band]
+    const segments = machine.bands[band]
     for (let s = 0; s < segments.length; s++) {
       const segment = segments[s]
       if (segment.queue.some((q) => q.id === id) || segment.tiers.some((tier) => tier.members.includes(id))) {
-        return placeAt(band, segments.length > 1 ? (s as SubBandIndex) : undefined)
+        return placeAt(band, subOfSegment(segments, s))
       }
     }
   }
@@ -443,28 +471,26 @@ function placeOf(m: Machine, id: number): Place | null {
 }
 
 /** Band moved / Re-rank / Unforgotten (ADR 0005): out of its place, to the front of `place`'s queue, placed next. */
-function sendToFront(m: Machine, id: number, place: Place): void {
-  const segment = destination(m, place.band, place.sub)
-  takeOut(m, id)
+function sendToFront(machine: Machine, id: number, place: Place): void {
+  const segment = destination(machine, place.band, place.sub)
+  takeOut(machine, id)
   segment.queue.unshift({ id, above: null, below: null })
-  m.lastPlace.set(id, place)
-  startDetour(m, id, place, m.detour?.resume ?? { focus: m.focus, finished: m.finished })
+  machine.lastPlace.set(id, place)
+  startDetour(machine, id, place, machine.detour?.resume ?? { focus: machine.focus, finished: machine.finished })
 }
 
-function startDetour(m: Machine, id: number, place: Place, resume: Resume): void {
-  m.detour = { id, ...place, resume }
-  m.focus = place.band
-  m.finished = null
+function startDetour(machine: Machine, id: number, place: Place, resume: Resume): void {
+  machine.detour = { id, ...place, resume }
+  machine.focus = place.band
+  machine.finished = null
 }
 
 /** The Segment the detour title waits at the front of, or null once it is placed (or gone). */
-function detourSegment(m: Machine): Segment | null {
-  const d = m.detour
-  if (!d) return null
-  const segments = m.bands[d.band]
-  if ((d.sub === undefined) !== (segments.length === 1)) return null
-  const segment = segments[d.sub ?? 0]
-  return segment.queue[0]?.id === d.id ? segment : null
+function detourSegment(machine: Machine): Segment | null {
+  const detour = machine.detour
+  if (!detour || !placeStillFits(machine, detour)) return null
+  const segment = machine.bands[detour.band][detour.sub ?? 0]
+  return segment.queue[0]?.id === detour.id ? segment : null
 }
 
 function hasWork(segments: readonly Segment[]): boolean {
@@ -475,31 +501,31 @@ function hasWork(segments: readonly Segment[]): boolean {
  * Runs after every event: Duels never start while a title waits in Rough Sort, so a pending Rough Sort drops the
  * focus; a focused Band with nothing left to place is finished, so a Band choice is due.
  */
-function refocus(m: Machine): void {
-  if (m.detour && !detourSegment(m)) {
-    m.focus = m.detour.resume.focus
-    m.finished = m.detour.resume.finished
-    m.detour = null
+function refocus(machine: Machine): void {
+  if (machine.detour && !detourSegment(machine)) {
+    machine.focus = machine.detour.resume.focus
+    machine.finished = machine.detour.resume.finished
+    machine.detour = null
   }
-  if (m.roughSortQueue.length > 0) {
-    m.focus = null
-    m.finished = null
-    m.detour = null
-  } else if (m.focus !== null && !hasWork(m.bands[m.focus])) {
-    m.finished = m.focus
-    m.focus = null
+  if (machine.roughSortQueue.length > 0) {
+    machine.focus = null
+    machine.finished = null
+    machine.detour = null
+  } else if (machine.focus !== null && !hasWork(machine.bands[machine.focus])) {
+    machine.finished = machine.focus
+    machine.focus = null
   }
 }
 
-function requireEngine(m: Machine, version: number, what: string): void {
-  if (m.engine < version) throw new ReplayError(`${what} needs engine version ${version}, but the log says ${m.engine}`)
+function requireEngine(machine: Machine, version: number, what: string): void {
+  if (machine.engine < version) throw new ReplayError(`${what} needs engine version ${version}, but the log says ${machine.engine}`)
 }
 
 /** The Segment a title goes to in a Band: the Band itself, or the chosen Sub-band of a split Band. */
-function destination(m: Machine, band: BandIndex, sub: SubBandIndex | undefined): Segment {
-  const segments = m.bands[band]
-  if (sub !== undefined) requireEngine(m, 2, 'A Sub-band target')
-  if (segments.length === 1) {
+function destination(machine: Machine, band: BandIndex, sub: SubBandIndex | undefined): Segment {
+  const segments = machine.bands[band]
+  if (sub !== undefined) requireEngine(machine, 2, 'A Sub-band target')
+  if (!isSplit(segments)) {
     if (sub !== undefined) throw new ReplayError(`Band ${band} is not split, so it has no Sub-band ${sub}`)
     return segments[0]
   }
@@ -513,10 +539,9 @@ function destination(m: Machine, band: BandIndex, sub: SubBandIndex | undefined)
  * unplaced title goes where the event says, keeping its old queue order. An insertion in progress keeps the
  * bounds that fall inside its new Sub-band and drops the rest (that edge becomes the Sub-band's edge).
  */
-function splitBand(m: Machine, event: Extract<LogEvent, { type: 'band-split' }>): void {
-  requireEngine(m, 2, 'Band split')
-  const segments = m.bands[event.band]
-  if (segments.length !== 1) throw new ReplayError(`Band ${event.band} is already split`)
+function splitBand(machine: Machine, event: Extract<LogEvent, { type: 'band-split' }>): void {
+  const segments = machine.bands[event.band]
+  if (isSplit(segments)) throw new ReplayError(`Band ${event.band} is already split`)
   const [whole] = segments
   const [c1, c2] = event.cuts
   const isCut = (c: number) => Number.isInteger(c) && c >= 0 && c <= whole.tiers.length
@@ -539,12 +564,12 @@ function splitBand(m: Machine, event: Extract<LogEvent, { type: 'band-split' }>)
     const keep = (bound: Tier | null) => (bound && part.tiers.includes(bound) ? bound : null)
     part.queue.push({ id: insertion.id, above: keep(insertion.above), below: keep(insertion.below) })
   }
-  m.bands[event.band] = parts
-  m.segments = m.bands.flat()
+  machine.bands[event.band] = parts
+  machine.segments = machine.bands.flat()
   parts.forEach((part, sub) => {
     const place = placeAt(event.band, sub as SubBandIndex)
-    for (const tier of part.tiers) for (const id of tier.members) m.lastPlace.set(id, place)
-    for (const insertion of part.queue) m.lastPlace.set(insertion.id, place)
+    for (const tier of part.tiers) for (const id of tier.members) machine.lastPlace.set(id, place)
+    for (const insertion of part.queue) machine.lastPlace.set(insertion.id, place)
   })
 }
 
@@ -563,24 +588,35 @@ function sideHash(seed: number, low: number, high: number): number {
   return h >>> 0
 }
 
+/** The insertion being worked on, where it is, and where it may still land (see `current`). */
+type Work = {
+  band: BandIndex
+  sub: SubBandIndex | undefined
+  segment: Segment
+  insertion: Insertion
+  lo: number
+  hi: number
+  pivot: number
+  offset: number
+}
+
 /**
  * The insertion Duels work on now: in the focused Band if there is one, else Band by Band from the top; inside a
  * split Band Best → Middle → Lowest (so a chosen split Band starts at its first Sub-band with titles to place).
  * lo / hi / pivot are Tier indexes inside its Segment; `offset` is how many of the Band's Tiers come before it.
  */
-function current(m: Machine) {
-  const detour = detourSegment(m)
-  const bands = m.detour && detour ? [m.detour.band] : m.focus === null ? BANDS : [m.focus]
+function current(machine: Machine): Work | null {
+  const detour = detourSegment(machine)
+  const bands = machine.detour && detour ? [machine.detour.band] : machine.focus === null ? BANDS : [machine.focus]
   for (const band of bands) {
-    const segments = m.bands[band]
+    const segments = machine.bands[band]
     let offset = 0
     for (let s = 0; s < segments.length; s++) {
       const segment = segments[s]
       const insertion = segment.queue[0]
       if (insertion && (!detour || segment === detour)) {
         const { lo, hi } = interval(segment, insertion)
-        const sub = segments.length > 1 ? (s as SubBandIndex) : undefined
-        return { band, sub, segment, insertion, lo, hi, pivot: Math.floor((lo + hi) / 2), offset }
+        return { band, sub: subOfSegment(segments, s), segment, insertion, lo, hi, pivot: Math.floor((lo + hi) / 2), offset }
       }
       offset += segment.tiers.length
     }
@@ -589,18 +625,18 @@ function current(m: Machine) {
 }
 
 /** The next prompt: Rough Sort first, then Duels Band by Band from the top. */
-function nextPrompt(m: Machine, seed: number): Prompt {
-  const roughSort = m.roughSortQueue[0]
+function nextPrompt(machine: Machine, seed: number): Prompt {
+  const roughSort = machine.roughSortQueue[0]
   if (roughSort !== undefined) return { kind: 'rough-sort', id: roughSort }
-  const at = current(m)
-  if (!at) return { kind: 'all-complete' }
-  const { band, sub, segment, insertion, lo, hi, pivot, offset } = at
+  const work = current(machine)
+  if (!work) return { kind: 'all-complete' }
+  const { band, sub, segment, insertion, lo, hi, pivot, offset } = work
   const b = segment.tiers[pivot].members[0]
   const low = Math.min(insertion.id, b)
   const high = Math.max(insertion.id, b)
   const [left, right] = sideHash(seed, low, high) & 1 ? [high, low] : [low, high]
   const bounds = { lo: lo + offset, hi: hi + offset, pivot: pivot + offset }
-  return { kind: 'duel', band, ...(sub === undefined ? {} : { sub }), a: insertion.id, b, left, right, bounds }
+  return withSub({ kind: 'duel', band, a: insertion.id, b, left, right, bounds }, sub)
 }
 
 /** Rebuilds the derived state from the log. Throws ReplayError if the log can't be trusted. */
@@ -609,7 +645,7 @@ export function replay(log: DuelLog): RankingState {
   if (format !== LOG_FORMAT_VERSION) throw new ReplayError(`Unknown log format version ${format}`)
   if (!KNOWN_ENGINE_VERSIONS.includes(engine)) throw new ReplayError(`Unknown engine version ${engine}`)
   const bandSegments: Segment[][] = BANDS.map(() => [{ tiers: [], queue: [] }])
-  const m: Machine = {
+  const machine: Machine = {
     engine,
     roughSortQueue: [],
     bands: bandSegments,
@@ -625,30 +661,30 @@ export function replay(log: DuelLog): RankingState {
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (const event of effective) {
-    apply(m, seed, event)
-    m.segments.forEach(settle)
-    refocus(m)
+    apply(machine, seed, event)
+    machine.segments.forEach(settle)
+    refocus(machine)
   }
-  const bands = m.bands.map((segments): BandState => {
+  const bands = machine.bands.map((segments): BandState => {
     const parts = segments.map((segment) => ({
       tiers: segment.tiers.map((tier) => [...tier.members]),
       unplaced: segment.queue.map((insertion) => insertion.id),
     }))
     const whole = { tiers: parts.flatMap((p) => p.tiers), unplaced: parts.flatMap((p) => p.unplaced) }
-    return parts.length === 3 ? { ...whole, subBands: [parts[0], parts[1], parts[2]] } : whole
+    return isSplit(segments) ? { ...whole, subBands: [parts[0], parts[1], parts[2]] } : whole
   })
-  const at = m.roughSortQueue.length === 0 && m.focus === null ? current(m) : null
-  const bandChoice = at ? { finished: m.finished, next: at.band } : null
+  const work = machine.roughSortQueue.length === 0 && machine.focus === null ? current(machine) : null
+  const bandChoice = work ? { finished: machine.finished, next: work.band } : null
   const bandProgress = bands.map((band) => {
     const done = band.tiers.reduce((sum, tier) => sum + tier.length, 0)
     return { done, total: done + band.unplaced.length }
   })
   return {
-    prompt: nextPrompt(m, seed),
+    prompt: nextPrompt(machine, seed),
     bands,
-    forgotten: m.forgotten,
+    forgotten: machine.forgotten,
     progress: {
-      roughSort: { done: m.total - m.roughSortQueue.length, total: m.total },
+      roughSort: { done: machine.total - machine.roughSortQueue.length, total: machine.total },
       bands: bandProgress,
       ranked: {
         done: bandProgress.reduce((sum, p) => sum + p.done, 0),

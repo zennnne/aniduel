@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ReplayError, replay, startLog, type BandIndex, type DuelLog, type LogEvent } from './engine.ts'
+import { ReplayError, answeredDuels, replay, startLog, type BandIndex, type DuelLog, type LogEvent } from './engine.ts'
 
 const header = { seed: 42, userId: 7, mediaType: 'ANIME' as const }
 
@@ -252,5 +252,14 @@ describe('Undo of Duel answers', () => {
     const state = replay(plus(log, { type: 'undo' }, { type: 'undo' }))
     expect(state.bands[0].tiers).toEqual([[1]])
     expect(state.prompt).toMatchObject({ kind: 'duel', a: 2, b: 1 })
+  })
+})
+
+describe('Answered Duels (the Start over count)', () => {
+  it('counts only the Duel answers that still count, not the ones Undo cancelled', () => {
+    const log = logOf([1, 2, 3], assign(1, 0), assign(2, 0), assign(3, 0), duel(2, 1, 'a'), duel(3, 1, 'tie'))
+    expect(answeredDuels(log)).toBe(2)
+    expect(answeredDuels(plus(log, { type: 'undo' }))).toBe(1)
+    expect(answeredDuels(plus(log, { type: 'undo' }, { type: 'undo' }))).toBe(0)
   })
 })

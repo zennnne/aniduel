@@ -1,9 +1,9 @@
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import { BANDS, type RankingState } from '../../ranking/engine.ts'
 import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import './duel.css'
+import { titleName } from '../meta.ts'
 
 /** Shown once every Band is ranked: the whole Ranking, Bands → Tiers → titles, and the way on to Preview. */
 export function CompleteScreen(props: {
@@ -15,10 +15,7 @@ export function CompleteScreen(props: {
   onScore?: () => void
 }) {
   const { state, entries, titleLanguage, onUndo, onScore } = props
-  const name = (id: number) => {
-    const entry = entries.get(id)
-    return entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
-  }
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   // Place of each Band's first Tier in the whole Ranking (a Tier is one place).
   const firstPlace = BANDS.map((band) => state.bands.slice(0, band).reduce((sum, b) => sum + b.tiers.length, 1))
   return (

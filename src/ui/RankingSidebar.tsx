@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import type { ListEntry, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
-import { displayTitle } from '../pool/pool.ts'
 import { BANDS, SUB_BANDS, type BandIndex, type RankingState } from '../ranking/engine.ts'
 import { SUB_BAND_UI } from './bands.ts'
 import { Kao } from './Kao.tsx'
+import { MEDIA_LABEL, count, titleName } from './meta.ts'
 
 /**
  * Sidebar of the "Cockpit" Shell (issue #4): logo, who and what is being ranked, one row per Band
@@ -25,17 +25,14 @@ export function RankingSidebar(props: {
   const duel = prompt.kind === 'duel' ? prompt : null
   const roughSorting = prompt.kind === 'rough-sort'
   const { done, total } = roughSorting ? state.progress.roughSort : state.progress.ranked
-  const name = (id: number) => {
-    const entry = entries.get(id)
-    return entry ? displayTitle(entry.title, titleLanguage) : `#${id}`
-  }
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   return (
     <>
       <div className="logo">
         Ani<b>Duel!</b>
       </div>
       <div className="small hide-m">
-        {viewer.name} · {mediaType === 'ANIME' ? 'Anime' : 'Manga'} · {state.progress.roughSort.total} titles
+        {viewer.name} · {MEDIA_LABEL[mediaType]} · {count(state.progress.roughSort.total, 'title')}
       </div>
       <div className="col hide-m" style={{ gap: 4 }}>
         {BANDS.map((band) => {

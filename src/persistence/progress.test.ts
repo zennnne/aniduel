@@ -4,11 +4,15 @@ import {
   deleteDuelLog,
   deleteImportState,
   deleteSavedProgress,
+  deleteTickOverrides,
+  loadTickOverrides,
+  saveTickOverrides,
   loadDuelLog,
   loadImportState,
   saveImportState,
   loadLastMediaType,
   loadPoolSettings,
+  loadScoringFor,
   loadScoringSettings,
   saveDuelLog,
   saveScoringSettings,
@@ -105,6 +109,19 @@ describe('Scoring settings', () => {
       expect(loadScoringSettings(storage, anime)).toBeNull()
     }
   })
+
+  it('gives the settings for the current Score Format, converting and saving them when it changed (ADR 0003)', () => {
+    const storage = memoryStorage()
+    saveScoringSettings(storage, anime, saved)
+    expect(loadScoringFor(storage, anime, 'POINT_10')).toEqual({ settings: saved.settings, converted: false })
+
+    const converted = loadScoringFor(storage, anime, 'POINT_5')
+
+    // 9 / 2 of 10 is 90 / 20 of 100: 5 / 1 star.
+    expect(converted).toEqual({ settings: { distribution: 'bell', best: 5, worst: 1 }, converted: true })
+    expect(loadScoringSettings(storage, anime)).toEqual({ format: 'POINT_5', settings: converted.settings })
+    expect(loadScoringFor(storage, anime, 'POINT_5').converted).toBe(false)
+  })
 })
 
 describe('Import state', () => {
@@ -145,6 +162,36 @@ describe('Import state', () => {
       storage.setItem(key, bad)
       expect(loadImportState(storage, anime)).toBeNull()
     }
+  })
+})
+
+describe('Import ticks', () => {
+  it('remembers the ticks the user changed on Preview, for each Media Type', () => {
+    const storage = memoryStorage()
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map())
+    saveTickOverrides(storage, anime, new Map([[1, false], [2, true]]))
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map([[1, false], [2, true]]))
+    expect(loadTickOverrides(storage, { userId: 7, mediaType: 'MANGA' })).toEqual(new Map())
+  })
+
+  it('are gone after Start over deletes them, and with the rest of the user progress on logout', () => {
+    const storage = memoryStorage()
+    saveTickOverrides(storage, anime, new Map([[1, false]]))
+    deleteTickOverrides(storage, anime)
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map())
+    saveTickOverrides(storage, anime, new Map([[1, false]]))
+    deleteSavedProgress(storage, 7)
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map())
+  })
+
+  it('ignores saved ticks it does not understand', () => {
+    const storage = memoryStorage()
+    saveTickOverrides(storage, anime, new Map([[1, false]]))
+    const key = storage.key(0)!
+    storage.setItem(key, '[[1,false],["x",true],[2,"no"],[3,true]]')
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map([[1, false], [3, true]]))
+    storage.setItem(key, 'nope')
+    expect(loadTickOverrides(storage, anime)).toEqual(new Map())
   })
 })
 

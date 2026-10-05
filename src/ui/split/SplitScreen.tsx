@@ -1,6 +1,5 @@
 import { useEffect, useEffectEvent, useState, type DragEvent, type ReactNode } from 'react'
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
-import { displayTitle } from '../../pool/pool.ts'
 import {
   BANDS,
   SUB_BANDS,
@@ -14,6 +13,7 @@ import { LOW_SAVINGS, defaultCuts, offerSavings, quarterSplit, splitSavings, wor
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { Dialog } from '../Dialog.tsx'
 import { Kao, SubPill } from '../Kao.tsx'
+import { titleName } from '../meta.ts'
 import './split.css'
 
 type BandSplitEvent = Extract<LogEvent, { type: 'band-split' }>
@@ -96,7 +96,7 @@ function SplitChart(props: { state: RankingState; split?: BandIndex; over?: Band
 
 function Cover(props: { id: number; entry: ListEntry | undefined; titleLanguage: TitleLanguage; children?: ReactNode; ranked?: boolean }) {
   const { id, entry, titleLanguage, children, ranked } = props
-  const name = entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
+  const name = titleName(entry, id, titleLanguage)
   return (
     <>
       {entry?.coverUrl ? (
@@ -134,10 +134,7 @@ function RankedStrip(props: {
     onCuts(which === 0 ? [e, Math.max(e, cuts[1])] : [Math.min(cuts[0], e), e])
   }
   const subOf = (t: number): SubBandIndex => (t < cuts[0] ? 0 : t < cuts[1] ? 1 : 2)
-  const name = (id: number) => {
-    const entry = entries.get(id)
-    return entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
-  }
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const edge = (e: number) => (
     <div
       key={`edge-${e}`}
@@ -299,7 +296,7 @@ export function SplitScreen(props: {
           {first !== null ? `Start Duels in ${label} › ${SUB_BAND_UI[first].label}` : 'Continue'} <span className="kbd">Enter</span>
         </button>
         <div className="small">
-          {label} stays one row in the sidebar; its bar is striped by group. Duels go Best → Middle → Lowest.
+          {label} stays one row in the sidebar; its bar is striped by Sub-band. Duels go Best → Middle → Lowest.
         </div>
       </div>
     )
@@ -313,7 +310,7 @@ export function SplitScreen(props: {
         <div className="sub">Duels only happen inside a Band, and one big Band costs far more Duels than a few small ones.</div>
         <SplitChart state={state} over={band} />
         <div className="spcount">
-          <b className="strong">Split {label} into 3 groups?</b>
+          <b className="strong">Split {label} into Best / Middle / Lowest?</b>
           <div className="small">
             Mark the ones that are your very best and the ones that are only just {label}. Everything you leave alone stays in the
             middle.
