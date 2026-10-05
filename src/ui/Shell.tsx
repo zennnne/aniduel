@@ -10,8 +10,8 @@ export type Notice = {
  * The "Cockpit" layout (issue #4): an optional sidebar on the left and the main area on the right,
  * with one slim banner at the top of the main area. Start has no sidebar.
  */
-export function Shell(props: { sidebar?: ReactNode; notice?: Notice | null; children: ReactNode }) {
-  const { sidebar, notice, children } = props
+export function Shell(props: { sidebar?: ReactNode; notice?: Notice | null; toast?: ReactNode; children: ReactNode }) {
+  const { sidebar, notice, toast, children } = props
   return (
     <div className={sidebar ? 'shell with-side' : 'shell'}>
       {sidebar && <aside className="side">{sidebar}</aside>}
@@ -24,6 +24,11 @@ export function Shell(props: { sidebar?: ReactNode; notice?: Notice | null; chil
         )}
         {children}
       </main>
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
+      )}
     </div>
   )
 }

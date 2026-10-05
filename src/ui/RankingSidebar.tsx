@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { MediaType, Viewer } from '../anilist/types.ts'
 import { BANDS, type RankingState } from '../ranking/engine.ts'
 import { Kao } from './Kao.tsx'
@@ -6,8 +7,8 @@ import { Kao } from './Kao.tsx'
  * Sidebar of the "Cockpit" Shell (issue #4): logo, who and what is being ranked, and one row per Band.
  * During Rough Sort each row shows how many titles the Band holds so far.
  */
-export function RankingSidebar(props: { viewer: Viewer; mediaType: MediaType; state: RankingState }) {
-  const { viewer, mediaType, state } = props
+export function RankingSidebar(props: { viewer: Viewer; mediaType: MediaType; state: RankingState; menu?: ReactNode }) {
+  const { viewer, mediaType, state, menu } = props
   const { done, total } = state.progress.roughSort
   return (
     <>
@@ -38,6 +39,7 @@ export function RankingSidebar(props: { viewer: Viewer; mediaType: MediaType; st
       <span className="small">
         {done}/{total}
       </span>
+      {menu}
     </>
   )
 }

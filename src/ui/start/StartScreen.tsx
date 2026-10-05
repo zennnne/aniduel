@@ -26,6 +26,8 @@ export type PoolForm = {
   onStartRoughSort?: () => void
   /** Rough Sort progress of the Ranking saved for this Media Type, if there is one. */
   saved?: { done: number; total: number } | null
+  /** Opens Restore from Backup (e.g. on a new browser). */
+  onRestore?: () => void
 }
 
 /** Start = "Hero split" (issue #4): a cover collage on the left, one card on the right that holds login, then the Pool form. */
@@ -188,6 +190,11 @@ function PoolSetup(form: PoolForm) {
       >
         {form.saved ? 'Continue →' : 'Start Rough Sort →'}
       </button>
+      {form.onRestore && (
+        <button className="small link" style={{ alignSelf: 'flex-start' }} onClick={form.onRestore}>
+          Restore from a Backup file
+        </button>
+      )}
       <Reassure />
     </>
   )
