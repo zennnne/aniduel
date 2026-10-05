@@ -22,6 +22,13 @@
   --band-hated: #cfc9d6;
   --band-ink: #4a3b52;
 
+  /* Immersive screens (Rough Sort, Duel) sit on a dark blurred backdrop in both themes. */
+  --ok: #7bd88f;
+  --overlay: #0007;
+  --overlay-strong: #000a;
+  --overlay-soft: #ffffff26;
+  --on-overlay: #fff;
+
   color-scheme: light;
 }
 
@@ -231,4 +238,168 @@ a {
 .chk {
   color: var(--tx-strong);
   font-size: 13px;
+}
+
+/* Shared atoms (issue #4 prototype, section 0) */
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 700 11px ui-monospace, monospace;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: #0006;
+  color: var(--on-overlay);
+}
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #ffffff22;
+  overflow: hidden;
+}
+.bar > i {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+}
+.cv {
+  object-fit: cover;
+  display: block;
+  background: var(--c, var(--blue));
+}
+.ph {
+  background: linear-gradient(160deg, var(--c, var(--blue)), var(--nav));
+}
+.li {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.q {
+  font-weight: 900;
+  color: var(--on-overlay);
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* Immersive overlay atoms (Duel, Rough Sort) */
+.t {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--on-overlay);
+  max-width: 90%;
+  line-height: 1.15;
+}
+.m {
+  color: #fffc;
+}
+.pill {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #0008;
+  color: var(--on-overlay);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pill:hover:not(:disabled) {
+  background: var(--blue);
+}
+.pill:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pill .kbd {
+  height: 16px;
+  min-width: 16px;
+  font-size: 10px;
+  background: #fff3;
+}
+.topline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  z-index: 6;
+  background: #0006;
+}
+.topline i {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+}
+.float-info {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+.bandbtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 16px;
+  background: var(--overlay);
+  backdrop-filter: blur(8px);
+  color: var(--on-overlay);
+  transition:
+    transform 0.1s,
+    background 0.1s;
+}
+.bandbtn:hover {
+  background: var(--overlay-soft);
+}
+.bandbtn .lab {
+  font-size: 12px;
+  font-weight: 700;
+}
+@media (max-width: 720px) {
+  .kbd {
+    display: none !important;
+  }
+}
+
+/* Sidebar ("Cockpit") */
+.logo {
+  font-weight: 900;
+  color: var(--on-overlay);
+  font-size: 18px;
+}
+.logo b {
+  color: var(--blue);
+}
+.bandrow {
+  display: grid;
+  grid-template-columns: 92px 1fr 40px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  text-align: left;
+  width: 100%;
+}
+.bandrow.cur {
+  background: #ffffff14;
+  color: var(--on-overlay);
+}
+@media (max-width: 720px) {
+  .hide-m {
+    display: none !important;
+  }
 }

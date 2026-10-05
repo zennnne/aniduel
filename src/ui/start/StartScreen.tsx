@@ -22,8 +22,10 @@ export type PoolForm = {
   onMediaType: (type: MediaType) => void
   onToggleStatus: (status: ListStatus) => void
   onLogout: () => void
-  /** Not wired until Rough Sort exists. */
+  /** Starts a new Ranking, or continues the saved one. Undefined while it can't (e.g. saved progress is unreadable). */
   onStartRoughSort?: () => void
+  /** Rough Sort progress of the Ranking saved for this Media Type, if there is one. */
+  saved?: { done: number; total: number } | null
 }
 
 /** Start = "Hero split" (issue #4): a cover collage on the left, one card on the right that holds login, then the Pool form. */
@@ -174,12 +176,17 @@ function PoolSetup(form: PoolForm) {
           'Loading your list…'
         )}
       </div>
+      {form.saved && (
+        <div className="small">
+          You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a Band.
+        </div>
+      )}
       <button
         className="go"
-        disabled={!pool || n === 0 || !form.onStartRoughSort}
+        disabled={!form.onStartRoughSort || (!form.saved && (!pool || n === 0))}
         onClick={form.onStartRoughSort}
       >
-        Start Rough Sort →
+        {form.saved ? 'Continue →' : 'Start Rough Sort →'}
       </button>
       <Reassure />
     </>
