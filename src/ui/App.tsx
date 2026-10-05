@@ -1,17 +1,34 @@
 // Screens are chosen from app state, not by a router (ADR 0004).
-import { useEffect, useEffectEvent, useMemo, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { AniListError, createAniListGateway } from '../anilist/gateway.ts'
 import type { ListEntry, ListStatus, MediaType, Viewer } from '../anilist/types.ts'
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
-import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool } from '../pool/pool.ts'
+import {
+  loadDuelLog,
+  loadLastMediaType,
+  loadPoolSettings,
+  saveDuelLog,
+  saveLastMediaType,
+  savePoolSettings,
+} from '../persistence/progress.ts'
+import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '../pool/pool.ts'
+import { replay, startLog, type DuelLog, type LogEvent } from '../ranking/engine.ts'
 import { LogoutDialog } from './LogoutDialog.tsx'
+import { RankingSidebar } from './RankingSidebar.tsx'
+import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { StartScreen } from './start/StartScreen.tsx'
 import { useTheme } from './theme.ts'
 
+type Screen = 'start' | 'rough-sort'
+
 function loginRedirect() {
   window.location.assign(authorizeUrl(aniListClientId({ dev: import.meta.env.DEV })))
+}
+
+function newSeed(): number {
+  return crypto.getRandomValues(new Uint32Array(1))[0]
 }
 
 export function App() {
@@ -23,11 +40,58 @@ export function App() {
   const [lists, setLists] = useState<Partial<Record<MediaType, ListEntry[]>>>({})
   const [mediaType, setMediaType] = useState<MediaType>('ANIME')
   const [statuses, setStatuses] = useState<readonly ListStatus[]>(DEFAULT_STATUSES)
+  const [log, setLog] = useState<DuelLog | null>(null)
+  // Saved progress that exists but can't be used. Starting over would overwrite it, so Start is blocked.
+  const [savedBroken, setSavedBroken] = useState(false)
+  const [screen, setScreen] = useState<Screen>('start')
   const [notice, setNotice] = useState<Notice | null>(null)
   const [retries, setRetries] = useState(0)
   const [confirmingLogout, setConfirmingLogout] = useState(false)
+  // The latest log, updated synchronously so two quick key presses never append to a stale log.
+  const logRef = useRef<DuelLog | null>(null)
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
+
+  function setCurrentLog(next: DuelLog | null) {
+    logRef.current = next
+    setLog(next)
+  }
+
+  /** Every screen change pushes a history entry, so the browser's back button returns to the previous screen. */
+  function goTo(next: Screen) {
+    window.history.pushState({ screen: next }, '')
+    setScreen(next)
+  }
+
+  useEffect(() => {
+    window.history.replaceState({ screen: 'start' }, '')
+    const onPop = (e: PopStateEvent) => {
+      const state = e.state as { screen?: Screen } | null
+      setScreen(state?.screen === 'rough-sort' ? 'rough-sort' : 'start')
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  /** Loads what is saved for this user and Media Type; with `resume`, a saved Ranking opens straight away. */
+  function openRanking(userId: number, type: MediaType, resume: boolean) {
+    setMediaType(type)
+    setStatuses(loadPoolSettings(localStorage, { userId, mediaType: type })?.statuses ?? DEFAULT_STATUSES)
+    try {
+      const saved = loadDuelLog(localStorage, { userId, mediaType: type })
+      if (saved) replay(saved) // refuse a log the engine can't replay before showing anything from it
+      setCurrentLog(saved)
+      setSavedBroken(false)
+      if (saved && resume) goTo('rough-sort')
+    } catch (e) {
+      setCurrentLog(null)
+      setSavedBroken(true)
+      setNotice({
+        tone: 'error',
+        message: `Your saved ${type === 'ANIME' ? 'Anime' : 'Manga'} progress in this browser can't be used (${e instanceof Error ? e.message : 'unknown error'}). It was left untouched.`,
+      })
+    }
+  }
 
   function endSession(deleteProgress: boolean) {
     logout(localStorage, { userId: viewer?.id ?? null, deleteProgress })
@@ -35,6 +99,9 @@ export function App() {
     setViewer(null)
     setLists({})
     setStatuses(DEFAULT_STATUSES)
+    setCurrentLog(null)
+    setSavedBroken(false)
+    setScreen('start')
   }
 
   const onGatewayError = useEffectEvent((error: unknown) => {
@@ -54,11 +121,16 @@ export function App() {
     })
   })
 
+  const onViewer = useEffectEvent((v: Viewer) => {
+    setViewer(v)
+    openRanking(v.id, loadLastMediaType(localStorage, v.id) ?? 'ANIME', true)
+  })
+
   useEffect(() => {
     if (!gateway || viewer) return
     let cancelled = false
     gateway.viewer().then(
-      (v) => !cancelled && setViewer(v),
+      (v) => !cancelled && onViewer(v),
       (e: unknown) => !cancelled && onGatewayError(e),
     )
     return () => {
@@ -81,6 +153,38 @@ export function App() {
 
   const list = lists[mediaType]
   const pool = useMemo(() => (list ? buildPool(list, statuses) : null), [list, statuses])
+  const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
+  const ranking = useMemo(() => (log ? replay(log) : null), [log])
+
+  /** Appends one answer, checks it replays, and saves the log before showing the result. */
+  function answer(event: LogEvent) {
+    const current = logRef.current
+    if (!current) return
+    const next: DuelLog = { ...current, events: [...current.events, event] }
+    try {
+      replay(next)
+    } catch {
+      return // an answer for a prompt that is no longer showing (e.g. a double key press)
+    }
+    saveDuelLog(localStorage, next)
+    setCurrentLog(next)
+  }
+
+  function startOrContinue() {
+    if (!viewer) return
+    if (!logRef.current) {
+      if (!pool) return
+      const fresh = startLog({
+        seed: newSeed(),
+        userId: viewer.id,
+        mediaType,
+        ids: roughSortOrder(pool.titles, viewer.titleLanguage),
+      })
+      saveDuelLog(localStorage, fresh)
+      setCurrentLog(fresh)
+    }
+    goTo('rough-sort')
+  }
 
   const form = viewer
     ? {
@@ -88,23 +192,50 @@ export function App() {
         mediaType,
         statuses,
         pool,
-        onMediaType: setMediaType,
-        onToggleStatus: (s: ListStatus) =>
-          setStatuses((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s])),
+        saved: ranking?.progress.roughSort ?? null,
+        onMediaType: (type: MediaType) => {
+          if (type === mediaType) return
+          saveLastMediaType(localStorage, viewer.id, type)
+          openRanking(viewer.id, type, false)
+        },
+        onToggleStatus: (s: ListStatus) => {
+          const next = statuses.includes(s) ? statuses.filter((x) => x !== s) : [...statuses, s]
+          savePoolSettings(localStorage, { userId: viewer.id, mediaType }, { statuses: next })
+          setStatuses(next)
+        },
         onLogout: () => setConfirmingLogout(true),
+        onStartRoughSort: savedBroken ? undefined : startOrContinue,
       }
     : null
 
+  // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
+  const inRanking = screen === 'rough-sort' && viewer && ranking && (list || notice)
+
   return (
-    <Shell notice={notice}>
-      <StartScreen
-        form={form}
-        covers={pool?.titles ?? list ?? []}
-        loggingIn={Boolean(token) && !viewer && !notice}
-        onLogin={loginRedirect}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-      />
+    <Shell
+      notice={notice}
+      sidebar={inRanking ? <RankingSidebar viewer={viewer} mediaType={mediaType} state={ranking} /> : undefined}
+    >
+      {inRanking ? (
+        <RoughSortScreen
+          state={ranking}
+          entries={entries}
+          titleLanguage={viewer.titleLanguage}
+          mediaType={mediaType}
+          onBand={(band) => ranking.prompt.kind === 'rough-sort' && answer({ type: 'band-assigned', id: ranking.prompt.id, band })}
+          onForget={() => ranking.prompt.kind === 'rough-sort' && answer({ type: 'forgotten', id: ranking.prompt.id })}
+          onUndo={() => answer({ type: 'undo' })}
+        />
+      ) : (
+        <StartScreen
+          form={form}
+          covers={pool?.titles ?? list ?? []}
+          loggingIn={Boolean(token) && !viewer && !notice}
+          onLogin={loginRedirect}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+        />
+      )}
       {confirmingLogout && (
         <LogoutDialog
           onCancel={() => setConfirmingLogout(false)}

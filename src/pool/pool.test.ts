@@ -6,6 +6,7 @@ import {
   displayTitle,
   estimateDuels,
   estimateMinutes,
+  roughSortOrder,
 } from './pool.ts'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
 
@@ -105,5 +106,33 @@ describe('buildPool', () => {
 
     const bigger = buildPool(list, ['COMPLETED', 'REPEATING', 'DROPPED', 'CURRENT'])
     expect(bigger.titles).toHaveLength(5)
+  })
+})
+
+describe('roughSortOrder', () => {
+  function done(mediaId: number, romaji: string, year: number | null, month: number | null = null, day: number | null = null) {
+    return { ...entry(mediaId, 'COMPLETED'), title: { romaji, english: null, native: null }, completedAt: { year, month, day } }
+  }
+
+  it('puts the most recently completed first and undated titles last, sorted by title', () => {
+    const titles = [
+      done(1, 'Zeta', null),
+      done(2, 'Old', 2015, 3, 1),
+      done(3, 'Alpha', null),
+      done(4, 'Newest', 2024, 11, 20),
+      done(5, 'Newer', 2024, 2, 9),
+    ]
+    expect(roughSortOrder(titles, 'ROMAJI')).toEqual([4, 5, 2, 3, 1])
+  })
+
+  it('sorts undated titles by the name the user sees', () => {
+    const b = { ...done(1, 'B romaji', null), title: { romaji: 'B romaji', english: 'Z english', native: null } }
+    const a = { ...done(2, 'C romaji', null), title: { romaji: 'C romaji', english: 'A english', native: null } }
+    expect(roughSortOrder([b, a], 'ENGLISH')).toEqual([2, 1])
+    expect(roughSortOrder([b, a], 'ROMAJI')).toEqual([1, 2])
+  })
+
+  it('puts a date with only a year after full dates in that year', () => {
+    expect(roughSortOrder([done(1, 'A', 2020), done(2, 'B', 2020, 1, 2)], 'ROMAJI')).toEqual([2, 1])
   })
 })

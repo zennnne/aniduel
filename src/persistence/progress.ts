@@ -1,6 +1,8 @@
 // Persistence: localStorage keys for a user's saved progress, keyed by AniList user id and Media Type.
 // Every key belonging to one user starts with `aniduel/progress/<userId>/`, so logout can delete them all.
-import type { MediaType } from '../anilist/types.ts'
+import type { ListStatus, MediaType } from '../anilist/types.ts'
+import { OFFERED_STATUSES } from '../pool/pool.ts'
+import type { DuelLog } from '../ranking/engine.ts'
 
 export type ProgressKey = { userId: number; mediaType: MediaType; part: string }
 
@@ -20,6 +22,76 @@ export function saveProgressPart(storage: Storage, key: ProgressKey, value: stri
 
 export function loadProgressPart(storage: Storage, key: ProgressKey): string | null {
   return storage.getItem(progressStorageKey(key))
+}
+
+export type RankingKey = { userId: number; mediaType: MediaType }
+
+/** Saved progress exists but can't be used. The app must not overwrite it by starting over. */
+export class SavedProgressError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SavedProgressError'
+  }
+}
+
+const LOG_PART = 'duel-log'
+
+/** Saves the whole Duel log under the user id and Media Type from its header. Call after every answer. */
+export function saveDuelLog(storage: Storage, log: DuelLog): void {
+  const { userId, mediaType } = log.header
+  saveProgressPart(storage, { userId, mediaType, part: LOG_PART }, JSON.stringify(log))
+}
+
+/** The saved Duel log for this user and Media Type, or null if there is none. Throws SavedProgressError if it is unusable. */
+export function loadDuelLog(storage: Storage, key: RankingKey): DuelLog | null {
+  const raw = loadProgressPart(storage, { ...key, part: LOG_PART })
+  if (raw === null) return null
+  let log: DuelLog
+  try {
+    log = JSON.parse(raw) as DuelLog
+  } catch {
+    throw new SavedProgressError('The saved Ranking in this browser is unreadable.')
+  }
+  if (log?.header?.userId !== key.userId || log.header.mediaType !== key.mediaType || !Array.isArray(log.events)) {
+    throw new SavedProgressError('The saved Ranking in this browser does not belong to this account.')
+  }
+  return log
+}
+
+export type PoolSettings = { statuses: ListStatus[] }
+
+const POOL_PART = 'pool-settings'
+
+export function savePoolSettings(storage: Storage, key: RankingKey, settings: PoolSettings): void {
+  saveProgressPart(storage, { ...key, part: POOL_PART }, JSON.stringify(settings))
+}
+
+/** The saved Pool settings, keeping only statuses that can be offered; null if none or unreadable. */
+export function loadPoolSettings(storage: Storage, key: RankingKey): PoolSettings | null {
+  const raw = loadProgressPart(storage, { ...key, part: POOL_PART })
+  if (raw === null) return null
+  try {
+    const parsed = JSON.parse(raw) as { statuses?: unknown }
+    if (!Array.isArray(parsed.statuses)) return null
+    const offered: readonly string[] = OFFERED_STATUSES
+    return { statuses: parsed.statuses.filter((s): s is ListStatus => offered.includes(s)) }
+  } catch {
+    return null
+  }
+}
+
+function lastMediaTypeKey(userId: number): string {
+  return `${userPrefix(userId)}last-media-type`
+}
+
+/** Remembers the Media Type the user last worked on, so a returning user lands back on it. */
+export function saveLastMediaType(storage: Storage, userId: number, mediaType: MediaType): void {
+  storage.setItem(lastMediaTypeKey(userId), mediaType)
+}
+
+export function loadLastMediaType(storage: Storage, userId: number): MediaType | null {
+  const value = storage.getItem(lastMediaTypeKey(userId))
+  return value === 'ANIME' || value === 'MANGA' ? value : null
 }
 
 /** Deletes everything saved for one user in this browser (every Media Type). */
