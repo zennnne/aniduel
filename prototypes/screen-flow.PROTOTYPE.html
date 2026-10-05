@@ -1,0 +1,990 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AniDuel! — PROTOTYPE (throwaway)</title>
+<!-- PROTOTYPE, throwaway.
+     R1: base = Cockpit (sidebar + live Ranking), AniList colours, whole-card click + key hints.
+     R2: Duel card = Split-bleed. Sidebar open first time, remembered. Theme follows system + toggle.
+     R3: controls = Immersive (thin top line, floating icon buttons, floating Undo); ≈ is a circle in the seam.
+     R4: Band icons = Kaomoji on pastel pills. "Don't remember" = plain white "?". Command buttons = simple line icons.
+     R5: Rough Sort = Ladder. Rough Sort order = most recently completed first, undated last by title.
+     R6: Move Band = bottom sheet. Band choice = finished Band's order + chooser; also shown after Rough Sort with Loved pre-selected (Enter).
+     R7: first run = Hero split (cover collage + one card that becomes the Pool form). Returning users skip straight to where they stopped; sync news as a toast.
+     R8: Preview = Tier list (covers in rows by new score, click for actions). Best/Worst = dropdowns.
+     R9: Import = Cover grid (covers light up with ✓). Preview tier list gets a "Changing only" filter; rows with no change collapse.
+     R10: 5 radically different homes for the app menu (Backup, Restore, Pool, Media Type, Start over, theme, Log out). -->
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc}
+body.dark{--bg:#0b1622;--fg:#151f2e;--fg2:#1f2a3c;--tx:#9fadbd;--tx-strong:#edf1f5;--nav:#0b1622;--navtx:#9fadbd}
+body{font-family:Overpass,system-ui,-apple-system,"Segoe UI",sans-serif;background:#555;color:var(--tx)}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+a{color:inherit;text-decoration:none}
+#stage{min-height:100vh;display:flex;justify-content:center}
+#app{width:100%;height:100vh;position:relative;overflow:hidden;background:var(--bg);display:grid;grid-template-columns:260px 1fr;font-size:14px}
+#app.noside{grid-template-columns:0 1fr}
+body.mobile #stage{padding:24px 0}
+body.mobile #app{width:390px;height:780px;border-radius:28px;box-shadow:0 0 0 10px #111,0 20px 60px #0008;grid-template-columns:1fr;grid-template-rows:auto 1fr}
+.kbd{display:inline-flex;align-items:center;justify-content:center;font:700 11px ui-monospace,monospace;min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:#0006;color:#fff}
+.bar{height:6px;border-radius:3px;background:#ffffff22;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--blue)}
+.row{display:flex;gap:8px;align-items:center}
+.col{display:flex;flex-direction:column;gap:8px}
+.grow{flex:1;min-width:0}
+.small{font-size:12px}
+.strong{color:var(--tx-strong)}
+.ph{background:linear-gradient(160deg,var(--c,#3db4f2),#0b1622)}
+.cv{object-fit:cover;display:block;background:var(--c,#3db4f2)}
+.li{width:18px;height:18px;display:inline-block;vertical-align:middle;flex-shrink:0}
+.kao{white-space:nowrap;padding:2px 7px;border-radius:999px;color:#4a3b52;font-weight:700;display:inline-block;line-height:1.4}
+.q{font-weight:900;color:#fff;font-size:18px;line-height:1}
+
+/* sidebar */
+.side{background:var(--nav);color:var(--navtx);padding:16px;display:flex;flex-direction:column;gap:14px;overflow:hidden;min-width:0}
+#app.noside .side{padding:0}
+.logo{font-weight:900;color:#fff;font-size:18px}.logo b{color:var(--blue)}
+.bandrow{display:grid;grid-template-columns:92px 1fr 40px;gap:8px;align-items:center;font-size:12px;padding:5px 6px;border-radius:8px;text-align:left;width:100%}
+.bandrow.cur{background:#ffffff14;color:#fff}
+.rank{display:flex;flex-direction:column;gap:2px;font-size:12px;overflow:auto;flex:1}
+.rank div{padding:4px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rank .inb{background:#3db4f222;color:#fff}
+.rank .piv{background:var(--blue);color:#0b1622;font-weight:700}
+.rank .out{opacity:.35}
+.sbtn{opacity:.8}.sbtn:hover{opacity:1;color:#fff}
+body.mobile .side{flex-direction:row;align-items:center;padding:10px 14px;gap:10px}
+body.mobile .side .hide-m{display:none}
+
+/* shared immersive bits */
+.main{display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
+.bg{position:absolute;inset:-20px;background-size:cover;background-position:center;filter:blur(14px) brightness(.45);z-index:0}
+.t{font-size:24px;font-weight:800;color:#fff;max-width:90%;line-height:1.15}
+.m{color:#fffc}
+.pill{display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 10px;border-radius:999px;background:#0008;color:#fff;backdrop-filter:blur(6px);cursor:pointer;white-space:nowrap}
+.pill:hover{background:var(--blue)}
+.pill .kbd{height:16px;min-width:16px;font-size:10px;background:#fff3}
+.ibtn{width:38px;height:38px;border-radius:50%;background:#0009;color:#fff;display:inline-flex;align-items:center;justify-content:center;backdrop-filter:blur(6px)}
+.ibtn:hover,.ibtn.on{background:var(--blue)}
+.tip{position:relative}.tip:hover::after{content:attr(data-tip);position:absolute;bottom:115%;left:50%;transform:translateX(-50%);background:#000;color:#fff;font-size:11px;padding:3px 7px;border-radius:4px;white-space:nowrap;z-index:9}
+.topline{position:absolute;top:0;left:0;right:0;height:4px;z-index:6;background:#0006}.topline i{display:block;height:100%;background:var(--blue)}
+.float-info{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6}
+.float-side{position:absolute;top:14px;left:14px;z-index:6}
+.togg{padding:6px 10px;border-radius:6px;background:var(--fg);font-size:12px;color:var(--tx-strong)}
+.bandbtn{display:flex;align-items:center;gap:8px;border-radius:16px;background:#0007;backdrop-filter:blur(8px);color:#fff;transition:transform .1s,background .1s}
+.bandbtn:hover{background:#ffffff26}
+.bandbtn.curband{outline:2px dashed #fff6;opacity:.5;cursor:default}
+.bandbtn .lab{font-size:12px;font-weight:700}
+.toast{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);z-index:8;background:#000d;color:#fff;border-radius:999px;padding:8px 8px 8px 16px;display:flex;gap:12px;align-items:center;font-size:13px;animation:fade 4s forwards;white-space:nowrap}
+.toast button{background:var(--blue);border-radius:999px;padding:5px 12px;font-weight:700}
+@keyframes fade{0%,80%{opacity:1}100%{opacity:0;visibility:hidden}}
+
+/* Duel (settled) */
+.pair{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;position:relative}
+.card{position:relative;min-height:0;min-width:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center}
+.card>*:not(.bg){position:relative;z-index:1}
+.card .cv{height:60%;aspect-ratio:2/3;border-radius:8px;box-shadow:0 10px 40px #000a}
+.card:hover{box-shadow:inset 0 0 0 4px var(--blue)}
+.seam{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;width:84px;height:84px;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;box-shadow:0 0 0 6px var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px;gap:2px}
+.float-undo{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);z-index:6}
+.corner{position:absolute!important;bottom:14px;display:flex;gap:8px;z-index:3}
+.corner.l{left:14px}.corner.r{right:14px}
+
+/* ---- Move Band picker variants ---- */
+/* M1 popover ladder above the ⇄ button */
+.mv-pop{position:absolute!important;bottom:62px;z-index:9;display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:16px;background:#000c;backdrop-filter:blur(10px);min-width:220px}
+.mv-pop.l{left:14px}.mv-pop.r{right:14px}
+.mv-pop .hd{color:#fffa;font-size:11px;padding:0 4px 4px;text-align:left}
+.mv-pop .bandbtn{padding:9px 12px;justify-content:space-between;background:#ffffff12}
+/* M2 overlay on the whole half */
+.mv-over{position:absolute!important;inset:0;z-index:8;background:#000b;backdrop-filter:blur(6px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:default}
+.mv-over .hd{color:#fff;font-weight:800;font-size:18px;margin-bottom:6px}
+.mv-over .bandbtn{width:280px;padding:14px 16px;justify-content:space-between}
+.mv-over .bandbtn .kao{font-size:16px}
+/* M3 bottom sheet over the whole screen */
+.mv-scrim{position:absolute;inset:0;z-index:20;background:#0008;display:flex;align-items:flex-end;justify-content:center}
+.mv-sheet{width:100%;max-width:640px;background:var(--fg);border-radius:20px 20px 0 0;padding:16px 18px 22px;animation:up .18s ease-out}
+@keyframes up{from{transform:translateY(100%)}}
+.mv-sheet .hd{display:flex;align-items:center;gap:12px;color:var(--tx-strong);font-weight:800;margin-bottom:14px}
+.mv-sheet .hd .cv{width:40px;height:58px;border-radius:5px}
+.mv-sheet .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.mv-sheet .bandbtn{flex-direction:column;padding:14px 4px;background:var(--fg2);color:var(--tx-strong)}
+.mv-sheet .bandbtn:hover{background:var(--blue);color:#fff}
+/* M4 inline chips under the title */
+.mv-inline{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:8px;border-radius:14px;background:#0009}
+.mv-inline .bandbtn{padding:5px 8px;border-radius:999px;background:#ffffff14;gap:4px}
+.mv-inline .bandbtn .kao{font-size:12px}
+/* M5 radial */
+.mv-radial{position:absolute!important;z-index:9;width:0;height:0;bottom:33px}
+.mv-radial.l{left:85px}.mv-radial.r{right:85px}
+.mv-radial .bandbtn{position:absolute;transform:translate(-50%,-50%);padding:6px 8px;border-radius:999px;background:#000c;flex-direction:column;gap:2px}
+.mv-radial .bandbtn .kao{font-size:12px}
+.mv-radial .bandbtn .lab{font-size:10px}
+
+/* Rough Sort (settled: Ladder) */
+.rs{flex:1;position:relative;overflow:hidden;min-height:0}
+.rs>*:not(.bg){position:relative;z-index:1}
+.rs .cv{border-radius:10px;box-shadow:0 10px 40px #000a}
+.subrow{display:flex;gap:10px}
+.rs-ladder{display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:30px;padding:40px 50px;height:100%}
+.rs-ladder .left{display:flex;flex-direction:column;align-items:flex-end;gap:10px;text-align:right}
+.rs-ladder .left .cv{height:56vh;aspect-ratio:2/3}
+.rs-ladder .bands{display:flex;flex-direction:column;gap:10px;max-width:340px}
+.rs-ladder .bandbtn{padding:14px 16px;justify-content:space-between}
+.rs-ladder .bandbtn:hover{transform:translateX(6px)}
+.rs-ladder .bandbtn .kao{font-size:17px}
+
+/* ---- Band choice variants ---- */
+.bc{flex:1;overflow:auto;padding:46px 40px 30px;color:var(--tx)}
+.bc .h1{font-size:28px;font-weight:800;color:var(--tx-strong)}
+.bc .sub{margin:6px 0 22px}
+.prog{height:8px;border-radius:4px;background:var(--fg2);overflow:hidden}.prog i{display:block;height:100%;background:var(--blue)}
+.prog.full i{background:#7bd88f}
+/* B1 ladder list */
+.b-ladder .list{display:flex;flex-direction:column;gap:10px;max-width:640px}
+.b-ladder .item{display:grid;grid-template-columns:130px 1fr 150px;gap:16px;align-items:center;padding:16px 18px;border-radius:14px;background:var(--fg);text-align:left}
+.b-ladder .item:hover{box-shadow:0 0 0 2px var(--blue)}
+.b-ladder .item.done{opacity:.6}
+.b-ladder .item .kao{font-size:15px}
+.b-ladder .item .r{text-align:right;font-size:12px}
+.b-ladder .rec{box-shadow:0 0 0 2px var(--blue)}
+.b-ladder .rec .r b{color:var(--blue)}
+/* B2 cover collage cards */
+.b-cards .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.b-cards .item{border-radius:16px;overflow:hidden;background:var(--fg);text-align:left;display:flex;flex-direction:column}
+.b-cards .item:hover{box-shadow:0 0 0 3px var(--blue)}
+.b-cards .collage{display:grid;grid-template-columns:repeat(4,1fr);height:120px}
+.b-cards .collage .cv{width:100%;height:100%}
+.b-cards .info{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.b-cards .item.done .collage{filter:grayscale(.7) brightness(.7)}
+/* B3 celebration + auto-continue */
+.b-party{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:16px;height:100%}
+.b-party .big{font-size:40px;padding:8px 22px}
+.b-party .ring{width:84px;height:84px;border-radius:50%;background:conic-gradient(var(--blue) calc(var(--p)*1%),var(--fg2) 0);display:flex;align-items:center;justify-content:center}
+.b-party .ring span{width:68px;height:68px;border-radius:50%;background:var(--bg);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--tx-strong);font-size:22px}
+.b-party .go{background:var(--blue);color:#fff;padding:14px 28px;border-radius:12px;font-weight:800;font-size:16px}
+.b-party .others{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.b-party .others button{padding:8px 12px;border-radius:999px;background:var(--fg);display:flex;gap:6px;align-items:center}
+/* B4 use the sidebar */
+.b-side{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;gap:14px}
+.b-side .arrow{font-size:40px;color:var(--blue);animation:nudge 1s infinite alternate}
+@keyframes nudge{to{transform:translateX(-12px)}}
+#app.bandpick .bandrow{cursor:pointer;padding:10px 8px;outline:1px solid #ffffff1a}
+#app.bandpick .bandrow:hover{background:var(--blue);color:#0b1622}
+/* B5 result + chooser */
+.b-result{display:grid;grid-template-columns:1.2fr 1fr;gap:28px;align-items:start}
+.b-result .res{background:var(--fg);border-radius:16px;padding:16px}
+.b-result .res .ln{display:grid;grid-template-columns:28px 40px 1fr;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--fg2)}
+.b-result .res .ln .cv{width:40px;height:56px;border-radius:4px}
+.b-result .res .ln b{color:var(--tx-strong)}
+.b-result .tie{font-size:11px;color:var(--blue)}
+.b-result .ch{display:flex;flex-direction:column;gap:8px}
+.b-result .ch button{display:grid;grid-template-columns:110px 1fr 60px;gap:10px;align-items:center;padding:12px 14px;border-radius:12px;background:var(--fg);text-align:left}
+.b-result .ch button:hover{box-shadow:0 0 0 2px var(--blue)}
+
+
+/* ---- Start (Log in -> Pool setup) ---- */
+.st{flex:1;min-height:0;overflow:auto;position:relative;color:var(--tx)}
+.st .h1{font-size:34px;font-weight:900;color:var(--tx-strong)}
+.st .h2{font-size:22px;font-weight:800;color:var(--tx-strong)}
+.st p{line-height:1.5}
+.st .panel{background:var(--fg);border-radius:18px;padding:26px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 40px #0002}
+.go{background:var(--blue);color:#fff;font-weight:800;padding:13px 22px;border-radius:12px;display:inline-flex;gap:10px;align-items:center;justify-content:center;align-self:flex-start}
+.go:disabled{opacity:.4;cursor:not-allowed}
+.almark{width:22px;height:22px;border-radius:5px;background:#fff;color:#3db4f2;font-weight:900;display:inline-flex;align-items:center;justify-content:center;font-size:13px}
+.fine{opacity:.7}
+.link{color:var(--blue);text-decoration:underline}
+.ava{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,#3db4f2,#c063ff);color:#fff;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.userbar{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--tx-strong)}
+.userbar .link{margin-left:auto;font-size:12px}
+.seg{display:inline-flex;background:var(--fg2);border-radius:10px;padding:3px;align-self:flex-start}
+.seg button{padding:7px 18px;border-radius:8px;font-weight:700}
+.seg button.on{background:var(--blue);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:7px 12px;border-radius:999px;background:var(--fg2);font-size:13px;display:inline-flex;gap:6px;align-items:center}
+.chip.on{background:var(--blue);color:#fff;font-weight:700}
+.chip .cnt{opacity:.7;font-size:11px}
+.chip.off{opacity:.45;cursor:not-allowed;font-size:12px}
+.lab2{font-size:12px;opacity:.7;margin-bottom:-6px}
+.est{font-size:15px;color:var(--tx-strong)}.est .small{display:block;color:var(--tx);margin-top:2px}
+/* O1 hero */
+.st-hero{display:grid;grid-template-columns:1.1fr 1fr}
+.st-hero .l{position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:40px}
+.collage-bg{position:absolute;inset:-60px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px;transform:rotate(-8deg);opacity:.55;align-content:start}
+.collage-bg .cv{width:100%;aspect-ratio:2/3;border-radius:6px}
+.st-hero .l::after{content:"";position:absolute;inset:0;background:linear-gradient(transparent 20%,var(--bg) 95%)}
+.hero-copy{position:relative;z-index:1;display:flex;flex-direction:column;gap:12px;color:var(--tx-strong)}
+.hero-copy .big{font-size:40px;font-weight:900;line-height:1.05}
+.st-hero .r{display:flex;align-items:center;justify-content:center;padding:30px}
+.st-hero .panel{width:100%;max-width:440px}
+/* O2 wizard */
+.st-wiz{display:flex;flex-direction:column;align-items:center;padding:40px 20px;gap:26px}
+.stepper{display:flex;align-items:center;gap:8px;font-size:12px;flex-wrap:wrap;justify-content:center}
+.stepper span{display:flex;gap:6px;align-items:center;opacity:.5}
+.stepper span.cur{opacity:1;color:var(--tx-strong);font-weight:700}
+.stepper span.done{opacity:.8}
+.stepper i{font-style:normal;width:22px;height:22px;border-radius:50%;background:var(--fg2);display:inline-flex;align-items:center;justify-content:center}
+.stepper .cur i{background:var(--blue);color:#fff}
+.stepper em{width:28px;height:2px;background:var(--fg2)}
+.st-wiz .panel{width:100%;max-width:560px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{background:var(--fg2);border-radius:16px;padding:26px 14px;display:flex;flex-direction:column;align-items:center;gap:8px;border:2px solid transparent}
+.tile:hover,.tile.on{border-color:var(--blue)}
+.tile b{font-size:18px;color:var(--tx-strong)}
+.ready{display:flex;gap:6px;flex-wrap:wrap}
+/* O3 sentence */
+.st-mad{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:26px;padding:40px 30px}
+.st-mad .userbar{position:absolute;top:18px;right:22px}
+.sentence{font-size:38px;font-weight:800;color:var(--tx-strong);line-height:1.5;max-width:820px}
+.sentence select{font:inherit;color:var(--blue);background:none;border:none;border-bottom:3px solid var(--blue);cursor:pointer}
+.sentence select option{font-size:16px;color:#000}
+.word{font-size:28px;font-weight:800;padding:0 10px;border-radius:10px;color:var(--tx);text-decoration:line-through;opacity:.45}
+.word.on{color:var(--blue);text-decoration:underline;text-decoration-thickness:3px;opacity:1}
+.answer{font-size:18px;max-width:620px}
+.answer b{color:var(--tx-strong)}
+.st-mad .go{align-self:center}
+/* O4 wall */
+.st-wall{overflow:hidden}
+.wallgrid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:4px;padding:4px;align-content:start}
+.wt .cv{width:100%;aspect-ratio:2/3;border-radius:4px;transition:.25s}
+.wt.out .cv{filter:grayscale(1) brightness(.25)}
+.st-wall .panel.float{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(480px,92%);background:color-mix(in srgb,var(--fg) 88%,transparent);backdrop-filter:blur(12px);z-index:2}
+/* O5 cockpit */
+.st-cock{display:flex;align-items:center;justify-content:center;padding:30px}
+.st-cock .panel.narrow{max-width:420px}
+.st-cock .panel.wide{width:100%;max-width:640px;gap:18px}
+.set{display:grid;grid-template-columns:130px 1fr;gap:14px;align-items:center}
+.set.top{align-items:start}
+.set .k{font-size:12px;font-weight:700;opacity:.7}
+.strows{display:flex;flex-direction:column;border-radius:10px;overflow:hidden;background:var(--fg2)}
+.strow{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--fg);cursor:pointer;color:var(--tx-strong)}
+.strow .cnt{font-size:12px;opacity:.7}
+.strow.dis{opacity:.45;cursor:not-allowed}
+/* Start on mobile */
+body.mobile .st-hero{grid-template-columns:1fr;grid-template-rows:200px auto}
+body.mobile .st-hero .l{padding:20px}
+body.mobile .hero-copy .big{font-size:26px}
+body.mobile .st-hero .r{padding:14px}
+body.mobile .st .panel{padding:18px}
+body.mobile .sentence{font-size:24px}
+body.mobile .word{font-size:20px}
+body.mobile .st-mad{padding:56px 16px 20px}
+body.mobile .set{grid-template-columns:1fr;gap:6px}
+body.mobile .st-wiz{padding:20px 12px}
+body.mobile .stepper em{width:10px}
+body.mobile .st .h1{font-size:26px}
+body.mobile #app.nosidem{grid-template-rows:0 1fr}
+body.mobile #app.nosidem .side{padding:0}
+
+
+/* ---- Preview ---- */
+.pv{flex:1;min-height:0;overflow:auto;position:relative;padding:22px 28px 30px;color:var(--tx)}
+.pv .h1{font-size:28px;font-weight:900;color:var(--tx-strong)}
+.pv-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.pv-head .go{align-self:center}
+.pv-set{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:14px}
+.pv-set label{display:flex;gap:6px;align-items:center;font-weight:700;color:var(--tx-strong);font-size:13px}
+.lsel{font:inherit;padding:5px 8px;border-radius:8px;border:none;background:var(--fg2);color:var(--tx-strong);font-weight:800}
+.box{background:var(--fg);border-radius:14px;padding:16px}
+.hist2{display:flex;align-items:flex-end;gap:4px}
+.hist2.dense{gap:1px}
+.hb{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;min-width:0}
+.hb .stk{width:100%;display:flex;flex-direction:column;justify-content:flex-end}
+.hb .stk i{display:block;width:100%}
+.hb .stk i:first-child{border-radius:4px 4px 0 0}
+.hb .n{font-size:11px;color:var(--tx-strong);font-weight:700;height:14px}
+.hb .lv{font-size:11px;white-space:nowrap}
+.hb.clk{cursor:pointer}.hb.clk:hover .stk{opacity:.8}
+.hb.sel .stk{outline:2px solid var(--blue);outline-offset:2px;border-radius:4px}
+.rng{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:12px}
+.rng b{color:var(--tx-strong)}
+.mini-b{font-size:11px;padding:4px 8px;border-radius:6px;background:var(--fg2);color:var(--tx-strong);display:inline-flex;align-items:center}
+.mini-b .li{width:13px;height:13px}
+.mini-b:hover{background:var(--blue);color:#fff}
+.tierb{font-size:10px;padding:1px 6px;border-radius:999px;background:var(--blue);color:#fff}
+.dn{font-size:11px}.dn.up{color:#7bd88f}.dn.down{color:#f27d7d}.dn.same{opacity:.4}.dn.new{color:var(--blue)}
+.forg{margin-top:16px;background:var(--fg);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.frow{display:flex;gap:10px;align-items:center;font-size:13px}
+.frow .cv{width:28px;height:40px;border-radius:3px;filter:grayscale(.8)}
+/* P1 dashboard */
+.pv-dash .cols{display:grid;grid-template-columns:minmax(260px,1fr) 1.6fr;gap:16px;align-items:start}
+.pv-dash .cols>.box:first-child{position:sticky;top:0}
+.pv-dash table{width:100%;border-collapse:collapse;font-size:13px}
+.pv-dash td,.pv-dash th{padding:7px 6px;border-bottom:1px solid var(--fg2);text-align:left;color:var(--tx-strong)}
+.pv-dash th{font-size:11px;color:var(--tx);font-weight:600}
+.pv-dash tr.nochg td{opacity:.45}
+.pv-dash .acts{white-space:nowrap}
+/* P2 tier list */
+.tl{display:flex;flex-direction:column;gap:4px}
+.tlrow{display:grid;grid-template-columns:64px 1fr;background:var(--fg);border-radius:10px;overflow:visible;min-height:86px}
+.tlk{display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--tx-strong);background:var(--fg2);border-radius:10px 0 0 10px}
+.tlc{display:flex;flex-wrap:wrap;gap:6px;padding:6px}
+.tlcard{position:relative;width:52px;cursor:pointer;border-radius:5px;outline:3px solid transparent}
+.tlcard.b0{outline-color:#ffb3c8aa}.tlcard.b1{outline-color:#ffe08aaa}.tlcard.b2{outline-color:#bfe8c9aa}.tlcard.b3{outline-color:#c9d4ffaa}.tlcard.b4{outline-color:#cfc9d6aa}
+.tlcard .cv{width:52px;height:74px;border-radius:5px}
+.tlcard.off .cv{filter:grayscale(1) brightness(.5)}
+.tlcard .ob{position:absolute;bottom:2px;left:2px;font-size:9px;padding:0 3px;border-radius:3px;background:#000b;color:#fff}
+.tlpop{position:absolute;top:80px;left:0;z-index:20;width:220px;background:var(--fg);border-radius:10px;padding:10px;box-shadow:0 10px 30px #0008;display:flex;flex-direction:column;gap:6px;color:var(--tx-strong);cursor:default}
+/* P3 diff */
+.pv-diff{display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start}
+.dside{position:sticky;top:0;background:var(--fg);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.dside .pv-set{flex-direction:column;align-items:flex-start;gap:8px;margin:0}
+.dlist{display:flex;flex-direction:column;gap:2px}
+.drow{display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:8px;background:var(--fg);font-size:13px;color:var(--tx-strong)}
+.drow .cv{width:28px;height:40px;border-radius:3px}
+.drow.chg{box-shadow:inset 3px 0 0 var(--blue)}
+.drow.unt{opacity:.55}
+.drow .o{width:36px;text-align:right;color:var(--tx);text-decoration:line-through}
+.drow.chg .nw{color:var(--blue)}
+.drow .nw{width:36px;font-weight:900}
+.drow .arr{opacity:.4}
+/* P4 histogram first */
+.bighist{background:var(--fg);border-radius:14px;padding:18px 18px 12px;margin-bottom:14px}
+.hgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+.hcard{display:flex;gap:10px;background:var(--fg);border-radius:10px;padding:8px;align-items:center}
+.hcard .cv{width:44px;height:62px;border-radius:4px}
+.hcard.off{opacity:.5}
+.nmz{font-weight:700;color:var(--tx-strong);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* P5 river */
+.pv-river{padding-left:0;padding-right:0}
+.pv-river .pv-head{padding:0 30px}
+.float-set{margin:0 30px 14px;background:var(--fg);border-radius:14px;padding:14px;max-width:560px}
+.float-set .pv-set{margin-bottom:8px}
+.river{display:flex;gap:10px;overflow-x:auto;padding:10px 30px 16px;align-items:flex-start}
+.rsep{flex-shrink:0;width:96px;height:250px;border-radius:14px;background:var(--fg2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;color:var(--tx-strong);font-weight:700}
+.rv{flex-shrink:0;width:120px;display:flex;flex-direction:column;gap:4px;cursor:pointer;align-items:flex-start}
+.rv .cv{width:120px;height:170px;border-radius:8px}
+.rv .sc{font-size:22px;font-weight:900;color:var(--tx-strong)}
+.rv.off .cv{filter:grayscale(1) brightness(.45)}
+.rv.off .sc{opacity:.4}
+.rv .nmz{width:120px}
+/* Preview mobile */
+body.mobile .pv{padding:14px}
+body.mobile .pv-dash .cols,body.mobile .pv-diff{grid-template-columns:1fr}
+body.mobile .pv-dash td:nth-child(2),body.mobile .pv-dash th:nth-child(2),body.mobile .pv-dash td:nth-child(4),body.mobile .pv-dash th:nth-child(4){display:none}
+body.mobile .pv-head{flex-wrap:wrap}
+body.mobile .tlrow{grid-template-columns:44px 1fr}
+body.mobile .float-set,body.mobile .pv-river .pv-head{margin-left:14px;margin-right:14px;padding-left:0;padding-right:0}
+body.mobile .float-set{padding:12px}
+body.mobile .river{padding:10px 14px}
+
+
+/* ---- Import ---- */
+.im{flex:1;min-height:0;overflow:auto;position:relative;padding:26px 30px;color:var(--tx)}
+.im .h2,.imconf .h2{font-size:22px;font-weight:800;color:var(--tx-strong)}
+.imconf{background:var(--fg);border-radius:18px;padding:26px;max-width:480px;display:flex;flex-direction:column;gap:12px;box-shadow:0 20px 60px #0006;color:var(--tx)}
+.im-center{display:flex;align-items:center;justify-content:center}
+.go.sm{padding:7px 12px;font-size:12px;border-radius:8px}
+.warn{color:#f2b13d}
+.imsum{display:flex;gap:10px}
+.imsum div{background:var(--fg);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column;min-width:90px}
+.imsum b{font-size:24px;color:var(--tx-strong)}
+.imsum span{font-size:11px}
+.imsum .bad b{color:#f27d7d}
+.imfail{background:var(--fg);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;max-width:520px}
+/* I1 modal over Preview + slim strip */
+.im-modal-wrap{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+.im-modal-wrap .scrim{position:absolute;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:30}
+.imstrip{background:var(--fg);padding:10px 28px;display:flex;flex-direction:column;gap:6px;color:var(--tx-strong);box-shadow:0 2px 10px #0003;z-index:5}
+.imstrip.limited .small{color:#f2b13d}
+.im-modal-wrap .pv .go{opacity:.4;pointer-events:none}
+/* I2 ring */
+.im-ring{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
+.ringbig{width:200px;height:200px;border-radius:50%;background:conic-gradient(var(--blue) calc(var(--p)*1%),var(--fg2) 0);display:flex;align-items:center;justify-content:center;transition:background .3s}
+.ringbig .inner{width:168px;height:168px;border-radius:50%;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ringbig b{font-size:44px;color:var(--tx-strong);line-height:1}
+.eta{font-size:16px;color:var(--tx-strong)}
+.nowc{display:flex;gap:12px;align-items:center;background:var(--fg);border-radius:12px;padding:10px 16px;text-align:left}
+.nowc .cv{width:40px;height:58px;border-radius:4px}
+/* I3 grid */
+.imtop{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.im-grid .prog,.im-log .prog{margin-bottom:16px}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-bottom:16px}
+.cg{position:relative}
+.cg .cv{width:100%;aspect-ratio:2/3;border-radius:5px;filter:grayscale(1) brightness(.45);transition:filter .4s}
+.cg.ok .cv{filter:none}
+.cg.fail .cv{filter:grayscale(1) brightness(.4);outline:2px solid #f27d7d}
+.cg.now .cv{filter:none;outline:2px solid var(--blue);animation:pulse 1s infinite alternate}
+@keyframes pulse{to{outline-color:transparent}}
+.cg .badge{position:absolute;top:3px;right:3px;font-size:11px;font-weight:900;color:#fff;background:#0009;border-radius:999px;min-width:18px;text-align:center}
+.cg.ok .badge{background:#3fae5a}.cg.fail .badge{background:#e05555}
+.cg .sc{position:absolute;bottom:3px;left:3px;font-size:10px;font-weight:800;color:#fff;background:#000a;border-radius:3px;padding:0 3px}
+/* I4 floating card */
+.imfloat{position:absolute;right:20px;bottom:20px;width:320px;background:var(--fg);border-radius:14px;padding:14px;box-shadow:0 14px 40px #0008;display:flex;flex-direction:column;gap:8px;z-index:30}
+/* I5 log */
+.lglist{display:flex;flex-direction:column;gap:3px}
+.lg{display:flex;gap:10px;align-items:center;background:var(--fg);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--tx-strong);animation:slidein .25s}
+@keyframes slidein{from{opacity:0;transform:translateY(-6px)}}
+.lg .cv{width:24px;height:34px;border-radius:3px}
+.lg .ic{width:18px;text-align:center;color:#3fae5a;font-weight:900}
+.lg.fail .ic{color:#e05555}.lg.fail{box-shadow:inset 3px 0 0 #e05555}
+.lg.now .ic{color:var(--blue)}.lg.now{box-shadow:inset 3px 0 0 var(--blue)}
+.lg.wait{color:#f2b13d;box-shadow:inset 3px 0 0 #f2b13d}.lg.wait .ic{color:#f2b13d}
+
+/* ---- App menu ---- */
+.acct-wrap{position:relative}
+.acct{display:flex;gap:10px;align-items:center;width:100%;padding:10px;border-radius:10px;background:#ffffff0d;color:#fff;font-size:13px;line-height:1.2}
+.acct:hover{background:#ffffff1a}
+.mpop{position:absolute;bottom:58px;left:0;right:-60px;background:var(--fg);border-radius:14px;padding:8px;box-shadow:0 10px 40px #000a;z-index:40;display:flex;flex-direction:column;gap:2px}
+.mg{font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.6;padding:8px 8px 2px;color:var(--tx)}
+.mitem{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;text-align:left;color:var(--tx-strong);font-size:13px;width:100%}
+.mitem .small{color:var(--tx);font-size:11px}
+.mitem:hover,.mitem.first{background:var(--fg2)}
+.mitem.danger,.ilink.danger{color:#f27d7d}
+.mitem.wide{padding:12px}
+.mic{width:24px;height:24px;border-radius:6px;background:var(--fg2);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px}
+.dscrim{position:fixed;inset:0;background:#0009;z-index:60;display:flex;align-items:center;justify-content:center}
+.dscrim.right{justify-content:flex-end;align-items:stretch}
+.dscrim.top{align-items:flex-start;padding-top:12vh}
+.dlg{background:var(--fg);border-radius:16px;padding:22px;width:min(460px,92vw);display:flex;flex-direction:column;gap:10px;color:var(--tx)}
+.dlg .h2{font-size:20px;font-weight:800;color:var(--tx-strong)}
+.chk{color:var(--tx-strong);font-size:13px}
+.go.danger{background:#e05555}
+.drop{border:2px dashed var(--fg2);border-radius:12px;padding:26px;text-align:center}
+.mpage{position:absolute;inset:0;z-index:30;background:var(--bg);overflow:auto;padding:28px 34px;display:flex;flex-direction:column;gap:14px;color:var(--tx)}
+.mpage .h1{font-size:28px;font-weight:900;color:var(--tx-strong)}
+.mcard{background:var(--fg);border-radius:14px;padding:8px;max-width:620px}
+.drawer{width:min(360px,90vw);background:var(--fg);padding:18px;display:flex;flex-direction:column;gap:2px;animation:slidel .18s ease-out;overflow:auto}
+@keyframes slidel{from{transform:translateX(100%)}}
+.pal{width:min(560px,92vw);background:var(--fg);border-radius:14px;padding:8px;box-shadow:0 20px 60px #000a;display:flex;flex-direction:column;gap:2px}
+.pal input{font:inherit;font-size:16px;padding:12px;border:none;outline:none;background:var(--fg2);border-radius:10px;color:var(--tx-strong);margin-bottom:6px}
+.isec{display:flex;flex-direction:column;gap:1px;font-size:12px}
+.ihd{text-align:left;padding:6px 4px;font-weight:700;color:#fff;opacity:.8}
+.ilink{display:flex;gap:8px;align-items:center;padding:5px 6px;border-radius:6px;text-align:left}
+.ilink:hover{background:#ffffff14;color:#fff}
+.ilink .mic{width:20px;height:20px;background:#ffffff14;font-size:11px}
+/* tier list: collapsed unchanged rows */
+.tlrow.coll{min-height:0}
+.tlrow.coll .tlk{font-size:14px;padding:6px 0}
+.tlrow.coll .tlc{align-items:center;font-size:12px;padding:6px 10px}
+
+/* mobile */
+body.mobile .im{padding:16px}
+body.mobile .imsum{flex-wrap:wrap}
+body.mobile .imsum div{min-width:0;flex:1}
+body.mobile .imtop{flex-wrap:wrap}
+body.mobile .imfloat{left:10px;right:10px;width:auto;bottom:10px}
+body.mobile .ringbig{width:150px;height:150px}body.mobile .ringbig .inner{width:124px;height:124px}
+
+/* mobile */
+body.mobile .pair{grid-template-columns:1fr;grid-template-rows:1fr 1fr}
+body.mobile .card{flex-direction:row;justify-content:flex-start;text-align:left;padding:14px;gap:12px}
+body.mobile .card .cv{height:100%;max-height:200px}
+body.mobile .t{font-size:17px}
+body.mobile .kbd{display:none!important}
+body.mobile .seam{width:66px;height:66px}
+body.mobile .rs-ladder{grid-template-columns:1fr;padding:44px 16px 16px;gap:12px}
+body.mobile .rs-ladder .left{align-items:center;text-align:center}
+body.mobile .rs-ladder .left .cv{height:24vh;max-height:220px}
+body.mobile .rs-ladder .bands{max-width:none;gap:6px}
+body.mobile .rs-ladder .bandbtn{padding:10px 14px}
+body.mobile .mv-over .bandbtn{width:220px;padding:8px 12px}
+body.mobile .mv-sheet .grid{gap:4px}
+body.mobile .mv-sheet .bandbtn .kao{font-size:9px;padding:2px 3px}
+body.mobile .bc{padding:44px 16px 20px}
+body.mobile .b-ladder .item{grid-template-columns:1fr;gap:8px}
+body.mobile .b-ladder .item .r{text-align:left}
+body.mobile .b-result{grid-template-columns:1fr}
+
+.screen{padding:28px}.screen .h1{font-size:26px;font-weight:800;color:var(--tx-strong);margin-bottom:10px}
+
+/* picker */
+#picker{position:fixed;right:18px;bottom:18px;z-index:99;background:#111;color:#eee;border-radius:12px;padding:10px 12px;font:13px system-ui;box-shadow:0 8px 30px #0008;user-select:none;width:280px}
+#picker .grip{cursor:move;color:#888;font-size:11px;margin-bottom:6px;display:flex;justify-content:space-between}
+#picker .name{font-weight:800;font-size:15px;text-align:center;flex:1}
+#picker .sub{text-align:center;color:#aaa;font-size:11px;margin:2px 0 8px}
+#picker .arr{width:30px;height:30px;border-radius:8px;background:#333;font-size:16px}
+#picker .grp{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+#picker .grp button{padding:4px 7px;border-radius:6px;background:#2a2a2a;font-size:11px}
+#picker .grp button.on{background:#3db4f2;color:#fff}
+#picker .lbl{color:#777;font-size:10px;margin-top:8px;text-transform:uppercase;letter-spacing:.06em}
+</style>
+</head>
+<body>
+<div id="stage"><div id="app"></div></div>
+
+<div id="picker">
+  <div class="grip"><span>⠿ drag · PROTOTYPE · round 6</span><span id="pidx"></span></div>
+  <div class="row"><button class="arr" onclick="cycle(-1)">←</button><div class="name" id="pname"></div><button class="arr" onclick="cycle(1)">→</button></div>
+  <div class="sub" id="psub"></div>
+  <div class="lbl">Screen</div><div class="grp" id="pscreen"></div>
+  <div class="lbl">State</div><div class="grp" id="pstate"></div>
+  <div class="lbl">Viewport</div><div class="grp" id="pview"></div>
+  <div class="sub" style="margin-top:8px" id="phelp"></div>
+</div>
+
+<script>
+const VARS = {
+  'Menu': [
+    {id:'pop',    name:'S1 · Account popover', sub:'click your name at the bottom of the sidebar'},
+    {id:'page',   name:'S2 · Settings page',   sub:'⚙ opens a full settings page over the main area'},
+    {id:'drawer', name:'S3 · Right drawer',    sub:'a drawer slides in from the right'},
+    {id:'palette',name:'S4 · Command palette', sub:'Ctrl+K, type what you want'},
+    {id:'inline', name:'S5 · Inline in sidebar', sub:'collapsible sections always in the sidebar'},
+  ],
+  'Import': [{id:'grid',name:'Import (settled)',sub:'R9: Cover grid'}],
+  'Preview': [{id:'tierlist',name:'Preview (settled)',sub:'R8: Tier list'}],
+  'Start': [{id:'hero',name:'Start (settled)',sub:'R7: Hero split'}],
+  'Rough Sort': [{id:'ladder',name:'Rough Sort (settled)',sub:'R5: Ladder'}],
+  'Band choice': [{id:'result',name:'Band choice (settled)',sub:'R6: result + chooser'}],
+  'Duel': [{id:'sheet',name:'Duel (settled)',sub:'R6: Move Band = bottom sheet'}],
+};
+const SCREENS=Object.keys(VARS);
+const HELP={'Menu':'←/→ design · open the menu from the bottom of the sidebar (S4: Ctrl+K) · try Log out, Start over, Pool, Restore','Import':'←/→ design · State = Confirm / Running (animates) / Rate-limited / Done','Preview':'←/→ design · State = Score Format · change Best / Worst / Linear-Bell live','Start':'←/→ design · use State to switch logged out / Pool setup','Duel':'Click ⇄ on a card, or press M then ←/→, then 1–5 · Esc closes · Shift+←/→ design','Band choice':'←/→ design','Rough Sort':'1–5 Band · 0 don\'t remember · ⌫ undo'};
+const LABELS=['Loved','Liked','Okay','Meh','Hated'];
+const COL=['#ffb3c8','#ffe08a','#bfe8c9','#c9d4ff','#cfc9d6'];
+const KAO=['(♡˙︶˙♡)','(˶ᵔ ᵕ ᵔ˶)','( ・_・)','(´・ω・`)','(×﹏×)'];
+const kao=(lv,fs)=>`<span class="kao" style="background:${COL[lv]}${fs?`;font-size:${fs}px`:''}">${KAO[lv]}</span>`;
+const Q=`<span class="q">?</span>`;
+const sv=p=>`<svg class="li" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const IC={
+  undo:sv('<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'),
+  move:sv('<path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/>'),
+  ext: sv('<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'),
+  same:sv('<path d="M4 9c2.5-2 5.5 2 8 0s5.5-2 8 0"/><path d="M4 15c2.5-2 5.5 2 8 0s5.5-2 8 0"/>'),
+  menu:sv('<path d="M4 6h16M4 12h16M4 18h16"/>'),
+  hide:sv('<path d="m11 17-5-5 5-5"/><path d="m18 17-5-5 5-5"/>'),
+  sun: sv('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+  moon:sv('<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'),
+  x:   sv('<path d="M18 6 6 18M6 6l12 12"/>'),
+};
+
+let T0=['Frieren',"Steins;Gate",'Mob Psycho 100 II','Your Name.','Cowboy Bebop','Made in Abyss','Violet Evergarden','Odd Taxi','Ping Pong','FMA: Brotherhood','A Silent Voice','Hunter x Hunter','Mushishi','Bocchi the Rock!']
+  .map((t,i)=>({id:i,t,y:2010+i,f:'TV',eps:12,c:`hsl(${i*47%360} 70% 55%)`}));
+let T=Array.from({length:50},(_,i)=>i<T0.length?T0[i]:{id:i,t:`Title ${i+1}`,y:2000+i%25,f:'TV',eps:12,c:`hsl(${i*47%360} 70% 55%)`});
+
+const sys=matchMedia('(prefers-color-scheme: dark)');
+let S={screen:'Menu',v:{'Menu':0,'Import':0,'Preview':0,'Start':0,'Duel':0,'Band choice':0,'Rough Sort':0},logged:false,media:'Anime',st:{Completed:true,Repeating:true,Current:false,Paused:false,Dropped:false},step:1,mobile:false,side:true,dark:sys.matches,moving:null,mPending:false,toast:null,rsHist:[],count:5};
+let E; resetEngine();
+function resetEngine(){ E={sorted:[[0]],queue:T.slice(1,14).map(x=>x.id),cur:null,lo:0,hi:1,count:0,hist:[]}; nextIns(); }
+function nextIns(){ if(!E.queue.length){E.cur=null;return} E.cur=E.queue.shift(); E.lo=0; E.hi=E.sorted.length; }
+const pivotIdx=()=>Math.floor((E.lo+E.hi)/2);
+function pair(){ const p=E.sorted[pivotIdx()][0], a=E.cur; return ((a*7+p*13)%2)?[a,p]:[p,a]; }
+function answer(w){ if(E.cur==null||S.moving!=null) return; E.hist.push(JSON.stringify(E)); const pi=pivotIdx(), c=E.cur; E.count++; S.toast=null;
+  if(w==='tie'){E.sorted[pi].push(c);nextIns()} else { if(w===c)E.hi=pi; else E.lo=pi+1; if(E.lo>=E.hi){E.sorted.splice(E.lo,0,[c]);nextIns()} } render(); }
+function takeOut(id){ E.hist.push(JSON.stringify(E)); E.count++; if(id===E.cur) nextIns(); else { E.sorted=E.sorted.map(t=>t.filter(x=>x!==id)).filter(t=>t.length); E.lo=0;E.hi=E.sorted.length; } }
+function forget(id){ if(S.moving!=null) return; takeOut(id); S.toast=null; render(); }
+function moveTo(id,b){ if(b===0) return; takeOut(id); S.moving=null; S.toast=`Moved <b>${nm(id)}</b> to ${kao(b,11)}`; render(); }
+function undo(){ if(!E.hist.length) return; const h=E.hist.pop(), hs=E.hist; E=JSON.parse(h); E.hist=hs; S.toast=null; render(); }
+function openMove(id){ S.moving=S.moving===id?null:id; render(); }
+const nm=id=>T[id].t;
+const cv=(x,extra='')=>x.cover?`<img class="cv" src="${x.cover}" style="--c:${x.c}" draggable="false" ${extra}>`:`<div class="cv ph" style="--c:${x.c}" ${extra}></div>`;
+const bg=x=>`<div class="bg ${x.banner||x.cover?'':'ph'}" style="--c:${x.c};${x.banner||x.cover?`background-image:url('${x.banner||x.cover}')`:''}"></div>`;
+const meta=x=>`${x.y} · ${x.f}${x.eps&&x.f!=='MOVIE'?` · ${x.eps} eps`:''}`;
+const stop=`onclick="event.stopPropagation()"`;
+const al=x=>`https://anilist.co/anime/${x.aid||''}`;
+const vid=()=>VARS[S.screen][S.v[S.screen]].id;
+
+// Move Band picker. Current Band is Loved (0) — shown but disabled.
+const mvBtn=(id,i,inner)=>`<button class="bandbtn ${i===0?'curband':''}" ${i===0?'title="Already here"':''} onclick="event.stopPropagation();moveTo(${id},${i})">${inner}</button>`;
+function movePicker(x,k){
+  if(S.moving!==x.id) return '';
+  const d=vid(), side=k?'r':'l';
+  if(d==='pop') return `<div class="mv-pop ${side}" ${stop}><div class="hd">Move to…</div>${LABELS.map((l,i)=>mvBtn(x.id,i,`<span class="row"><span class="kbd">${i+1}</span>${kao(i)}</span><span class="lab">${i===0?'current':l}</span>`)).join('')}</div>`;
+  if(d==='over') return `<div class="mv-over" ${stop}><div class="hd">Move “${x.t}” to…</div>${LABELS.map((l,i)=>mvBtn(x.id,i,`<span class="row"><span class="kbd">${i+1}</span>${kao(i)}</span><span class="lab">${i===0?'current':l}</span>`)).join('')}<button class="pill" onclick="openMove(${x.id})">${IC.x} Cancel <span class="kbd">Esc</span></button></div>`;
+  if(d==='radial'){ const R=96, angs=[-170,-130,-90,-50,-10]; const ord=k?[...angs].reverse():angs;
+    return `<div class="mv-radial ${side}" ${stop}>${LABELS.map((l,i)=>{const a=ord[i]*Math.PI/180;return `<div style="position:absolute;left:${Math.cos(a)*R}px;top:${Math.sin(a)*R}px">${mvBtn(x.id,i,`${kao(i)}<span class="lab">${i+1} ${i===0?'current':l}</span>`)}</div>`}).join('')}</div>`; }
+  return '';
+}
+function inlineChips(x){ if(S.moving!==x.id||vid()!=='inline') return '';
+  return `<div class="mv-inline" ${stop}>${LABELS.map((l,i)=>mvBtn(x.id,i,`<span class="kbd">${i+1}</span>${kao(i)}`)).join('')}<button class="pill" onclick="openMove(${x.id})">${IC.x}</button></div>`; }
+function sheet(){ if(S.moving==null||false) return ''; const x=T[S.moving];
+  return `<div class="mv-scrim" onclick="openMove(${x.id})"><div class="mv-sheet" ${stop}><div class="hd">${cv(x)}<div class="grow">Move “${x.t}” to another Band</div><button onclick="openMove(${x.id})">${IC.x}</button></div>
+    <div class="grid">${LABELS.map((l,i)=>mvBtn(x.id,i,`${kao(i)}<span class="lab">${i===0?'current':l}</span><span class="kbd">${i+1}</span>`)).join('')}</div></div></div>`; }
+
+function duel(){
+  if(E.cur==null) return `<div class="screen"><div class="h1">Band complete! ${kao(0,20)}</div><p>${E.count} Duels.</p><br><button class="togg" onclick="resetEngine();render()">reset mock</button> <button class="togg" onclick="S.screen='Band choice';render()">see Band choice →</button></div>`;
+  const done=E.sorted.flat().length, tot=14, pct=done/tot*100, left=E.hi-E.lo;
+  const [l,r]=pair().map(i=>T[i]);
+  const card=(x,k)=>`<div class="card" onclick="answer(${x.id})">${bg(x)}${cv(x)}<div class="col" style="align-items:center;gap:6px"><div class="t">${x.t}</div><div class="m">${meta(x)}</div>${inlineChips(x)||`<span class="kbd">${k?'→':'←'}</span>`}</div>
+    <div class="corner ${k?'r':'l'}" ${stop}><button class="ibtn tip" data-tip="Don't remember (F${k?'→':'←'})" onclick="forget(${x.id})">${Q}</button><button class="ibtn tip ${S.moving===x.id?'on':''}" data-tip="Move Band (M${k?'→':'←'})" onclick="openMove(${x.id})">${IC.move}</button><a class="ibtn tip" data-tip="Open on AniList" href="${al(x)}" target="_blank">${IC.ext}</a></div>${movePicker(x,k)}</div>`;
+  return `<div class="topline"><i style="width:${pct}%"></i></div>
+    <div class="float-info"><span class="pill">${kao(0,10)} ${LABELS[0]} · ${done}/${tot} · ${left} spot${left>1?'s':''} left${S.mPending?' · <b>M: pick ← or →</b>':''}</span></div>
+    <div class="pair">${card(l,0)}${card(r,1)}<button class="seam" onclick="answer('tie')">${IC.same}<span>Same</span><span class="kbd">↓</span></button></div>
+    ${S.toast?`<div class="toast">${S.toast}<button onclick="undo()">Undo</button></div>`:''}
+    <div class="float-undo"><button class="pill" onclick="undo()">${IC.undo} Undo <span class="kbd">⌫</span></button></div>${sheet()}`;
+}
+
+function rough(){
+  const x=T[(S.rsHist.length*5+3)%T.length], n=37+S.rsHist.length;
+  return `<div class="topline"><i style="width:${n/1.42}%"></i></div><div class="float-info"><span class="pill">Rough Sort · ${n}/142</span></div>
+    <div class="rs">${bg(x)}<div class="rs-ladder"><div class="left">${cv(x)}<div class="t">${x.t}</div><div class="m">${meta(x)}</div></div>
+    <div class="col" style="gap:14px"><div class="bands">${LABELS.map((l,i)=>`<button class="bandbtn" onclick="rsPick(${i})"><span class="row"><span class="kbd">${i+1}</span>${kao(i)}</span><span class="lab">${l}</span></button>`).join('')}</div>
+    <div class="subrow"><button class="pill" onclick="rsPick(-1)">${Q} Don't remember <span class="kbd">0</span></button><button class="pill" onclick="rsUndo()">${IC.undo} Undo <span class="kbd">⌫</span></button><a class="pill" href="${al(x)}" target="_blank">${IC.ext} AniList</a></div></div></div></div>`;
+}
+function rsPick(b){ S.rsHist.push(b); render() } function rsUndo(){ S.rsHist.pop(); render() }
+
+// Band choice mock: Loved done, Liked partly, rest untouched
+const BC=[{n:14,done:14,duels:41},{n:31,done:6,duels:12},{n:40,done:0,duels:0},{n:30,done:0,duels:0},{n:27,done:0,duels:0}];
+const estLeft=b=>{const k=BC[b].n, d=BC[b].done; let s=0; for(let i=d+1;i<=k;i++) s+=Math.log2(i); return Math.round(s);};
+const covers=b=>[0,1,2,3].map(i=>T[(b*4+i)%T.length]);
+function pickBand(b){ S.screen='Duel'; resetEngine(); render(); }
+function bandChoice(){
+  const d=vid(), rec=1, totDone=BC.reduce((a,b)=>a+b.done,0);
+  const head=`<div class="h1">Which Band next?</div><div class="sub">${totDone}/142 placed · ${BC.reduce((a,b)=>a+b.duels,0)} Duels so far · about ${BC.reduce((a,_,i)=>a+estLeft(i),0)} to go</div>`;
+  const prog=b=>`<div class="prog ${BC[b].done===BC[b].n?'full':''}"><i style="width:${BC[b].done/BC[b].n*100}%"></i></div>`;
+  const status=b=>BC[b].done===BC[b].n?'✓ done':BC[b].done?`${BC[b].done}/${BC[b].n} · ~${estLeft(b)} Duels left`:`${BC[b].n} titles · ~${estLeft(b)} Duels`;
+  if(d==='ladder') return `<div class="bc b-ladder">${head}<div class="list">${LABELS.map((l,i)=>`<button class="item ${BC[i].done===BC[i].n?'done':''} ${i===rec?'rec':''}" onclick="pickBand(${i})"><span class="row">${kao(i)}</span><div class="col" style="gap:6px"><b class="strong">${l}</b>${prog(i)}</div><span class="r">${i===rec?'<b>Continue →</b><br>':''}${status(i)}</span></button>`).join('')}</div></div>`;
+  if(d==='cards') return `<div class="bc b-cards">${head}<div class="grid">${LABELS.map((l,i)=>`<button class="item ${BC[i].done===BC[i].n?'done':''}" onclick="pickBand(${i})"><div class="collage">${covers(i).map(x=>cv(x)).join('')}</div><div class="info"><div class="row">${kao(i)}<b class="strong">${l}</b></div>${prog(i)}<span class="small">${status(i)}</span></div></button>`).join('')}</div></div>`;
+  if(d==='party') return `<div class="bc"><div class="b-party"><span class="kao big" style="background:${COL[0]}">${KAO[0]}</span><div class="h1">Loved is done!</div><div>14 titles placed in 41 Duels. Your favourites are settled.</div>
+    <div class="ring" style="--p:${S.countdownP||0}"><span>${S.count}</span></div><button class="go" onclick="pickBand(1)">Continue with ${kao(1,12)} Liked now</button>
+    <div class="small">or pick another Band</div><div class="others">${LABELS.map((l,i)=>i?`<button onclick="pickBand(${i})">${kao(i,11)} ${l}</button>`:'').join('')}</div></div></div>`;
+  if(d==='side') return `<div class="bc"><div class="b-side"><div class="arrow">←</div><span class="kao" style="background:${COL[0]};font-size:20px">${KAO[0]}</span><div class="h1">Loved is done!</div><div>Pick the next Band from the sidebar.<br><span class="small">Liked is next if you just press Enter.</span></div></div></div>`;
+  if(d==='result') return `<div class="bc">${head}<div class="b-result"><div class="res"><div class="row" style="margin-bottom:8px">${kao(0)}<b class="strong">Loved — your order</b></div>
+    ${E.sorted.length>1?E.sorted.slice(0,8).map((tier,i)=>`<div class="ln"><b>${i+1}</b>${cv(T[tier[0]])}<div><b>${tier.map(nm).join(', ')}</b>${tier.length>1?`<div class="tie">Tier · same score</div>`:''}</div></div>`).join(''):[0,1,2,3,4,5].map(i=>`<div class="ln"><b>${i+1}</b>${cv(T[i])}<div><b>${T[i].t}</b>${i===2?'<div class="tie">Tier · same score</div>':''}</div></div>`).join('')}
+    <div class="small" style="margin-top:8px">Spot a mistake? Re-rank it later from Preview.</div></div>
+    <div class="ch"><b class="strong">Next Band</b>${LABELS.map((l,i)=>i?`<button onclick="pickBand(${i})">${kao(i)}<div class="col" style="gap:4px"><span class="strong">${l}</span>${prog(i)}</div><span class="small">${i===rec?'<b style="color:var(--blue)">next</b>':''}</span></button>`:'').join('')}</div></div></div>`;
+}
+
+// ---------- Start: Log in -> Pool setup ----------
+const STC={Completed:118,Repeating:6,Current:9,Paused:7,Dropped:12};
+const MANGA_K=0.35;
+const stCount=k=>Math.round(STC[k]*(S.media==='Manga'?MANGA_K:1));
+const poolN=()=>Object.keys(STC).filter(k=>S.st[k]).reduce((a,k)=>a+stCount(k),0);
+const lg2f=n=>{let s=0;for(let i=2;i<=n;i++)s+=Math.log2(i);return s};
+const estDuels=n=>Math.round(5*lg2f(Math.round(n/5)));
+const mins=n=>Math.round(estDuels(n)*3/60);
+const togSt=k=>{S.st[k]=!S.st[k];render()}; const setMedia=m=>{S.media=m;render()};
+const login=()=>{S.logged=true;S.step=2;render()};
+const startRS=()=>{S.screen='Rough Sort';render()};
+const AVA=`<span class="ava">z</span>`;
+function poolBits(){
+  const n=poolN();
+  return {
+    media:`<div class="seg">${['Anime','Manga'].map(m=>`<button class="${S.media===m?'on':''}" onclick="setMedia('${m}')">${m}</button>`).join('')}</div>`,
+    chips:`<div class="chips">${Object.keys(STC).map(k=>`<button class="chip ${S.st[k]?'on':''}" onclick="togSt('${k}')">${S.st[k]?'✓ ':''}${k} <span class="cnt">${stCount(k)}</span></button>`).join('')}<span class="chip off" title="You haven't watched these yet">Planning · never ranked</span></div>`,
+    est:`<div class="est"><b>${n}</b> titles · about <b>${estDuels(n)}</b> Duels <span class="small">(~${mins(n)} min at 3 s each, spread over as many sittings as you like)</span></div>`,
+    go:`<button class="go" ${n?'':'disabled'} onclick="startRS()">Start Rough Sort →</button>`,
+    n,
+  };
+}
+const loginBtn=`<button class="go" onclick="login()"><span class="almark">A</span> Log in with AniList</button>`;
+const reassure=`<div class="small fine">Read-only until you confirm an Import. Your progress stays in this browser.</div>`;
+const tagline=`Score your AniList by picking the better of two, again and again.`;
+function start(){
+  const d=vid(), b=poolBits(), userbar=`<div class="userbar">${AVA}<span>zen</span><button class="small link">Log out</button></div>`;
+  if(d==='hero'){
+    const collage=`<div class="collage-bg">${T.concat(T,T).map(x=>cv(x)).join('')}</div>`;
+    const right=!S.logged?`<div class="h1">AniDuel!</div><p>${tagline}</p>${loginBtn}${reassure}`
+      :`${userbar}<div class="h2">What do you want to rank?</div>${b.media}<div class="lab2">List statuses</div>${b.chips}${b.est}${b.go}`;
+    return `<div class="st st-hero"><div class="l">${collage}<div class="hero-copy"><span class="kao" style="background:${COL[0]};font-size:20px;align-self:flex-start">${KAO[0]}</span><div class="big">Which one did you<br>like more?</div><div>Answer that a few hundred times.<br>Get scores that actually mean something.</div></div></div><div class="r"><div class="panel">${right}</div></div></div>`;
+  }
+  if(d==='wizard'){
+    const steps=['Log in','Anime or Manga','Statuses','Ready'];
+    const k=S.logged?Math.max(2,S.step):1;
+    let body;
+    if(k===1) body=`<div class="h1">Let's score your list</div><p>${tagline}</p>${loginBtn}${reassure}`;
+    if(k===2) body=`<div class="h2">What do you want to rank?</div><div class="tiles">${['Anime','Manga'].map(m=>`<button class="tile ${S.media===m?'on':''}" onclick="S.media='${m}';S.step=3;render()"><span class="kao" style="background:${m==='Anime'?COL[0]:COL[3]};font-size:18px">${m==='Anime'?'(˶ᵔ ᵕ ᵔ˶)':'(・ω・)'}</span><b>${m}</b><span class="small">${m==='Anime'?152:53} titles on your list</span></button>`).join('')}</div>`;
+    if(k===3) body=`<div class="h2">Which titles go in?</div><p class="small">Completed and Repeating are picked for you. Planning is never offered.</p>${b.chips}${b.est}<div class="row"><button class="link" onclick="S.step=2;render()">← Back</button><div class="grow"></div><button class="go" onclick="S.step=4;render()">Next →</button></div>`;
+    if(k===4) body=`<div class="h2">You're set!</div><div class="ready">${kao(0,16)}${kao(1,16)}${kao(2,16)}${kao(3,16)}${kao(4,16)}</div><p>First, drop each of your <b>${b.n}</b> ${S.media.toLowerCase()} into one of five Bands. One tap each. Then Duels inside each Band.</p>${b.est}<div class="row"><button class="link" onclick="S.step=3;render()">← Back</button><div class="grow"></div>${b.go}</div>`;
+    return `<div class="st st-wiz"><div class="stepper">${steps.map((s,i)=>`<span class="${i+1<k?'done':i+1===k?'cur':''}"><i>${i+1<k?'✓':i+1}</i>${s}</span>`).join('<em></em>')}</div><div class="panel">${S.logged?userbar:''}${body}</div></div>`;
+  }
+  if(d==='madlib'){
+    if(!S.logged) return `<div class="st st-mad"><div class="sentence">I want to <u>score</u> my AniList<br>by picking the better of two.</div>${loginBtn}${reassure}</div>`;
+    return `<div class="st st-mad">${userbar}<div class="sentence">Rank my <select onchange="setMedia(this.value)">${['Anime','Manga'].map(m=>`<option ${S.media===m?'selected':''}>${m}</option>`).join('')}</select><br>that I've marked as<br>
+      ${Object.keys(STC).map(k=>`<button class="word ${S.st[k]?'on':''}" onclick="togSt('${k}')">${k}</button>`).join(' ')}</div>
+      <div class="answer">That's <b>${b.n}</b> titles, about <b>${estDuels(b.n)}</b> Duels — roughly ${mins(b.n)} minutes, in as many sittings as you like.</div>${b.go}</div>`;
+  }
+  if(d==='wall'){
+    const keys=Object.keys(STC), statusOf=i=>keys[i%7<4?0:i%7===4?1:i%7===5?4:2];
+    const tiles=Array.from({length:72},(_,i)=>{const x=T[i%T.length], inn=S.logged?S.st[statusOf(i)]:true;return `<div class="wt ${inn?'':'out'}">${cv(x)}</div>`}).join('');
+    const box=!S.logged?`<div class="h1">AniDuel!</div><p>${tagline}</p>${loginBtn}${reassure}`
+      :`${userbar}<div class="h2">Your Pool</div>${b.media}${b.chips}${b.est}${b.go}`;
+    return `<div class="st st-wall"><div class="wallgrid">${tiles}</div><div class="panel float">${box}</div></div>`;
+  }
+  if(d==='cockpit'){
+    if(!S.logged) return `<div class="st st-cock"><div class="panel narrow"><div class="h1">Welcome to AniDuel!</div><p>${tagline}</p>${loginBtn}${reassure}</div></div>`;
+    return `<div class="st st-cock"><div class="panel wide"><div class="h2">Pool setup</div><div class="set"><span class="k">Media Type</span>${b.media}</div>
+      <div class="set top"><span class="k">List statuses</span><div class="strows">${Object.keys(STC).map(k=>`<label class="strow"><input type="checkbox" ${S.st[k]?'checked':''} onchange="togSt('${k}')"><span class="grow">${k}</span><span class="cnt">${stCount(k)}</span></label>`).join('')}
+      <label class="strow dis"><input type="checkbox" disabled><span class="grow">Planning</span><span class="small">never ranked</span></label></div></div>
+      <div class="set"><span class="k">Estimate</span>${b.est}</div><div class="row" style="justify-content:flex-end">${b.go}</div></div></div>`;
+  }
+}
+
+// ---------- Preview ----------
+const FMT={
+  P10:{name:'10 point',levels:[1,2,3,4,5,6,7,8,9,10],show:v=>String(v)},
+  P100:{name:'100 point',levels:Array.from({length:100},(_,i)=>i+1),show:v=>String(v)},
+  P5:{name:'5 stars',levels:[1,2,3,4,5],show:v=>'★'.repeat(v)},
+  P3:{name:'3 smileys',levels:[1,2,3],show:v=>['🙁','😐','🙂'][v-1]},
+};
+const PV={only:true,fmt:'P10',best:{P10:10,P100:95,P5:5,P3:3},worst:{P10:3,P100:30,P5:1,P3:1},dist:'Linear',untick:{},forgot:[47,48,49],back:{},filter:null,sel:null};
+const BSIZE=[14,10,10,9,7]; // Band sizes over the first 50 titles
+const TIERS={4:[4,5],20:[20,21,22],33:[33,34]}; // tier start index -> members
+// Acklam inverse normal CDF
+function invPhi(p){const a=[-39.6968302866538,220.946098424521,-275.928510446969,138.357751867269,-30.6647980661472,2.50662827745924],b=[-54.4760987982241,161.585836858041,-155.698979859887,66.8013118877197,-13.2806815528857],c=[-0.00778489400243029,-0.322396458041136,-2.40085856927107,-2.54973253934373,4.37466414146497,2.93816398269878],d=[0.00778469570904146,0.32246712907004,2.445134137143,3.75440866190742],pl=0.02425;
+  let q,r; if(p<pl){q=Math.sqrt(-2*Math.log(p));return(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)}
+  if(p<=1-pl){q=p-0.5;r=q*q;return(((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)}
+  q=Math.sqrt(-2*Math.log(1-p));return-(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)}
+const bandOf=i=>{let s=0;for(let b=0;b<5;b++){s+=BSIZE[b];if(i<s)return b}return 4};
+// Ranked rows (Forgotten excluded unless brought back, which re-adds at the end of its Band for the mock)
+function ranked(){
+  const ids=[];for(let i=0;i<50;i++){ if(PV.forgot.includes(i)&&!PV.back[i]) continue; ids.push(i); }
+  const N=ids.length, F=FMT[PV.fmt], best=PV.best[PV.fmt], worst=PV.worst[PV.fmt];
+  const tierOf={}; Object.entries(TIERS).forEach(([s,m])=>m.forEach(x=>tierOf[x]=+s));
+  const posOf={}; ids.forEach((id,k)=>posOf[id]=k);
+  const avgPos=id=>{const t=tierOf[id]; if(t==null) return posOf[id]; const m=TIERS[t].filter(x=>posOf[x]!=null); return m.reduce((a,x)=>a+posOf[x],0)/m.length;};
+  const nearest=v=>F.levels.reduce((a,l)=>Math.abs(l-v)<Math.abs(a-v)?l:a,F.levels[0]);
+  return ids.map(id=>{ const p=avgPos(id); let v;
+    if(PV.dist==='Linear') v=N>1?best-(p/(N-1))*(best-worst):best;
+    else { const pp=(p+.5)/N, mid=(best+worst)/2; v=Math.min(best,Math.max(worst,mid+invPhi(1-pp)*(best-worst)/4)); }
+    const lv=nearest(v), old=oldScore(id), ch=old!==lv;
+    return {id,band:bandOf(id),tier:tierOf[id]!=null&&TIERS[tierOf[id]].length>1,lv,old,ch,tick:ch&&!PV.untick[id]}; });
+}
+function oldScore(id){ const F=FMT[PV.fmt]; if(id%6===0) return null; const r=((id*37)%5)/4; // 0..1
+  const hi=F.levels[F.levels.length-1]; return F.levels.reduce((a,l)=>Math.abs(l-(hi*0.6+r*hi*0.4))<Math.abs(a-(hi*0.6+r*hi*0.4))?l:a); }
+const sh=v=>v==null?'–':FMT[PV.fmt].show(v);
+function bandRanges(rows){ return [0,1,2,3,4].map(b=>{const l=rows.filter(r=>r.band===b).map(r=>r.lv); return l.length?[Math.min(...l),Math.max(...l)]:null}); }
+const rangeTxt=r=>r?(r[0]===r[1]?sh(r[0]):`${sh(r[0])}–${sh(r[1])}`):'—';
+function hist(rows){ const F=FMT[PV.fmt]; const c={}; F.levels.forEach(l=>c[l]={n:0,b:[0,0,0,0,0]}); rows.forEach(r=>{c[r.lv].n++;c[r.lv].b[r.band]++}); return c; }
+const setPV=(k,v)=>{PV[k]=v;render()};
+const setLvl=(k,v)=>{ v=+v; if(k==='worst'&&v>=PV.best[PV.fmt]) return render(); if(k==='best'&&v<=PV.worst[PV.fmt]) return render(); PV[k][PV.fmt]=v; render(); };
+const tick=id=>{PV.untick[id]=!PV.untick[id];render()};
+const pvAct=(what,id)=>{ if(what==='back'){PV.back[id]=true;S.toast=`Brought back <b>${nm(id)}</b> — it will be placed with a few Duels`;}
+  else if(what==='rerank') S.toast=`Re-rank <b>${nm(id)}</b>: a few Duels inside ${kao(bandOf(id),11)} then back here`;
+  else S.toast=`Move <b>${nm(id)}</b>: opens the Band sheet`; PV.sel=null; render(); };
+const lvlSelect=k=>{ const F=FMT[PV.fmt]; const cur=PV[k][PV.fmt];
+  return `<select class="lsel" onchange="setLvl('${k}',this.value)">${F.levels.filter(l=>l>0).slice().reverse().map(l=>`<option value="${l}" ${l===cur?'selected':''}>${sh(l)}</option>`).join('')}</select>`; };
+function settingsBar(){ return `<div class="pv-set"><label>Best ${lvlSelect('best')}</label><label>Worst ${lvlSelect('worst')}</label>
+  <div class="seg">${['Linear','Bell'].map(d=>`<button class="${PV.dist===d?'on':''}" onclick="setPV('dist','${d}')">${d}</button>`).join('')}</div><span class="small">Score Format: ${FMT[PV.fmt].name}</span></div>`; }
+function histSvg(rows,{h=140,stack=true,click=false,ranges=true}={}){
+  const F=FMT[PV.fmt], c=hist(rows), max=Math.max(1,...F.levels.map(l=>c[l].n)), dense=F.levels.length>20;
+  const bars=F.levels.map(l=>{ const col=c[l]; let y=0;
+    const segs=stack?col.b.map((n,b)=>{const hh=n/max*h; const s=n?`<i style="height:${hh}px;background:${COL[b]}"></i>`:''; return s}).reverse().join(''):`<i style="height:${col.n/max*h}px;background:var(--blue)"></i>`;
+    return `<div class="hb ${PV.filter===l?'sel':''} ${click?'clk':''}" ${click?`onclick="setPV('filter',PV.filter===${l}?null:${l})"`:''} title="${sh(l)}: ${col.n}">${!dense?`<span class="n">${col.n||''}</span>`:''}<div class="stk" style="height:${h}px">${segs}</div>${!dense||l%10===0?`<span class="lv">${sh(l)}</span>`:'<span class="lv">&nbsp;</span>'}</div>`; }).join('');
+  const br=bandRanges(rows);
+  return `<div class="hist2 ${dense?'dense':''}">${bars}</div>${ranges?`<div class="rng">${br.map((r,b)=>`<span>${kao(b,10)} spans <b>${rangeTxt(r)}</b></span>`).join('')}</div>`:''}`;
+}
+const delta=r=>r.old==null?'<span class="dn new">new</span>':r.lv>r.old?'<span class="dn up">▲</span>':r.lv<r.old?'<span class="dn down">▼</span>':'<span class="dn same">=</span>';
+function rowActs(id,forgotten){ return forgotten?`<button class="mini-b" onclick="pvAct('back',${id})">Bring back</button>`
+  :`<button class="mini-b" onclick="pvAct('rerank',${id})">Re-rank</button><button class="mini-b" onclick="pvAct('move',${id})">${IC.move}</button>`; }
+function forgottenList(){ const f=PV.forgot.filter(i=>!PV.back[i]); if(!f.length) return '';
+  return `<div class="forg"><b class="strong">Forgotten (${f.length})</b> <span class="small">— never written, AniList score kept</span>${f.map(i=>`<div class="frow">${cv(T[i])}<span class="grow">${nm(i)}</span><span class="small">AniList: ${sh(oldScore(i))}</span>${rowActs(i,true)}</div>`).join('')}</div>`; }
+const importBtn=rows=>{const n=rows.filter(r=>r.tick).length; return `<button class="go" onclick="S.screen='Import';imSet('confirm')">Import ${n} score${n===1?'':'s'} →</button>`;};
+
+function preview(){
+  const d=S.screen==='Preview'?vid():'tierlist', rows=ranked(), nT=rows.filter(r=>r.tick).length, nC=rows.filter(r=>r.ch).length;
+  const head=`<div class="pv-head"><div><div class="h1">Preview</div><div class="small">${rows.length} ranked · ${nC} change at your Score Format · ${nT} ticked for Import</div></div><div class="grow"></div>${importBtn(rows)}</div>`;
+  const toast=S.toast?`<div class="toast" style="bottom:24px">${S.toast}</div>`:'';
+  if(d==='dash'){
+    return `<div class="pv pv-dash">${head}${settingsBar()}<div class="cols"><div class="box">${histSvg(rows)}</div>
+      <div class="box tbl"><table><tr><th></th><th>#</th><th>Title</th><th>Band</th><th>Old</th><th></th><th>New</th><th></th></tr>
+      ${rows.map((r,k)=>`<tr class="${r.ch?'':'nochg'}"><td><input type="checkbox" ${r.tick?'checked':''} ${r.ch?'':'disabled'} onchange="tick(${r.id})"></td><td>${k+1}</td><td>${nm(r.id)}${r.tier?' <span class="tierb">Tier</span>':''}</td><td>${kao(r.band,9)}</td><td>${sh(r.old)}</td><td>${delta(r)}</td><td><b>${sh(r.lv)}</b></td><td class="acts">${rowActs(r.id)}</td></tr>`).join('')}</table>${forgottenList()}</div></div>${toast}</div>`;
+  }
+  if(d==='tierlist'){
+    const F=FMT[PV.fmt], by={}; rows.forEach(r=>(by[r.lv]=by[r.lv]||[]).push(r));
+    const lvls=F.levels.slice().reverse().filter(l=>by[l]);
+    const shown=l=>PV.only?by[l].filter(r=>r.ch):by[l], nC2=rows.filter(r=>r.ch).length;
+    const onlyToggle=`<div class="seg" style="margin-bottom:10px">${[[true,`Changing (${nC2})`],[false,`All (${rows.length})`]].map(([v,l])=>`<button class="${PV.only===v?'on':''}" onclick="PV.only=${v};render()">${l}</button>`).join('')}</div>`;
+    return `<div class="pv pv-tl">${head}${settingsBar()}${onlyToggle}<div class="tl">${lvls.map(l=>!shown(l).length?`<div class="tlrow coll"><div class="tlk">${sh(l)}</div><div class="tlc">${by[l].length} unchanged · <button class="link" onclick="PV.only=false;render()">show</button></div></div>`:`<div class="tlrow"><div class="tlk">${sh(l)}<span class="small">${by[l].length}</span></div><div class="tlc">${shown(l).map(r=>`<div class="tlcard ${r.tick?'':'off'} b${r.band}" onclick="PV.sel=PV.sel===${r.id}?null:${r.id};render()" title="${nm(r.id)}">${cv(T[r.id])}<span class="ob">${r.old==null?'new':sh(r.old)+'→'}</span>${PV.sel===r.id?`<div class="tlpop" onclick="event.stopPropagation()"><b>${nm(r.id)}</b><span class="small">${kao(r.band,9)} · AniList ${sh(r.old)} → <b>${sh(r.lv)}</b></span>${r.ch?`<label class="row small"><input type="checkbox" ${r.tick?'checked':''} onchange="tick(${r.id})"> Import this</label>`:'<span class="small">No change</span>'}<div class="row">${rowActs(r.id)}</div></div>`:''}</div>`).join('')}</div></div>`).join('')}</div>
+      <div class="rng" style="margin-top:10px">${bandRanges(rows).map((r,b)=>`<span>${kao(b,10)} spans <b>${rangeTxt(r)}</b></span>`).join('')}</div>${forgottenList()}${toast}</div>`;
+  }
+  if(d==='diff'){
+    const f=PV.filter||'changed'; const list=rows.filter(r=>f==='all'||(f==='changed'?r.ch:!r.ch));
+    return `<div class="pv pv-diff"><div class="dmain">${head}<div class="seg" style="margin-bottom:10px">${[['changed',`Changing (${nC})`],['same',`Same (${rows.length-nC})`],['all','All']].map(([k,l])=>`<button class="${f===k?'on':''}" onclick="setPV('filter','${k}')">${l}</button>`).join('')}</div>
+      <div class="dlist">${list.map(r=>`<div class="drow ${r.ch?(r.tick?'chg':'unt'):''}"><input type="checkbox" ${r.tick?'checked':''} ${r.ch?'':'disabled'} onchange="tick(${r.id})">${cv(T[r.id])}<span class="grow">${nm(r.id)} ${kao(r.band,9)}</span><span class="o">${sh(r.old)}</span><span class="arr">→</span><span class="nw">${sh(r.lv)}</span><span class="acts">${rowActs(r.id)}</span></div>`).join('')}</div>${forgottenList()}</div>
+      <aside class="dside"><b class="strong">Scoring</b>${settingsBar()}${histSvg(rows,{h:110})}</aside>${toast}</div>`;
+  }
+  if(d==='histo'){
+    const list=PV.filter==null?rows:rows.filter(r=>r.lv===PV.filter);
+    return `<div class="pv pv-histo">${head}${settingsBar()}<div class="bighist">${histSvg(rows,{h:230,click:true})}<div class="small" style="margin-top:6px">Click a bar to see who gets that score.${PV.filter!=null?` Showing <b>${sh(PV.filter)}</b> · <button class="link" onclick="setPV('filter',null)">show all</button>`:''}</div></div>
+      <div class="hgrid">${list.map(r=>`<div class="hcard ${r.tick?'':'off'}">${cv(T[r.id])}<div class="col" style="gap:2px;min-width:0"><span class="nmz">${nm(r.id)}</span><span class="small">${kao(r.band,8)} ${sh(r.old)} → <b>${sh(r.lv)}</b></span><div class="row">${r.ch?`<input type="checkbox" ${r.tick?'checked':''} onchange="tick(${r.id})">`:''}${rowActs(r.id)}</div></div></div>`).join('')}</div>${forgottenList()}${toast}</div>`;
+  }
+  if(d==='river'){
+    let html='', lastB=-1; const br=bandRanges(rows);
+    rows.forEach(r=>{ if(r.band!==lastB){ html+=`<div class="rsep">${kao(r.band,11)}<span>${LABELS[r.band]}</span><span class="small">spans <b>${rangeTxt(br[r.band])}</b></span></div>`; lastB=r.band; }
+      html+=`<div class="rv ${r.tick?'':'off'}" onclick="${r.ch?`tick(${r.id})`:''}" title="${r.ch?'Click to tick / untick':'No change'}"><div class="sc">${sh(r.lv)}</div>${cv(T[r.id])}<div class="small">${r.old==null?'new':`was ${sh(r.old)}`}</div><div class="nmz">${nm(r.id)}</div><div class="row" onclick="event.stopPropagation()">${rowActs(r.id)}</div></div>`; });
+    return `<div class="pv pv-river">${head}<div class="float-set">${settingsBar()}${histSvg(rows,{h:60,ranges:false})}</div><div class="river">${html}</div><div class="small" style="padding:0 30px">Scroll sideways →  · dimmed = not imported (click to toggle)</div>${forgottenList()}${toast}</div>`;
+  }
+}
+
+// ---------- Import ----------
+const IM={state:'confirm',done:0,failIds:[],wait:0,tick:null};
+const IM_STATES=[['confirm','Confirm'],['running','Running'],['limited','Rate-limited'],['done','Done (3 failed)']];
+function imWrites(){ return ranked().filter(r=>r.tick); }
+function imSet(st){ IM.state=st; const n=imWrites().length; clearInterval(IM.tick);
+  if(st==='confirm'){IM.done=0;IM.failIds=[];}
+  if(st==='running'){IM.done=Math.min(IM.done,n-1);IM.failIds=[];IM.tick=setInterval(()=>{ if(IM.state!=='running') return; IM.done++; if(IM.done===9) IM.failIds=[imWrites()[8].id];
+    if(IM.done>=n){IM.done=n;IM.state='done';clearInterval(IM.tick);} render(false); },700);}
+  if(st==='limited'){IM.done=Math.round(n*.55);IM.wait=42;IM.failIds=[];IM.tick=setInterval(()=>{ if(IM.state!=='limited') return; IM.wait=Math.max(0,IM.wait-1); render(false); },1000);}
+  if(st==='done'){IM.done=n;const w=imWrites();IM.failIds=[w[3].id,w[11].id,w[20].id].filter(Boolean);}
+  render(); }
+const eta=left=>{const s=Math.round(left*2.2);return s>=60?`${Math.floor(s/60)} min ${s%60} s`:`${s} s`;};
+function imBits(){
+  const w=imWrites(), n=w.length, done=IM.done, pct=n?done/n*100:0, ok=done-IM.failIds.length;
+  const skipped=ranked().length-n;
+  const status=IM.state==='limited'?`AniList rate limit reached — waiting ${IM.wait}s, then it carries on by itself`
+    :IM.state==='running'?`Writing about 1 every 2.2 s to stay inside AniList's limit`:'';
+  const cur=w[Math.min(done,n-1)];
+  return {w,n,done,pct,ok,skipped,status,cur,
+    summary:`<div class="imsum"><div><b>${ok}</b><span>written</span></div><div><b>${skipped}</b><span>skipped (no change / unticked)</span></div><div class="${IM.failIds.length?'bad':''}"><b>${IM.failIds.length}</b><span>failed</span></div></div>`,
+    failed:IM.failIds.length?`<div class="imfail"><b class="strong">Couldn't save</b>${IM.failIds.map(id=>`<div class="frow">${cv(T[id])}<span class="grow">${nm(id)}</span><span class="small">network error</span></div>`).join('')}<button class="go" onclick="IM.failIds=[];render()">Retry ${IM.failIds.length} failed</button></div>`:'',
+    confirmBox:`<div class="imconf"><div class="h2">Write ${n} scores to AniList?</div><p>Only the <b>score</b> changes. Status, progress, notes and dates stay as they are. Forgotten and unticked titles are not touched.</p>
+      <p class="small">Takes about ${eta(n)}. You can close the tab — it carries on where it stopped next time.</p>
+      <div class="row"><button class="go" onclick="imSet('running')">Yes, write ${n} scores</button><button class="link" onclick="S.screen='Preview';render()">Back to Preview</button></div></div>`,
+    back:`<button class="link" onclick="S.screen='Preview';render()">← Back to Preview</button>`,
+  };
+}
+const resultTxt=b=>`<div class="h2">${IM.failIds.length?'Almost done':'All done!'} ${kao(IM.failIds.length?3:0,13)}</div>`;
+function importScreen(){
+  const d=vid(), b=imBits(), st=IM.state;
+  const toast=S.toast?`<div class="toast" style="bottom:24px">${S.toast}</div>`:'';
+  if(d==='modal'){
+    // stays on the Preview tier list; a modal confirms, then a slim progress bar sits on top
+    const pvHtml=preview();
+    const strip=st==='confirm'?'':`<div class="imstrip ${st}"><div class="row"><b>${st==='done'?`Done — ${b.ok} written, ${IM.failIds.length} failed`:`Importing ${b.done}/${b.n}`}</b><span class="small grow">${b.status}${st==='running'?` · ${eta(b.n-b.done)} left`:''}</span>${st==='done'?(IM.failIds.length?`<button class="go sm" onclick="IM.failIds=[];render()">Retry ${IM.failIds.length}</button>`:''):''}</div><div class="prog"><i style="width:${b.pct}%"></i></div></div>`;
+    return `<div class="im-modal-wrap">${strip}${pvHtml}${st==='confirm'?`<div class="scrim">${b.confirmBox}</div>`:''}</div>`;
+  }
+  if(st==='confirm') return `<div class="im im-center">${b.confirmBox}${toast}</div>`;
+  if(d==='ring'){
+    return `<div class="im im-ring"><div class="ringbig" style="--p:${b.pct}"><div class="inner">${st==='done'?kao(IM.failIds.length?3:0,16):`<b>${b.done}</b><span>of ${b.n}</span>`}</div></div>
+      ${st==='done'?resultTxt()+b.summary+b.failed:`<div class="h2">${st==='limited'?'Taking a breather…':'Writing to AniList'}</div><div class="eta">${eta(b.n-b.done)} left</div>
+      <div class="nowc">${cv(T[b.cur.id])}<div class="col" style="gap:2px"><span class="small">now</span><b class="strong">${nm(b.cur.id)}</b><span>${sh(b.cur.old)} → <b class="strong">${sh(b.cur.lv)}</b></span></div></div>
+      <div class="small ${st==='limited'?'warn':''}">${b.status}</div><div class="small">You can close this tab; it carries on next time.</div>`}${st==='done'?b.back:''}</div>`;
+  }
+  if(d==='grid'){
+    return `<div class="im im-grid"><div class="imtop"><div class="col" style="gap:2px"><div class="h2">${st==='done'?(IM.failIds.length?'Almost done':'All done!'):`Importing ${b.done}/${b.n}`}</div><span class="small ${st==='limited'?'warn':''}">${st==='done'?'':b.status+' · '+eta(b.n-b.done)+' left'}</span></div><div class="grow"></div>${st==='done'?b.summary:''}</div>
+      <div class="prog"><i style="width:${b.pct}%"></i></div>
+      <div class="cgrid">${b.w.map((r,i)=>{const f=IM.failIds.includes(r.id), dn=i<b.done&&!f, now=i===b.done&&st!=='done';
+        return `<div class="cg ${dn?'ok':''} ${f?'fail':''} ${now?'now':''}" title="${nm(r.id)}">${cv(T[r.id])}<span class="badge">${f?'✕':dn?'✓':now?'…':''}</span><span class="sc">${sh(r.lv)}</span></div>`}).join('')}</div>
+      ${st==='done'?b.failed+b.back:''}</div>`;
+  }
+  if(d==='float'){
+    const pvHtml=preview();
+    return `<div class="im-modal-wrap">${pvHtml}<div class="imfloat ${st}"><div class="row"><b class="strong grow">${st==='done'?(IM.failIds.length?'Import finished with errors':'Import finished'):`Importing ${b.done}/${b.n}`}</b><span class="small">${st==='done'?'':eta(b.n-b.done)}</span></div>
+      <div class="prog"><i style="width:${b.pct}%"></i></div><div class="small ${st==='limited'?'warn':''}">${st==='done'?`${b.ok} written · ${b.skipped} skipped · ${IM.failIds.length} failed`:b.status}</div>
+      ${st==='done'&&IM.failIds.length?`<button class="go sm" onclick="IM.failIds=[];render()">Retry ${IM.failIds.length} failed</button>`:''}<div class="small fine">Keep browsing — Preview is locked while writing.</div></div></div>`;
+  }
+  if(d==='log'){
+    const rows=b.w.slice(0,Math.min(b.done+1,b.n)).map((r,i)=>{const f=IM.failIds.includes(r.id), now=i===b.done&&st!=='done';
+      return `<div class="lg ${f?'fail':''} ${now?'now':''}"><span class="ic">${f?'✕':now?'…':'✓'}</span>${cv(T[r.id])}<span class="grow">${nm(r.id)}</span><span>${sh(r.old)} → <b>${sh(r.lv)}</b></span>${f?'<span class="small">failed</span>':''}</div>`}).reverse();
+    if(st==='limited') rows.unshift(`<div class="lg wait"><span class="ic">⏸</span><span class="grow">AniList rate limit — waiting ${IM.wait}s</span></div>`);
+    return `<div class="im im-log"><div class="imtop"><div class="col" style="gap:2px"><div class="h2">${st==='done'?(IM.failIds.length?'Almost done':'All done!'):`Importing ${b.done}/${b.n}`}</div><span class="small">${st==='done'?'':`${eta(b.n-b.done)} left · ${b.status}`}</span></div><div class="grow"></div>${st==='done'?b.summary:''}</div>
+      <div class="prog"><i style="width:${b.pct}%"></i></div>${st==='done'?b.failed:''}<div class="lglist">${rows.join('')}</div>${st==='done'?b.back:''}</div>`;
+  }
+}
+
+// ---------- App menu: Backup / Restore / Pool / Media Type / Start over / Theme / Log out ----------
+const MN={open:false,dlg:null,q:'',delProg:false,sec:{rank:true,acct:true}};
+const ITEMS=[
+  {k:'media',  g:'This Ranking', ic:'⇆', t:'Switch to Manga', d:'Each Media Type keeps its own Ranking'},
+  {k:'pool',   g:'This Ranking', ic:'☰', t:'Change list statuses', d:'Completed, Repeating · titles join or leave the Ranking'},
+  {k:'backup', g:'This Ranking', ic:'↓', t:'Save Backup file', d:'Download your Duel log and settings'},
+  {k:'restore',g:'This Ranking', ic:'↑', t:'Restore from Backup', d:'Load a Backup file from another browser'},
+  {k:'over',   g:'This Ranking', ic:'↺', t:'Start this Ranking over', d:'Throws away all Duels for Anime', danger:true},
+  {k:'theme',  g:'App',          ic:'◐', t:'Light / dark theme', d:'Follows your system unless you pick one'},
+  {k:'logout', g:'Account',      ic:'⎋', t:'Log out', d:'Removes your AniList token from this browser'},
+];
+function mnDo(k){
+  MN.open=false;
+  if(k==='backup'){ S.toast=`Saved <b>aniduel-zen-anime-2026-10-05.json</b>`; MN.dlg=null; }
+  else if(k==='theme'){ S.dark=!S.dark; MN.dlg=null; }
+  else if(k==='media'){ S.toast=`Switched to <b>Manga</b> — your Anime Ranking is kept`; MN.dlg=null; }
+  else MN.dlg=k;
+  render();
+}
+const mnClose=()=>{MN.dlg=null;MN.open=false;render()};
+function dialog(){
+  if(!MN.dlg) return '';
+  const wrap=(title,body,actions)=>`<div class="dscrim" onclick="mnClose()"><div class="dlg" onclick="event.stopPropagation()"><div class="h2">${title}</div>${body}<div class="row" style="justify-content:flex-end;gap:10px;margin-top:6px"><button class="link" onclick="mnClose()">Cancel</button>${actions}</div></div></div>`;
+  if(MN.dlg==='logout') return wrap('Log out?',`<p>Your AniList token is removed from this browser.</p><label class="row chk"><input type="checkbox" ${MN.delProg?'checked':''} onchange="MN.delProg=this.checked;render()"> Also delete my saved progress on this browser</label>${MN.delProg?`<p class="small warn">Your 47 Duels for Anime will be gone unless you saved a Backup. <button class="link" onclick="mnDo('backup')">Save Backup first</button></p>`:''}`,`<button class="go ${MN.delProg?'danger':''}" onclick="mnClose();S.toast='Logged out';render()">${MN.delProg?'Log out and delete':'Log out'}</button>`);
+  if(MN.dlg==='over') return wrap('Start Anime over?',`<p>All Rough Sort choices and <b>47 Duels</b> for Anime are thrown away. Your AniList scores are not touched.</p><p class="small">Tip: save a Backup first if you might want them back.</p>`,`<button class="go danger" onclick="mnClose();S.toast='Started over';render()">Start over</button>`);
+  if(MN.dlg==='pool') return wrap('Which statuses are in the Pool?',`<div class="chips">${Object.keys(STC).map(k=>`<button class="chip ${S.st[k]?'on':''}" onclick="S.st['${k}']=!S.st['${k}'];render()">${S.st[k]?'✓ ':''}${k} <span class="cnt">${STC[k]}</span></button>`).join('')}</div><p class="small">Titles that now match join Rough Sort; titles that no longer match leave the Ranking. Their Duels stay in the log.</p>`,`<button class="go" onclick="mnClose();S.toast='Pool updated: 9 titles added to Rough Sort';render()">Apply</button>`);
+  if(MN.dlg==='restore') return wrap('Restore from Backup',`<div class="drop">Drop a Backup file here, or <u>choose a file</u></div><p class="small">The file must be for <b>zen</b> and <b>Anime</b>. Restoring replaces the progress in this browser.</p><div class="small warn">Example error: “This Backup is for Manga — switch to Manga first.”</div>`,`<button class="go" onclick="mnClose();S.toast='Restored 312 events from Backup';render()">Restore</button>`);
+  return '';
+}
+const itemBtn=(it,cls='')=>`<button class="mitem ${it.danger?'danger':''} ${cls}" onclick="mnDo('${it.k}')"><span class="mic">${it.ic}</span><span class="col" style="gap:1px;align-items:flex-start"><span>${it.t}</span><span class="small">${it.d}</span></span></button>`;
+const groups=()=>[...new Set(ITEMS.map(i=>i.g))];
+// what goes at the bottom of the sidebar, per variant
+function menuSideBottom(d){
+  if(d==='pop') return `<div class="acct-wrap">${MN.open?`<div class="mpop">${groups().map(g=>`<div class="mg">${g}</div>${ITEMS.filter(i=>i.g===g).map(i=>itemBtn(i)).join('')}`).join('')}</div>`:''}<button class="acct" onclick="MN.open=!MN.open;render()">${AVA}<span class="grow" style="text-align:left">zen<br><span class="small">Anime · 142 titles</span></span><span>${MN.open?'▾':'▴'}</span></button></div>`;
+  if(d==='page') return `<button class="acct" onclick="MN.open=true;render()">${AVA}<span class="grow" style="text-align:left">zen</span><span title="Settings">⚙</span></button>`;
+  if(d==='drawer') return `<button class="acct" onclick="MN.open=true;render()">${AVA}<span class="grow" style="text-align:left">zen</span>${IC.menu}</button>`;
+  if(d==='palette') return `<button class="acct" onclick="MN.open=true;MN.q='';render()"><span class="grow" style="text-align:left">Search actions…</span><span class="kbd">Ctrl K</span></button>`;
+  if(d==='inline') return `<div class="isec">${[['rank','This Ranking',ITEMS.filter(i=>i.g!=='Account'&&i.g!=='App')],['acct','Account',ITEMS.filter(i=>i.g==='Account'||i.g==='App')]].map(([k,l,its])=>`<button class="ihd" onclick="MN.sec.${k}=!MN.sec.${k};render()">${MN.sec[k]?'▾':'▸'} ${l}</button>${MN.sec[k]?its.map(i=>`<button class="ilink ${i.danger?'danger':''}" onclick="mnDo('${i.k}')"><span class="mic">${i.ic}</span>${i.t}</button>`).join(''):''}`).join('')}</div>`;
+  return '';
+}
+function menuOverlay(d){
+  if(!MN.open) return '';
+  if(d==='page') return `<div class="mpage"><div class="row"><div class="h1 grow">Settings</div><button class="ibtn" onclick="MN.open=false;render()">${IC.x}</button></div>
+    <div class="userbar">${AVA}<span>Logged in as <b>zen</b></span></div>
+    ${groups().map(g=>`<div class="mcard"><div class="mg">${g}</div>${ITEMS.filter(i=>i.g===g).map(i=>itemBtn(i,'wide')).join('')}</div>`).join('')}</div>`;
+  if(d==='drawer') return `<div class="dscrim right" onclick="MN.open=false;render()"><div class="drawer" onclick="event.stopPropagation()"><div class="row"><div class="userbar grow">${AVA}<b>zen</b></div><button onclick="MN.open=false;render()">${IC.x}</button></div>${groups().map(g=>`<div class="mg">${g}</div>${ITEMS.filter(i=>i.g===g).map(i=>itemBtn(i)).join('')}`).join('')}</div></div>`;
+  if(d==='palette'){ const q=MN.q.toLowerCase(), list=ITEMS.filter(i=>!q||i.t.toLowerCase().includes(q)||i.d.toLowerCase().includes(q));
+    return `<div class="dscrim top" onclick="MN.open=false;render()"><div class="pal" onclick="event.stopPropagation()"><input id="palq" placeholder="Type an action… (backup, manga, log out)" value="${MN.q}" oninput="MN.q=this.value;render();const e=document.getElementById('palq');e.focus();e.setSelectionRange(e.value.length,e.value.length)">${list.map((i,k)=>itemBtn(i,k===0?'first':'')).join('')||'<div class="small" style="padding:12px">No action</div>'}</div></div>`; }
+  return '';
+}
+let timer=null;
+function runCountdown(){ clearInterval(timer); S.count=5; S.countdownP=0; if(S.screen!=='Band choice'||vid()!=='party') return;
+  timer=setInterval(()=>{ S.count--; S.countdownP=(5-S.count)*20; if(S.count<=0){clearInterval(timer); S.count='→'; } render(false); },1000); }
+
+function render(restart=true){
+  document.body.classList.toggle('mobile',S.mobile); document.body.classList.toggle('dark',S.dark);
+  const app=document.getElementById('app');
+  const sidePick=S.screen==='Band choice'&&vid()==='side';
+  const startNoSide=S.screen==='Start';
+  app.className=`${(S.side||S.mobile)&&!startNoSide?'':'noside'} ${sidePick?'bandpick':''} ${startNoSide&&S.mobile?'nosidem':''}`;
+  const isDuel=S.screen==='Duel';
+  const done=E.sorted.flat().length, tot=14, pct=done/tot*100;
+  const rows=LABELS.map((b,i)=>{ const p=isDuel?(i==0?pct:0):BC[i].done/BC[i].n*100, c=isDuel?(i==0?`${done}/${tot}`:`0/${BC[i].n}`):`${BC[i].done}/${BC[i].n}`;
+    return `<${sidePick?`button onclick="pickBand(${i})"`:'div'} class="bandrow ${isDuel&&i==0?'cur':''}">${kao(i,10)}<div class="bar"><i style="width:${p}%"></i></div><span>${c}</span></${sidePick?'button':'div'}>`}).join('');
+  const sidebar=`<aside class="side"><div class="row"><div class="logo grow">Ani<b>Duel!</b></div><button class="hide-m sbtn" title="Theme" onclick="S.dark=!S.dark;render()">${S.dark?IC.sun:IC.moon}</button><button class="hide-m sbtn" title="Hide sidebar ([)" onclick="setSide(0)">${IC.hide}</button></div>
+    <div class="small hide-m">zen · Anime · 142 titles</div>
+    <div class="col hide-m" style="gap:4px">${rows}</div>
+    <div class="small hide-m row">${kao(0,10)} Ranking so far</div>
+    <div class="rank hide-m">${E.sorted.map((tier,i)=>{const inb=E.cur!=null&&i>=E.lo&&i<E.hi,pv=E.cur!=null&&i===pivotIdx();return `<div class="${pv?'piv':inb?'inb':'out'}">${i+1}. ${tier.map(nm).join(' = ')}</div>`}).join('')}</div>
+    ${S.screen==='Menu'?`<div class="hide-m">${menuSideBottom(vid())}</div>`:''}
+    ${S.mobile?`<div class="grow"></div>${kao(0,9)}<span class="small">${done}/${tot}</span>${IC.menu}`:''}</aside>`;
+  const sideBtn=!S.side&&!S.mobile&&S.screen!=='Start'?`<div class="float-side"><button class="ibtn" onclick="setSide(1)">${IC.menu}</button></div>`:'';
+  const main={'Menu':duel,'Import':importScreen,'Preview':preview,'Start':start,'Duel':duel,'Band choice':bandChoice,'Rough Sort':rough}[S.screen]();
+  app.innerHTML=sidebar+`<main class="main">${sideBtn}${main}${S.screen==='Menu'?menuOverlay(vid()):''}</main>${dialog()}`;
+  const V=VARS[S.screen], cur=V[S.v[S.screen]];
+  pname.textContent=cur.name; psub.textContent=cur.sub; pidx.textContent=`${S.v[S.screen]+1}/${V.length}`; phelp.textContent=HELP[S.screen];
+  pscreen.innerHTML=SCREENS.map(v=>`<button class="${S.screen===v?'on':''}" onclick="go('${v}')">${v}</button>`).join('');
+  pstate.innerHTML=S.screen==='Import'?IM_STATES.map(([k,l])=>`<button class="${IM.state===k?'on':''}" onclick="imSet('${k}')">${l}</button>`).join(''):S.screen==='Preview'?Object.keys(FMT).map(k=>`<button class="${PV.fmt===k?'on':''}" onclick="PV.fmt='${k}';PV.filter=null;render()">${FMT[k].name}</button>`).join(''):S.screen==='Start'?['Logged out','Pool setup'].map((v,i)=>`<button class="${+S.logged===i?'on':''}" onclick="S.logged=${!!i};S.step=${i?2:1};render()">${v}</button>`).join(''):'<span style="color:#777;font-size:11px">—</span>';
+  pview.innerHTML=['Desktop','Mobile'].map((v,i)=>`<button class="${+S.mobile===i?'on':''}" onclick="S.mobile=${!!i};render()">${v}</button>`).join('');
+  if(restart) runCountdown();
+}
+function go(v){ S.screen=v; S.moving=null; S.toast=null; render(); }
+const setSide=i=>{S.side=!!i;render()};
+function cycle(n){ MN.open=false; MN.dlg=null; const V=VARS[S.screen]; S.v[S.screen]=(S.v[S.screen]+n+V.length)%V.length; S.moving=null; render() }
+sys.addEventListener('change',e=>{S.dark=e.matches;render()});
+document.addEventListener('click',e=>{ if(S.moving!=null&&!e.target.closest('.mv-pop,.mv-over,.mv-sheet,.mv-inline,.mv-radial,.ibtn')){S.moving=null;render()} });
+
+let fMode=false;
+addEventListener('keydown',e=>{
+  if(S.screen==='Menu'&&(e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'&&vid()==='palette'){e.preventDefault();MN.open=true;MN.q='';render();setTimeout(()=>document.getElementById('palq')?.focus());return}
+  if(e.key==='Escape'&&(MN.open||MN.dlg)){MN.open=false;MN.dlg=null;render();return}
+  if(e.target.tagName==='INPUT'){ if(e.key==='Enter'&&MN.open){const q=MN.q.toLowerCase(), it=ITEMS.find(i=>!q||i.t.toLowerCase().includes(q)||i.d.toLowerCase().includes(q)); if(it) mnDo(it.k);} return; }
+  if(e.key==='[')setSide(+!S.side);
+  if(S.screen==='Duel'){
+    if(e.key==='Escape'){S.moving=null;S.mPending=false;render();return}
+    if(S.moving!=null&&'12345'.includes(e.key)&&e.key.length===1){moveTo(S.moving,+e.key-1);return}
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ const dir=e.key==='ArrowLeft'?-1:1; e.preventDefault();
+      if(e.shiftKey){cycle(dir);return} if(E.cur==null)return; const [l,r]=pair(), id=dir<0?l:r;
+      if(S.mPending){S.mPending=false;openMove(id);return}
+      if(fMode){fMode=false;forget(id)} else answer(id); return; }
+    if(e.key==='m'||e.key==='M'){S.mPending=true;render();return}
+    if(e.key==='ArrowDown'){answer('tie');e.preventDefault()} if(e.key==='Backspace')undo(); if(e.key==='f'||e.key==='F')fMode=true;
+  } else if(S.screen==='Rough Sort'){
+    if('12345'.includes(e.key)&&e.key.length===1)rsPick(+e.key-1); if(e.key==='0')rsPick(-1); if(e.key==='Backspace')rsUndo();
+  } else {
+    if(e.target.tagName==='SELECT') return;
+    if(e.key==='ArrowLeft'||e.key==='ArrowRight'){cycle(e.key==='ArrowLeft'?-1:1);e.preventDefault()}
+    if(e.key==='Enter'&&S.screen==='Band choice')pickBand(1);
+  }
+});
+(()=>{const p=picker,g=p.querySelector('.grip');let sx,sy,ox,oy;
+g.onpointerdown=e=>{const r=p.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;g.setPointerCapture(e.pointerId);
+  g.onpointermove=m=>{p.style.left=ox+m.clientX-sx+'px';p.style.top=oy+m.clientY-sy+'px';p.style.right='auto';p.style.bottom='auto'}};
+g.onpointerup=()=>g.onpointermove=null;})();
+render();
+
+fetch('https://graphql.anilist.co',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:
+ `{Page(perPage:50){media(type:ANIME,sort:POPULARITY_DESC){id title{romaji english} startDate{year} format episodes coverImage{extraLarge color} bannerImage}}}`})})
+ .then(r=>r.json()).then(j=>{ j.data.Page.media.forEach((m,i)=>Object.assign(T[i],{aid:m.id,t:m.title.english||m.title.romaji,y:m.startDate.year,f:m.format,eps:m.episodes,
+   c:m.coverImage.color||T[i].c,cover:m.coverImage.extraLarge,banner:m.bannerImage})); S.toast=null; render(false); }).catch(()=>{});
+</script>
+</body>
+</html>
