@@ -8,7 +8,7 @@ We chose this because the target user is a beginner who tends to put most titles
 
 - **Each Band is a fixed score range**: this respects the user's Rough Sort exactly, and users on 3 smileys would need no Duels at all. We rejected it because the Distribution would stop meaning anything, since the shape of the scores would just follow the Band sizes.
 - **A per-title warning when a score falls outside its Band's slice of best..worst**: we dropped this (#14). Because Bands are contiguous blocks in the Ranking, a title's score depends only on Band sizes and the settings, never on its Duels. A beginner with a large 😍 Band would see most 😍 titles flagged, and Re-rank could never clear the flag.
-- **Number of Bands follows the Score Format**: we dropped this once Bands stopped being score ranges. There are always 5 Bands now.
+- **Number of Bands follows the Score Format**: we dropped this once Bands stopped being score ranges. There are always 5 Bands now. An oversized Band can be split into Sub-bands (ADR 0006), but it is still one Band, and score ranges stay per Band.
 
 ## Consequences
 

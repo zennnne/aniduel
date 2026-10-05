@@ -13,15 +13,19 @@ The first pass over the Pool, where the user puts each title into a Band with a 
 _Avoid_: Pre-sort, quick sort, triage
 
 **Band**:
-A coarse group a title is placed in during Rough Sort. There are always five Bands. Bands are fixed boundaries in the Ranking, so Duels only happen between titles in the same Band, but a Band is not a score range.
+A coarse group a title is placed in during Rough Sort. There are always five Bands. Bands are fixed boundaries in the Ranking, so Duels only happen between titles in the same Band (or Sub-band), but a Band is not a score range.
 _Avoid_: Bucket, tier, group
+
+**Sub-band**:
+One of the three ordered parts an oversized Band can be split into after Rough Sort. Like a Band, it is a fixed boundary for Duels, but it has no score range of its own and the Band stays one Band.
+_Avoid_: Sub-tier, split, section
 
 **Duel**:
 One comparison between two titles in the Pool, where the user picks the better one, declares them equal, or marks one as Forgotten.
 _Avoid_: Match, battle, comparison, pair
 
 **Ranking**:
-The ordered result of Rough Sort and all Duels so far: the five Bands in order, Tiers in order inside each Band, and titles inside each Tier.
+The ordered result of Rough Sort and all Duels so far: the five Bands in order, any Sub-bands in order inside a Band, Tiers in order inside each Band or Sub-band, and titles inside each Tier.
 _Avoid_: Sort, order, list
 
 **Duel log**:
