@@ -8,10 +8,10 @@ export const LOG_FORMAT_VERSION = 1
  * version 1 did, so both are accepted; a version 1 log may not contain version 2 events. `appendEvent` stamps
  * the current version on the header, so an older app refuses a log it would replay differently (ADR 0005).
  * 3 added `band-selected`; it replays every version 1 and 2 log exactly as before.
- * 4 added `band-moved`, `rerank-requested` and `unforgotten`; it replays every older log exactly as before.
+ * 5 added `band-moved`, `rerank-requested` and `unforgotten`; it replays every older log exactly as before.
  */
-export const ENGINE_VERSION = 4
-const KNOWN_ENGINE_VERSIONS: readonly number[] = [1, 2, 3, 4]
+export const ENGINE_VERSION = 5
+const KNOWN_ENGINE_VERSIONS: readonly number[] = [1, 2, 3, 4, 5]
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
 export type BandIndex = 0 | 1 | 2 | 3 | 4
@@ -372,20 +372,20 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
       }
       return
     case 'band-moved': {
-      requireEngine(m, 4, 'Band moved')
+      requireEngine(m, 5, 'Band moved')
       if (!placeOf(m, event.id)) throw new ReplayError(`Title ${event.id} can't be moved: it is not in a Band`)
       sendToFront(m, event.id, placeAt(event.band, event.sub))
       return
     }
     case 'rerank-requested': {
-      requireEngine(m, 4, 'Re-rank requested')
+      requireEngine(m, 5, 'Re-rank requested')
       const place = placeOf(m, event.id)
       if (!place) throw new ReplayError(`Title ${event.id} can't be re-ranked: it is not in a Band`)
       sendToFront(m, event.id, place)
       return
     }
     case 'unforgotten': {
-      requireEngine(m, 4, 'Unforgotten')
+      requireEngine(m, 5, 'Unforgotten')
       const at = m.forgotten.indexOf(event.id)
       if (at < 0) throw new ReplayError(`Title ${event.id} can't be brought back: it is not Forgotten`)
       m.forgotten.splice(at, 1)

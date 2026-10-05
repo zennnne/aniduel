@@ -103,10 +103,10 @@ describe('Band moved', () => {
     expect(state.prompt).toEqual({ kind: 'all-complete' })
   })
 
-  it('is refused for a title in no Band (Rough Sort or Forgotten), or in a log older than engine version 4', () => {
+  it('is refused for a title in no Band (Rough Sort or Forgotten), or in a log older than engine version 5', () => {
     expect(() => replay(logOf([1, 2], move(1, 0)))).toThrow(ReplayError)
     expect(() => replay(plus(finished(), forget(2), move(2, 1)))).toThrow(ReplayError)
-    const old = { ...plus(finished(), move(2, 2)), header: { ...finished().header, engine: 3 } }
+    const old = { ...plus(finished(), move(2, 2)), header: { ...finished().header, engine: 4 } }
     expect(() => replay(old)).toThrow(ReplayError)
   })
 })
