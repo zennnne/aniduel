@@ -44,20 +44,21 @@ export function RankingSidebar(props: {
           const share = roughSorting ? (done ? p.total / done : 0) : p.total ? p.done / p.total : 0
           const subBands = state.bands[band].subBands
           return (
-            <div key={band} className={duel?.band === band ? 'bandrow cur' : 'bandrow'}>
+            <div key={band} className={duel?.band === band && !state.bandChoice ? 'bandrow cur' : 'bandrow'}>
               <Kao band={band} size={10} />
               {subBands ? (
-                // A split Band stays one row; its bar is striped by Sub-band (titles per Sub-band).
+                // A split Band stays one row; its bar is striped by Sub-band (width = titles in it, fill = placed).
                 <div className="bar segs" title="Best / Middle / Lowest">
-                  {SUB_BANDS.map((sub) => (
-                    <i
-                      key={sub}
-                      style={{
-                        flex: subBands[sub].tiers.reduce((n, t) => n + t.length, 0) + subBands[sub].unplaced.length,
-                        background: SUB_BAND_UI[sub].colour,
-                      }}
-                    />
-                  ))}
+                  {SUB_BANDS.map((sub) => {
+                    const placed = subBands[sub].tiers.reduce((n, t) => n + t.length, 0)
+                    const all = placed + subBands[sub].unplaced.length
+                    const fill = roughSorting || all === 0 ? 100 : (placed / all) * 100
+                    return (
+                      <span key={sub} style={{ flex: all, ['--sub' as string]: SUB_BAND_UI[sub].colour }}>
+                        <i style={{ width: `${fill}%` }} />
+                      </span>
+                    )
+                  })}
                 </div>
               ) : (
                 <div className={offered?.includes(band) ? 'bar over' : 'bar'}>
@@ -68,8 +69,19 @@ export function RankingSidebar(props: {
             </div>
           )
         })}
+        {!roughSorting && (
+          <div className="bandrow total">
+            <span>Total</span>
+            <div className="bar">
+              <i style={{ width: `${total ? (done / total) * 100 : 100}%` }} />
+            </div>
+            <span>
+              {done}/{total}
+            </span>
+          </div>
+        )}
       </div>
-      {duel && (
+      {duel && !state.bandChoice && (
         <>
           <div className="small row hide-m">
             <Kao band={duel.band} size={10} /> Ranking so far

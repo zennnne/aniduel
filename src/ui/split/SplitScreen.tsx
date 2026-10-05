@@ -284,7 +284,8 @@ export function SplitScreen(props: {
 
   if (isDone) {
     const after = bandWorstCase(b)
-    const first = state.prompt.kind === 'duel' && state.prompt.band === band && state.prompt.sub !== undefined ? state.prompt.sub : null
+    // Choosing a split Band starts at its first Sub-band with titles to place.
+    const first = SUB_BANDS.find((sub) => (b.subBands?.[sub].unplaced.length ?? 0) > 0) ?? null
     return (
       <div className="sppage">
         <div className="h1 row">

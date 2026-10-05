@@ -21,6 +21,7 @@ import { appendEvent, replay, startLog, type BandIndex, type DuelLog, type LogEv
 import { settingsFor, type ScoringSettings } from '../ranking/scoring.ts'
 import { splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
+import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { SplitScreen } from './split/SplitScreen.tsx'
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
@@ -36,8 +37,9 @@ import { Shell, type Notice } from './Shell.tsx'
 import { StartScreen } from './start/StartScreen.tsx'
 import { useTheme } from './theme.ts'
 
-type Screen = 'start' | 'ranking' | 'preview'
-const SCREENS: readonly Screen[] = ['start', 'ranking', 'preview']
+/** 'bands' = the Band choice, opened by going Back from a Duel or from the menu. */
+type Screen = 'start' | 'ranking' | 'bands' | 'preview'
+const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'preview']
 type DialogName = 'logout' | 'restore' | 'start-over'
 
 const MEDIA_LABEL: Record<MediaType, string> = { ANIME: 'Anime', MANGA: 'Manga' }
@@ -234,6 +236,19 @@ export function App() {
     setCurrentLog(next)
   }
 
+  /**
+   * Duels go on in `band` (a split Band starts at its first Sub-band with titles to place). The Band choice gets
+   * its own history entry, so Back from the Duel returns to it.
+   */
+  function chooseBand(band: BandIndex) {
+    const state = logRef.current ? replay(logRef.current) : null
+    if (!state || state.bands[band].unplaced.length === 0) return
+    const alreadyThere = state.prompt.kind === 'duel' && !state.bandChoice && state.prompt.band === band
+    if (!alreadyThere) answer({ type: 'band-selected', band })
+    if (screen === 'ranking') window.history.replaceState({ screen: 'bands' }, '')
+    goTo('ranking')
+  }
+
   function startOrContinue() {
     if (!viewer) return
     if (!logRef.current) {
@@ -378,6 +393,16 @@ export function App() {
       })
     }
     // Split offers after Rough Sort, under the same rule as the automatic offer (ADR 0006).
+    if (ranking?.prompt.kind === 'duel' && !ranking.bandChoice && screen !== 'bands') {
+      menuItems.push({
+        id: 'choose-band',
+        group: 'This Ranking',
+        icon: '▤',
+        title: 'Choose a Band',
+        description: 'Pick which Band to Duel in next',
+        run: () => goTo('bands'),
+      })
+    }
     if (ranking && ranking.prompt.kind !== 'rough-sort') {
       for (const band of offers) {
         menuItems.push({
@@ -452,7 +477,7 @@ export function App() {
     : null
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
-  const inRanking = (screen === 'ranking' || screen === 'preview') && viewer && ranking && (list || notice)
+  const inRanking = (screen === 'ranking' || screen === 'bands' || screen === 'preview') && viewer && ranking && (list || notice)
   // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows.
   const inPreview = screen === 'preview' && ranking?.prompt.kind === 'all-complete' && scoring && pool
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
@@ -479,7 +504,11 @@ export function App() {
             setSplitView(null)
             showToast(<>Skipped. {BAND_UI[band].label} stays one Band</>)
           }}
-          onClose={() => setSplitView(null)}
+          onClose={() => {
+            setSplitView(null)
+            // "Start Duels in Loved › Best": the split Band is chosen, so its Duels come next.
+            if (state.bands[band].subBands) chooseBand(band)
+          }}
         />
       )
     }
@@ -497,10 +526,25 @@ export function App() {
           />
         )
       case 'duel':
+        if (state.bandChoice || screen === 'bands') {
+          return (
+            <BandChoiceScreen
+              key={`${state.bandChoice?.finished ?? 'none'}-${state.bandChoice?.next ?? prompt.band}`}
+              state={state}
+              entries={entries}
+              titleLanguage={titleLanguage}
+              finished={state.bandChoice?.finished ?? null}
+              next={state.bandChoice?.next ?? prompt.band}
+              onChoose={chooseBand}
+              onUndo={shared.onUndo}
+            />
+          )
+        }
         return (
           <DuelScreen
             {...shared}
             prompt={prompt}
+            onChooseBand={() => goTo('bands')}
             onPick={(winner) => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: winner === prompt.a ? 'a' : 'b' })}
             onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
             onForget={(id) => answer({ type: 'forgotten', id })}

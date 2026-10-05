@@ -238,6 +238,7 @@ describe('a golden log with Duels', () => {
         ],
         ranked: { done: 5, total: 5 },
       },
+      bandChoice: null,
       canUndo: true,
     }
     expect(replay(golden)).toEqual(expected)
