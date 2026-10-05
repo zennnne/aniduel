@@ -56,6 +56,10 @@ _Avoid_: Curve, mapping
 The AniList setting that decides which scale the user sees: 100 points, 10 points, 10 points with decimals, 5 stars, or 3 smileys. Scores are calculated at the levels of this scale.
 _Avoid_: Scale, rating system
 
+**Score Step**:
+The smallest gap between the scores a title can get, chosen by the user: either every level of the Score Format (fine) or only some of them (human, e.g. every 0.5 on 10 points with decimals, every 5 on 100 points). Best and worst scores always sit on the Score Step.
+_Avoid_: Precision, rounding, granularity
+
 **Preview**:
 The screen that shows every title's old and new score before an Import, where the user ticks which titles to write and fixes the Ranking.
 _Avoid_: Review, summary

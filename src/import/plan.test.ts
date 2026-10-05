@@ -5,7 +5,7 @@ import { planHash, resumeImport } from './plan.ts'
 import { newImport, type ImportState } from './runner.ts'
 
 const log: DuelLog = startLog({ seed: 1, userId: 1, mediaType: 'ANIME', ids: [1, 2, 3] })
-const scoring: SavedScoring = { format: 'POINT_100', settings: { distribution: 'linear', best: 95, worst: 30 } }
+const scoring: SavedScoring = { format: 'POINT_100', settings: { distribution: 'linear', step: 'fine', best: 95, worst: 30 } }
 
 describe('Import plan hash', () => {
   it('is the same for the same Duel log and scoring settings', () => {

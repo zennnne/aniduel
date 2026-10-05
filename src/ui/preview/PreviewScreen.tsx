@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
 import { BANDS, type RankingState } from '../../ranking/engine.ts'
 import { importPlan, isTicked, previewRows, type PendingWrite, type PreviewRow, type TickOverrides } from '../../ranking/preview.ts'
-import { formatLevel, levelOfRaw, levels, score, type ScoringSettings } from '../../ranking/scoring.ts'
+import { formatLevel, hasHumanStep, levelOfRaw, levels, score, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
@@ -49,7 +49,7 @@ export function PreviewScreen(props: {
   for (const row of rows) byLevel.set(row.level, [...(byLevel.get(row.level) ?? []), row])
   const scoreRows = [...byLevel.entries()].sort((a, b) => b[0] - a[0])
 
-  const options = levels(format)
+  const options = levels(format, settings.step)
   const pick = (key: 'best' | 'worst', value: number) => {
     const next = { ...settings, [key]: value }
     if (next.worst >= next.best) return // rejected: the select snaps back to the saved value
@@ -142,6 +142,15 @@ export function PreviewScreen(props: {
             </button>
           ))}
         </div>
+        {hasHumanStep(format) && (
+          <div className="seg" title="Score Step">
+            {(['fine', 'human'] as const).map((s) => (
+              <button key={s} className={settings.step === s ? 'on' : ''} onClick={() => onSettings(withStep(settings, format, s))}>
+                {stepLabel(format, s)}
+              </button>
+            ))}
+          </div>
+        )}
         <span className="small">Score Format: {SCORE_FORMAT_LABEL[format]}</span>
       </div>
 

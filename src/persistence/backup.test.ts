@@ -55,7 +55,7 @@ describe('Backup and Restore', () => {
   })
 
   it('carries the scoring settings too, and still restores a Backup made before they existed', () => {
-    const scoring = { format: 'POINT_5' as const, settings: { distribution: 'bell' as const, best: 5, worst: 2 } }
+    const scoring = { format: 'POINT_5' as const, settings: { distribution: 'bell' as const, step: 'fine' as const, best: 5, worst: 2 } }
     const here = memoryStorage()
     saveDuelLog(here, someProgress())
     saveScoringSettings(here, anime, scoring)

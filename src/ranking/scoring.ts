@@ -5,8 +5,11 @@ import { BANDS, type BandIndex, type RankingState } from './engine.ts'
 
 export type Distribution = 'linear' | 'bell'
 
-/** `best` and `worst` are levels of the Score Format (e.g. 7.5 on 10 point decimal, 4 on 5 stars). */
-export type ScoringSettings = { distribution: Distribution; best: number; worst: number }
+/** Every level of the Score Format ('fine'), or only every 0.5 / every 5 points ('human'). */
+export type ScoreStep = 'fine' | 'human'
+
+/** `best` and `worst` are levels of the Score Format on the Score Step (e.g. 7.5 on 10 point decimal, 4 on 5 stars). */
+export type ScoringSettings = { distribution: Distribution; step: ScoreStep; best: number; worst: number }
 
 export type TitleScore = { band: BandIndex; level: number; scoreRaw: number }
 
@@ -50,21 +53,42 @@ function rawValue(position: number, n: number, settings: ScoringSettings): numbe
   return Math.min(best, Math.max(worst, value))
 }
 
-/** How a Score Format's levels are laid out: `perUnit` levels per whole point, from `min` to `max`. */
-type Scale = { perUnit: number; min: number; max: number; raw: (level: number) => number }
+/**
+ * How a Score Format's levels are laid out: `perUnit` levels per whole point, from `min` to `max`.
+ * `humanPerUnit` is the coarser 'human' Score Step, for formats that have one.
+ */
+type Scale = { perUnit: number; humanPerUnit?: number; min: number; max: number; raw: (level: number) => number }
 
 const SCALES: Record<ScoreFormat, Scale> = {
-  POINT_100: { perUnit: 1, min: 1, max: 100, raw: (n) => n },
-  POINT_10_DECIMAL: { perUnit: 10, min: 0.1, max: 10, raw: (n) => Math.round(n * 10) },
+  POINT_100: { perUnit: 1, humanPerUnit: 0.2, min: 1, max: 100, raw: (n) => n },
+  POINT_10_DECIMAL: { perUnit: 10, humanPerUnit: 2, min: 0.1, max: 10, raw: (n) => Math.round(n * 10) },
   POINT_10: { perUnit: 1, min: 1, max: 10, raw: (n) => n * 10 },
   // The raw AniList itself stores when the user sets that many stars / that smiley (spike #3).
   POINT_5: { perUnit: 1, min: 1, max: 5, raw: (n) => n * 20 - 10 },
   POINT_3: { perUnit: 1, min: 1, max: 3, raw: (n) => [35, 60, 85][n - 1] },
 }
 
-/** The nearest level of the Score Format, never below its lowest level (0 would mean "no score"). */
-function toLevel(format: ScoreFormat, value: number): number {
-  const { perUnit, min, max } = SCALES[format]
+/** Levels per whole point and the lowest level at this Score Step (0 is never a level: it means "no score"). */
+function stepOf(format: ScoreFormat, step: ScoreStep): { perUnit: number; min: number } {
+  const { perUnit, humanPerUnit, min } = SCALES[format]
+  if (step === 'fine' || !humanPerUnit) return { perUnit, min }
+  return { perUnit: humanPerUnit, min: 1 / humanPerUnit }
+}
+
+/** Whether this Score Format lets the user choose a Score Step (10 point decimal and 100 point). */
+export function hasHumanStep(format: ScoreFormat): boolean {
+  return SCALES[format].humanPerUnit !== undefined
+}
+
+/** The gap between levels at this Score Step, as the Score Format shows it: "0.1", "0.5", "1", "5". */
+export function stepLabel(format: ScoreFormat, step: ScoreStep): string {
+  return String(1 / stepOf(format, step).perUnit)
+}
+
+/** The nearest level of the Score Format on the Score Step, never below its lowest level. */
+function toLevel(format: ScoreFormat, value: number, step: ScoreStep = 'fine'): number {
+  const { max } = SCALES[format]
+  const { perUnit, min } = stepOf(format, step)
   return Math.min(max, Math.max(min, Math.round(value * perUnit) / perUnit))
 }
 
@@ -73,9 +97,10 @@ export function scoreRawOf(format: ScoreFormat, level: number): number {
   return SCALES[format].raw(level)
 }
 
-/** Every level of the Score Format a title can get, highest first. 0 ("no score") is never one of them. */
-export function levels(format: ScoreFormat): number[] {
-  const { perUnit, min, max } = SCALES[format]
+/** Every level of the Score Format a title can get at this Score Step, highest first. 0 ("no score") is never one of them. */
+export function levels(format: ScoreFormat, step: ScoreStep = 'fine'): number[] {
+  const { max } = SCALES[format]
+  const { perUnit, min } = stepOf(format, step)
   const out: number[] = []
   for (let step = Math.round(max * perUnit); step >= Math.round(min * perUnit); step--) out.push(step / perUnit)
   return out
@@ -123,24 +148,35 @@ const DEFAULTS: Record<ScoreFormat, { best: number; worst: number }> = {
 }
 
 export function defaultSettings(format: ScoreFormat): ScoringSettings {
-  return { distribution: 'linear', ...DEFAULTS[format] }
+  return { distribution: 'linear', step: 'human', ...DEFAULTS[format] }
+}
+
+/** Best and worst moved to the nearest levels on the Score Step, worst still below best. */
+function onStep(format: ScoreFormat, settings: ScoringSettings, best: number, worst: number): ScoringSettings {
+  const { perUnit, min } = stepOf(format, settings.step)
+  const gap = 1 / perUnit
+  best = toLevel(format, best, settings.step)
+  worst = toLevel(format, worst, settings.step)
+  if (worst >= best) {
+    if (best <= min) best = toLevel(format, min + gap, settings.step)
+    worst = toLevel(format, best - gap, settings.step)
+  }
+  return { ...settings, best, worst }
+}
+
+/** The settings with another Score Step: best and worst move to the nearest levels on it (9.7 → 9.5). */
+export function withStep(settings: ScoringSettings, format: ScoreFormat, step: ScoreStep): ScoringSettings {
+  return onStep(format, { ...settings, step }, settings.best, settings.worst)
 }
 
 /**
  * Best and worst carried over to a new Score Format (the user changed it on AniList, ADR 0003): each goes
  * through its raw score and is read the way AniList would show it. Worst never becomes 0 and stays below best.
+ * The Score Step stays 'fine' or 'human', whatever gap that means in the new Score Format.
  */
 export function convertSettings(settings: ScoringSettings, from: ScoreFormat, to: ScoreFormat): ScoringSettings {
-  const { perUnit, min } = SCALES[to]
-  const step = 1 / perUnit
-  const convert = (level: number) => toLevel(to, levelOfRaw(to, scoreRawOf(from, level)))
-  let best = convert(settings.best)
-  let worst = convert(settings.worst)
-  if (worst >= best) {
-    if (best <= min) best = toLevel(to, min + step)
-    worst = toLevel(to, best - step)
-  }
-  return { distribution: settings.distribution, best, worst }
+  const convert = (level: number) => levelOfRaw(to, scoreRawOf(from, level))
+  return onStep(to, settings, convert(settings.best), convert(settings.worst))
 }
 
 /** Scoring settings as saved, with the Score Format they were chosen in. */
@@ -151,13 +187,15 @@ export function parseSavedScoring(value: unknown): SavedScoring | null {
   const v = value as Partial<SavedScoring> | null
   const format = v?.format
   if (typeof format !== 'string' || !(format in SCALES)) return null
-  const { distribution, best, worst } = (v?.settings ?? {}) as Partial<ScoringSettings>
+  // Settings saved before the Score Step existed were 'fine', so the scores they gave don't change.
+  const { distribution, step = 'fine', best, worst } = (v?.settings ?? {}) as Partial<ScoringSettings>
   if (distribution !== 'linear' && distribution !== 'bell') return null
-  const valid = levels(format)
+  if (step !== 'fine' && step !== 'human') return null
+  const valid = levels(format, step)
   if (typeof best !== 'number' || typeof worst !== 'number' || !valid.includes(best) || !valid.includes(worst) || worst >= best) {
     return null
   }
-  return { format, settings: { distribution, best, worst } }
+  return { format, settings: { distribution, step, best, worst } }
 }
 
 /**
@@ -178,7 +216,7 @@ export function score(ranking: RankingState, format: ScoreFormat, settings: Scor
   let position = 0
   for (const tier of tiers) {
     const average = position + (tier.members.length - 1) / 2
-    const level = toLevel(format, rawValue(average, n, settings))
+    const level = toLevel(format, rawValue(average, n, settings), settings.step)
     const scoreRaw = scoreRawOf(format, level)
     for (const id of tier.members) titles.set(id, { band: tier.band, level, scoreRaw })
     position += tier.members.length

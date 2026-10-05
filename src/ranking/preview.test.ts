@@ -3,7 +3,7 @@ import { importPlan, isTicked, previewRows } from './preview.ts'
 import { score } from './scoring.ts'
 import { rankingOf } from './testRanking.ts'
 
-const linear = (best: number, worst: number) => ({ distribution: 'linear' as const, best, worst })
+const linear = (best: number, worst: number) => ({ distribution: 'linear' as const, step: 'fine' as const, best, worst })
 
 describe('Preview rows', () => {
   // 10 point, 10..4 over three titles → 10, 7, 4.

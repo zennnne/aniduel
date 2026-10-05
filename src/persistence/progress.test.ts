@@ -90,7 +90,7 @@ describe('Start over', () => {
 })
 
 describe('Scoring settings', () => {
-  const saved = { format: 'POINT_10' as const, settings: { distribution: 'bell' as const, best: 9, worst: 2 } }
+  const saved = { format: 'POINT_10' as const, settings: { distribution: 'bell' as const, step: 'fine' as const, best: 9, worst: 2 } }
 
   it('remembers the scoring settings and their Score Format for each Media Type', () => {
     const storage = memoryStorage()
@@ -118,7 +118,7 @@ describe('Scoring settings', () => {
     const converted = loadScoringFor(storage, anime, 'POINT_5')
 
     // 9 / 2 of 10 is 90 / 20 of 100: 5 / 1 star.
-    expect(converted).toEqual({ settings: { distribution: 'bell', best: 5, worst: 1 }, converted: true })
+    expect(converted).toEqual({ settings: { distribution: 'bell', step: 'fine', best: 5, worst: 1 }, converted: true })
     expect(loadScoringSettings(storage, anime)).toEqual({ format: 'POINT_5', settings: converted.settings })
     expect(loadScoringFor(storage, anime, 'POINT_5').converted).toBe(false)
   })
