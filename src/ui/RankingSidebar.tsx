@@ -97,7 +97,8 @@ export function RankingSidebar(props: {
         </>
       )}
       <div className="small hide-m">{state.forgotten.length > 0 && `${state.forgotten.length} Forgotten`}</div>
-      <span className="grow" />
+      {/* The Ranking so far already stretches to the bottom; otherwise push the account button down. */}
+      {!(duel && !state.bandChoice) && <span className="grow" />}
       <span className="small">
         {done}/{total}
       </span>

@@ -34,10 +34,10 @@
   position: absolute;
   bottom: 58px;
   left: 0;
-  right: -60px;
+  width: 300px;
   background: var(--fg);
   border-radius: 14px;
-  padding: 8px;
+  padding: 10px;
   box-shadow: 0 10px 40px #000a;
   z-index: 40;
   display: flex;
@@ -54,14 +54,14 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
   opacity: 0.6;
-  padding: 8px 8px 2px;
+  padding: 10px 12px 4px;
   color: var(--tx);
 }
 .mitem {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
-  padding: 8px;
+  padding: 9px 12px;
   border-radius: 8px;
   text-align: left;
   color: var(--tx-strong);
@@ -71,6 +71,7 @@
 .mitem .small {
   color: var(--tx);
   font-size: 11px;
+  line-height: 1.35;
 }
 .mitem:hover,
 .mitem.first {
@@ -154,6 +155,7 @@
     left: 0;
     right: 0;
     bottom: 0;
+    width: auto;
     border-radius: 16px 16px 0 0;
     max-height: 80vh;
     overflow: auto;

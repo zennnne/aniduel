@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 
 export type Notice = {
   tone: 'error' | 'info'
@@ -12,9 +12,22 @@ export type Notice = {
  */
 export function Shell(props: { sidebar?: ReactNode; notice?: Notice | null; toast?: ReactNode; children: ReactNode }) {
   const { sidebar, notice, toast, children } = props
+  const [collapsed, setCollapsed] = useState(false)
   return (
-    <div className={sidebar ? 'shell with-side' : 'shell'}>
-      {sidebar && <aside className="side">{sidebar}</aside>}
+    <div className={sidebar ? (collapsed ? 'shell with-side collapsed' : 'shell with-side') : 'shell'}>
+      {sidebar && (
+        <aside className="side">
+          {!collapsed && sidebar}
+          <button
+            className="side-toggle hide-m"
+            aria-label={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+            title={collapsed ? 'Show sidebar' : 'Hide sidebar'}
+            onClick={() => setCollapsed(!collapsed)}
+          >
+            {collapsed ? '»' : '«'}
+          </button>
+        </aside>
+      )}
       <main className="main">
         {notice && (
           <div className={notice.tone === 'info' ? 'banner info' : 'banner'} role="alert">

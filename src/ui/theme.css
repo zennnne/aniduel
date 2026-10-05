@@ -174,8 +174,32 @@ a {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow: hidden;
+  /* Visible so the account menu can float out over the main area. */
+  overflow: visible;
   min-width: 0;
+  min-height: 0;
+}
+/* Collapsed: a slim strip holding only the toggle. */
+.shell.with-side.collapsed {
+  grid-template-columns: 44px 1fr;
+}
+.side {
+  position: relative;
+}
+.side-toggle {
+  position: absolute;
+  top: 14px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #ffffff0d;
+  color: var(--navtx);
+  font-size: 14px;
+  line-height: 1;
+}
+.side-toggle:hover {
+  background: #ffffff1a;
 }
 .main {
   display: flex;
@@ -185,7 +209,8 @@ a {
   position: relative;
 }
 @media (max-width: 720px) {
-  .shell.with-side {
+  .shell.with-side,
+  .shell.with-side.collapsed {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
   }
