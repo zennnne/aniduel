@@ -73,8 +73,10 @@ export function DuelScreen(props: {
   onTie: () => void
   onForget: (id: number) => void
   onUndo: () => void
+  /** Opens the Band choice (the Band pill at the top). */
+  onChooseBand?: () => void
 }) {
-  const { state, prompt, entries, titleLanguage, mediaType, onPick, onTie, onForget, onUndo } = props
+  const { state, prompt, entries, titleLanguage, mediaType, onPick, onTie, onForget, onUndo, onChooseBand } = props
   const [forgetting, setForgetting] = useState(false)
   // Inside a split Band the pill counts the current Sub-band only.
   const part = prompt.sub !== undefined ? state.bands[prompt.band].subBands?.[prompt.sub] : undefined
@@ -138,7 +140,7 @@ export function DuelScreen(props: {
         <i style={{ width: `${overall.total ? (overall.done / overall.total) * 100 : 100}%` }} />
       </div>
       <div className="float-info">
-        <span className="pill" aria-live="polite">
+        <button className="pill" aria-live="polite" onClick={onChooseBand} disabled={!onChooseBand} title="Choose another Band">
           <Kao band={prompt.band} size={10} /> {BAND_UI[prompt.band].label}
           {prompt.sub !== undefined && (
             <>
@@ -154,7 +156,7 @@ export function DuelScreen(props: {
               · <b>F: pick ← or →</b>
             </>
           )}
-        </span>
+        </button>
       </div>
       <div className="pair">
         {card(prompt.left, 'l')}
