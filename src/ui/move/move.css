@@ -1,0 +1,111 @@
+/* Move Band bottom sheet (issue #4 prototype, section 5: M3 + R13 striped split Band) */
+.mv-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: var(--overlay);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.mv-sheet {
+  width: 100%;
+  max-width: 640px;
+  background: var(--fg);
+  border-radius: 20px 20px 0 0;
+  padding: 16px 18px 22px;
+  animation: mv-up 0.18s ease-out;
+  outline: none;
+}
+@keyframes mv-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+.mv-sheet .hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--tx-strong);
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+.mv-sheet .hd .cv {
+  width: 40px;
+  height: 58px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+.mv-sheet .hd .small {
+  font-weight: 600;
+  margin-top: 4px;
+}
+.mv-x {
+  font-size: 16px;
+  padding: 4px 8px;
+}
+.mv-sheet .grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.mv-sheet .grid.g5s {
+  grid-template-columns: 2.2fr repeat(4, 1fr);
+}
+.mv-sheet .bandbtn {
+  flex-direction: column;
+  padding: 14px 4px;
+  background: var(--fg2);
+  color: var(--tx-strong);
+  backdrop-filter: none;
+}
+.mv-sheet button.bandbtn:hover:not(:disabled) {
+  background: var(--blue);
+  color: var(--on-accent);
+}
+.mv-sheet .bandbtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.mv-sheet .stripe {
+  padding: 8px;
+}
+.stripes {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+}
+.stripes button {
+  flex: 1;
+  border-radius: 8px;
+  padding: 8px 2px;
+  color: #4a3b52;
+  font-weight: 800;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.stripes button:hover:not(:disabled) {
+  outline: 2px solid var(--blue);
+}
+.stripes button.cur {
+  opacity: 0.45;
+  outline: 2px dashed #4a3b5288;
+  cursor: default;
+}
+@media (max-width: 720px) {
+  .mv-sheet .grid {
+    gap: 4px;
+  }
+  .mv-sheet .bandbtn .kao {
+    font-size: 9px !important;
+    padding: 2px 3px;
+  }
+}
+.toast .link {
+  margin-left: 8px;
+  color: var(--blue);
+  font-weight: 800;
+}
