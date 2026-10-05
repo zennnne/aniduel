@@ -10,25 +10,31 @@ import {
   loadDuelLog,
   loadLastMediaType,
   loadPoolSettings,
+  loadScoringSettings,
   saveDuelLog,
   saveLastMediaType,
   savePoolSettings,
+  saveScoringSettings,
 } from '../persistence/progress.ts'
 import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '../pool/pool.ts'
 import { replay, startLog, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
+import { settingsFor, type ScoringSettings } from '../ranking/scoring.ts'
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
 import { LogoutDialog } from './LogoutDialog.tsx'
 import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
 import type { MenuItem } from './menu/menuItems.ts'
 import { RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
+import { PreviewScreen } from './preview/PreviewScreen.tsx'
+import { SCORE_FORMAT_LABEL } from './preview/scoreFormat.ts'
 import { RankingSidebar } from './RankingSidebar.tsx'
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { StartScreen } from './start/StartScreen.tsx'
 import { useTheme } from './theme.ts'
 
-type Screen = 'start' | 'ranking'
+type Screen = 'start' | 'ranking' | 'preview'
+const SCREENS: readonly Screen[] = ['start', 'ranking', 'preview']
 type DialogName = 'logout' | 'restore' | 'start-over'
 
 const MEDIA_LABEL: Record<MediaType, string> = { ANIME: 'Anime', MANGA: 'Manga' }
@@ -65,6 +71,11 @@ export function App() {
   const [dialog, setDialog] = useState<DialogName | null>(null)
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
+  // Best / worst / Distribution for the Score Format AniList reported when Preview opened; null until then.
+  const [scoring, setScoring] = useState<ScoringSettings | null>(null)
+  // Import ticks the user changed on Preview (the default is "ticked if the score changes").
+  const [ticks, setTicks] = useState<ReadonlyMap<number, boolean>>(new Map())
+  const [openingPreview, setOpeningPreview] = useState(false)
   // The latest log, updated synchronously so two quick key presses never append to a stale log.
   const logRef = useRef<DuelLog | null>(null)
 
@@ -92,7 +103,7 @@ export function App() {
     window.history.replaceState({ screen: 'start' }, '')
     const onPop = (e: PopStateEvent) => {
       const state = e.state as { screen?: Screen } | null
-      setScreen(state?.screen === 'ranking' ? 'ranking' : 'start')
+      setScreen(state?.screen && SCREENS.includes(state.screen) ? state.screen : 'start')
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -104,6 +115,8 @@ export function App() {
    */
   function openRanking(userId: number, type: MediaType, resume: boolean): boolean {
     setMediaType(type)
+    setScoring(null)
+    setTicks(new Map())
     setStatuses(loadPoolSettings(localStorage, { userId, mediaType: type })?.statuses ?? DEFAULT_STATUSES)
     try {
       const saved = loadDuelLog(localStorage, { userId, mediaType: type })
@@ -135,7 +148,8 @@ export function App() {
     setScreen('start')
   }
 
-  const onGatewayError = useEffectEvent((error: unknown) => {
+  /** Login expired → back to Start with "Log in again"; anything else → the unreachable banner with Retry. */
+  function handleGatewayError(error: unknown) {
     if (error instanceof AniListError && error.kind === 'auth') {
       endSession(false)
       setNotice({
@@ -150,7 +164,9 @@ export function App() {
       message: 'AniList is unreachable right now.',
       action: { label: 'Retry', onClick: () => { setNotice(null); setRetries((n) => n + 1) } },
     })
-  })
+  }
+
+  const onGatewayError = useEffectEvent(handleGatewayError)
 
   const onViewer = useEffectEvent((v: Viewer) => {
     setViewer(v)
@@ -215,6 +231,43 @@ export function App() {
       setCurrentLog(fresh)
     }
     goTo('ranking')
+  }
+
+  /**
+   * Runs `Viewer` again first (spec Auth, ADR 0003): if the Score Format changed since best / worst were
+   * chosen, they are converted to the new format and a blue banner says so.
+   */
+  function openPreview() {
+    if (!gateway || !viewer || openingPreview) return
+    setOpeningPreview(true)
+    gateway.viewer().then(
+      (fresh) => {
+        setOpeningPreview(false)
+        setViewer(fresh)
+        const key = { userId: fresh.id, mediaType }
+        const saved = loadScoringSettings(localStorage, key)
+        const { settings, converted } = settingsFor(saved, fresh.scoreFormat)
+        if (converted) {
+          saveScoringSettings(localStorage, key, { format: fresh.scoreFormat, settings })
+          setNotice({
+            tone: 'info',
+            message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[fresh.scoreFormat]}. Best / Worst were converted. Check them before importing.`,
+          })
+        }
+        setScoring(settings)
+        goTo('preview')
+      },
+      (e: unknown) => {
+        setOpeningPreview(false)
+        handleGatewayError(e)
+      },
+    )
+  }
+
+  function changeScoring(settings: ScoringSettings) {
+    if (!viewer) return
+    saveScoringSettings(localStorage, { userId: viewer.id, mediaType }, { format: viewer.scoreFormat, settings })
+    setScoring(settings)
   }
 
   /** Downloads the Backup file for the current user and Media Type. */
@@ -366,7 +419,10 @@ export function App() {
     : null
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
-  const inRanking = screen === 'ranking' && viewer && ranking && (list || notice)
+  const inRanking = (screen === 'ranking' || screen === 'preview') && viewer && ranking && (list || notice)
+  // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows.
+  const inPreview = screen === 'preview' && ranking?.prompt.kind === 'all-complete' && scoring && pool
+  const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
 
   /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
@@ -393,7 +449,7 @@ export function App() {
           />
         )
       case 'all-complete':
-        return <CompleteScreen {...shared} />
+        return <CompleteScreen {...shared} onScore={list && !openingPreview ? openPreview : undefined} />
     }
   }
 
@@ -421,7 +477,19 @@ export function App() {
         ) : undefined
       }
     >
-      {inRanking ? (
+      {inRanking && inPreview ? (
+        <PreviewScreen
+          state={ranking}
+          entries={entries}
+          oldScores={oldScores}
+          titleLanguage={viewer.titleLanguage}
+          format={viewer.scoreFormat}
+          settings={scoring}
+          onSettings={changeScoring}
+          overrides={ticks}
+          onTick={(id, ticked) => setTicks((prev) => new Map(prev).set(id, ticked))}
+        />
+      ) : inRanking ? (
         rankingScreen(ranking, viewer.titleLanguage)
       ) : (
         <StartScreen

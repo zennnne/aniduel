@@ -30,3 +30,12 @@ export const SAME_ICON = (
     <path d="M4 15c2.5-2 5.5 2 8 0s5.5-2 8 0" />
   </Icon>
 )
+
+export const MOVE_ICON = (
+  <Icon>
+    <path d="m16 3 4 4-4 4" />
+    <path d="M20 7H4" />
+    <path d="m8 21-4-4 4-4" />
+    <path d="M4 17h16" />
+  </Icon>
+)
