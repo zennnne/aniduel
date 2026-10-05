@@ -14,7 +14,12 @@
      R7: first run = Hero split (cover collage + one card that becomes the Pool form). Returning users skip straight to where they stopped; sync news as a toast.
      R8: Preview = Tier list (covers in rows by new score, click for actions). Best/Worst = dropdowns.
      R9: Import = Cover grid (covers light up with ✓). Preview tier list gets a "Changing only" filter; rows with no change collapse.
-     R10: 5 radically different homes for the app menu (Backup, Restore, Pool, Media Type, Start over, theme, Log out). -->
+     R10: Menu = account popover at the bottom of the sidebar + Ctrl+K.
+     R11 (handoff from the algorithm session): split an oversized Band = X2: bar chart offer, paint covers, Loved row striped. 3 groups, locked.
+     R12: paint = P2 three columns (drag or ↑ ↓). Done warns if it saves < 100 Duels. Titles under covers.
+     R13: Move with Sub-bands = M3: the Loved button is a striped bar (Q W E for Sub-bands, 2–5 for other Bands).
+     Offer only when splitting saves >= 100 Duels (sum of ceil(log2(i+1)), assuming a 1/4-1/2-1/4 split; about 68+ titles).
+     Preview ignores Sub-bands; menu can offer the split later; no un-split in v1; new titles landing in Loved get a second tap. -->
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
@@ -459,6 +464,144 @@ body.mobile .river{padding:10px 14px}
 .tlrow.coll .tlk{font-size:14px;padding:6px 0}
 .tlrow.coll .tlc{align-items:center;font-size:12px;padding:6px 10px}
 
+
+/* ---- R11 split an oversized Band ---- */
+.spstack{display:flex;height:46px;border-radius:12px;overflow:hidden;gap:2px;max-width:760px;margin-bottom:8px}
+.spstack .seg{display:flex;align-items:center;padding:0 14px;color:#4a3b52;font-weight:800;white-space:nowrap;min-width:6px;overflow:hidden}
+.splegend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin-bottom:18px}
+.spcall{background:var(--fg);border-radius:16px;padding:20px;max-width:760px;box-shadow:0 0 0 2px var(--blue);margin-bottom:24px}
+.spnums{display:flex;gap:12px;align-items:center;margin:4px 0}
+.spnums>div{background:var(--fg2);border-radius:12px;padding:10px 14px;display:flex;flex-direction:column}
+.spnums b{font-size:20px;color:var(--tx-strong)}
+.spnums .good b{color:#3fae5a}
+.spnums .eq{background:none!important;padding:0!important;font-size:20px}
+.spdim{opacity:.45;pointer-events:none;display:flex;flex-direction:column;gap:8px}
+.spchoose{display:flex;flex-direction:column;gap:8px;max-width:640px}
+.spchoose button{display:flex;gap:12px;align-items:center;padding:14px 16px;border-radius:12px;background:var(--fg);text-align:left}
+.spchoose button.rec{box-shadow:0 0 0 2px var(--blue)}
+.spchart{background:var(--fg);border-radius:16px;padding:20px 24px 14px;max-width:620px;margin-bottom:18px}
+.spchart .bars{position:relative;height:226px;display:flex;gap:12px;align-items:flex-end;border-bottom:1px solid var(--fg2)}
+.spchart .c1{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:4px}
+.spchart .barv{width:100%;border-radius:8px 8px 0 0}
+.spchart .cnt{font-weight:800;color:var(--tx-strong)}
+.spchart .line{position:absolute;left:0;right:0;border-top:2px dashed #f27d7d;pointer-events:none}
+.spchart .line span{position:absolute;right:0;top:-20px;font-size:11px;color:#f27d7d;background:var(--fg);padding:0 4px}
+.spchart .labs{display:flex;gap:12px;margin-top:8px}.spchart .labs>*{flex:1;text-align:center}
+.spcount{background:var(--fg);border-radius:16px;padding:16px 20px;max-width:620px;display:flex;flex-direction:column;gap:10px}
+.sptable{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.sptable button{background:var(--fg2);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:2px;text-align:left}
+.sptable button.on{box-shadow:0 0 0 2px var(--blue)}
+.sptable b{color:var(--tx-strong)}.sptable span{color:#3fae5a;font-weight:700}.sptable .small{color:var(--tx);font-weight:400}
+.spcenter{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:14px;height:100%}
+.spcenter p{max-width:540px;line-height:1.7}
+.spfan{display:flex;margin-bottom:10px}
+.spfan .fan{transform:rotate(var(--r)) translateY(calc(var(--y)*1px));margin:0 -14px}
+.spfan .cv{width:110px;height:160px;border-radius:10px;box-shadow:0 10px 30px #0006}
+.spphase{display:flex;gap:6px;margin-bottom:22px;max-width:640px}
+.spphase span{flex:1;padding:8px 12px;border-radius:10px;background:var(--fg);font-size:12px;font-weight:700}
+.spphase .done{opacity:.55}.spphase .on{box-shadow:0 0 0 2px var(--blue);color:var(--tx-strong)}
+.spphase.float{position:absolute;top:30px;left:50%;transform:translateX(-50%);width:min(560px,80%);z-index:6;margin:0}
+.spflat,.spnest{display:flex;flex-direction:column;gap:6px;max-width:640px;margin-bottom:18px}
+.fr{display:flex;gap:12px;align-items:center;background:var(--fg);border-radius:12px;padding:10px 14px;color:var(--tx-strong)}
+.fr.ghost{background:none;border:2px dashed var(--fg2);color:var(--tx);margin-left:30px;padding:6px 12px}
+.fr.sub{margin-left:30px}
+.fr .tree{opacity:.5}
+.sphint{color:#fff;opacity:.9;font-size:13px}
+.sppaint{flex:1;min-height:0;overflow:auto;padding:26px 30px;display:flex;flex-direction:column;gap:14px;color:var(--tx)}
+.brushes{display:flex;gap:8px;flex-wrap:wrap}
+.brush{display:flex;gap:8px;align-items:center;padding:7px 12px;border-radius:999px;background:var(--fg);color:var(--tx-strong);box-shadow:inset 0 0 0 3px var(--b)}
+.brush.on{background:var(--b);color:#4a3b52;font-weight:800}
+.brush b{opacity:.7}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(78px,1fr));gap:8px}
+.pc{position:relative;border-radius:8px;padding:0}
+.pc .cv{width:100%;aspect-ratio:2/3;border-radius:8px;filter:saturate(.5) brightness(.75)}
+.pc:hover .cv{filter:none}
+.pc.on .cv{filter:none;outline:4px solid var(--b);outline-offset:-4px}
+.pc .pb{position:absolute;top:5px;left:5px;background:var(--b);color:#4a3b52;font-weight:900;font-size:12px;border-radius:999px;min-width:20px;text-align:center}
+.spswipe{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:52px 30px 18px;gap:10px}
+.spswipe .zone{width:min(560px,100%);padding:14px;border-radius:14px;background:#0000004d;color:#fff;font-weight:800;backdrop-filter:blur(6px);display:flex;gap:8px;justify-content:center;align-items:center;box-shadow:inset 0 0 0 3px var(--b)}
+.spswipe .zone:hover{background:#00000080}
+.spswipe .mid,.spanch .mid{display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;min-height:0}
+.spswipe .mid .cv{height:36vh;aspect-ratio:2/3}
+.spanch{display:grid;grid-template-columns:1fr 1.2fr 1fr;align-items:center;gap:24px;padding:50px 40px 70px;height:100%}
+.spanch .mid .cv{height:46vh;aspect-ratio:2/3}
+.spanch .anc{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px;border-radius:16px;background:#0000004d;color:#fff;box-shadow:inset 0 0 0 3px var(--b);backdrop-filter:blur(6px);text-align:center}
+.spanch .anc:hover{background:#00000080;transform:scale(1.03)}
+.spanch .anc .cv{height:22vh;aspect-ratio:2/3}
+.rs .spsubc{position:absolute;bottom:18px;left:0;right:0;justify-content:center}
+.bar.over{background:#f27d7d55;box-shadow:0 0 0 1px #f27d7d}
+.bar.segs{display:flex;gap:1px;background:none}.bar.segs>i{display:block;height:100%}
+.bandrow.subr{padding-top:2px;padding-bottom:2px}
+.subk{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+.spside-tip{display:flex;gap:6px;align-items:center;font-size:11px;padding:0 6px 6px;color:#ffb3c8}
+.spchip{background:var(--blue);color:#0b1622;font-weight:800;border-radius:999px;padding:3px 9px;font-size:11px;animation:pulse2 1.2s infinite alternate}
+@keyframes pulse2{to{box-shadow:0 0 0 4px #3db4f255}}
+body.mobile .sptable{grid-template-columns:1fr 1fr}
+body.mobile .spanch{grid-template-columns:1fr 1fr;padding:44px 12px 70px;gap:10px}
+body.mobile .spanch .mid{grid-column:1/-1;order:-1}
+body.mobile .spanch .mid .cv{height:24vh}
+body.mobile .spanch .anc .cv{height:12vh}
+body.mobile .spswipe .mid .cv{height:28vh}
+body.mobile .spphase.float{top:40px;width:90%}
+body.mobile .sppaint{padding:16px}
+body.mobile .spnums{flex-wrap:wrap}
+.fr .mini .cv{width:26px;height:38px;border-radius:4px}
+/* R12 paint variants */
+.sphead{gap:12px;flex-wrap:wrap}
+.pc .tt{display:block;font-size:10px;line-height:1.25;margin-top:3px;color:var(--tx);text-align:left;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.pc .pb{padding:0 6px}
+.spcols{display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:12px;align-items:start}
+.spcol{background:var(--fg);border-radius:14px;padding:10px;box-shadow:inset 0 3px 0 var(--b);min-height:200px}
+.spcol.over{box-shadow:inset 0 0 0 3px var(--blue)}
+.spcolh{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.pgrid.sm{grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:6px}
+.spcol .pc{cursor:grab}
+.spcol .pc .cv{filter:none}
+.spcol .arrows{position:absolute;top:3px;right:3px;display:none;flex-direction:column;gap:2px}
+.spcol .pc:hover .arrows{display:flex}
+.spcol .arrows button{background:#000c;color:#fff;border-radius:5px;width:20px;height:20px;font-size:11px}
+.spcol .empty{grid-column:1/-1;padding:30px 0;text-align:center;opacity:.6}
+.pc.sel .cv{filter:none;outline:4px solid var(--blue);outline-offset:-4px}
+.pc .tick{position:absolute;top:5px;right:5px;background:var(--blue);color:#fff;border-radius:50%;width:20px;height:20px;font-size:12px;display:none;align-items:center;justify-content:center}
+.pc.sel .tick{display:flex}
+.selbar{position:sticky;bottom:0;align-self:center;display:flex;gap:8px;align-items:center;background:#000e;color:#fff;border-radius:999px;padding:8px 10px 8px 18px;box-shadow:0 10px 30px #0008}
+.selbar button{background:var(--b);color:#4a3b52;font-weight:800;border-radius:999px;padding:6px 12px;display:flex;gap:6px;align-items:center}
+.selbar .x{background:#fff2;color:#fff;padding:6px}
+.spcur{flex:1;min-height:0;display:grid;grid-template-columns:1fr 300px}
+.spcur .pgrid .cv{filter:saturate(.5) brightness(.75)}
+.pc.focus .cv{filter:none!important;outline:3px solid #fff;outline-offset:2px}
+.pc.focus.on .cv{outline:4px solid var(--b);box-shadow:0 0 0 7px #fff}
+.spprev{position:relative;overflow:hidden;color:#fff}
+.spprev .in{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;text-align:center}
+.spprev .in>.cv{width:170px;aspect-ratio:2/3;border-radius:10px;box-shadow:0 10px 30px #000a}
+.spprev .bandbtn{width:100%;justify-content:flex-start}
+.bandbtn.cur2{box-shadow:0 0 0 2px #fff}
+.spsteps{display:flex;gap:6px;max-width:640px}
+.spsteps span{flex:1;padding:8px 12px;border-radius:10px;background:var(--fg);font-size:12px;font-weight:700}
+.spsteps .done{opacity:.55}.spsteps .on{box-shadow:0 0 0 2px var(--blue);color:var(--tx-strong)}
+body.mobile .spcols{grid-template-columns:1fr}
+body.mobile .spcur{grid-template-columns:1fr;grid-template-rows:1fr auto}
+body.mobile .spprev .in{flex-direction:row;flex-wrap:wrap;padding:10px}
+body.mobile .spprev .in>.cv{width:60px}
+body.mobile .selbar{flex-wrap:wrap;border-radius:16px}
+.livesave{font-weight:800;color:#3fae5a;font-size:13px;padding:2px 8px;border-radius:999px;background:#3fae5a22}.livesave.low{color:#f2b13d;background:#f2b13d22}
+
+body.mobile .spcol .arrows{display:flex}
+/* R13 Move with Sub-bands */
+.mv-sheet .grid.g4{grid-template-columns:repeat(4,1fr)}
+.mv-sheet .grid.g7{grid-template-columns:repeat(7,1fr)}
+.mv-sheet .grid.g7 .kao{font-size:10px;padding:2px 4px}
+.mv-sheet .grid.g5s{grid-template-columns:2.2fr repeat(4,1fr)}
+.mv-sheet .stripe{cursor:default;padding:8px!important}
+.mv-sheet .stripe:hover{background:var(--fg2)!important;color:var(--tx-strong)!important}
+.stripes{display:flex;gap:3px;width:100%}
+.stripes button{flex:1;border-radius:8px;padding:8px 2px;color:#4a3b52;font-weight:800;font-size:11px;display:flex;flex-direction:column;align-items:center;gap:3px}
+.stripes button:hover{outline:2px solid var(--blue)}
+.stripes button.cur{opacity:.45;outline:2px dashed #4a3b5288;cursor:default}
+.mv-sheet .nudge{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.mv-sheet .nudge .bandbtn{flex-direction:row;justify-content:center;padding:16px}
+body.mobile .mv-sheet .grid.g7{grid-template-columns:repeat(4,1fr)}
+
 /* mobile */
 body.mobile .im{padding:16px}
 body.mobile .imsum{flex-wrap:wrap}
@@ -505,7 +648,7 @@ body.mobile .b-result{grid-template-columns:1fr}
 <div id="stage"><div id="app"></div></div>
 
 <div id="picker">
-  <div class="grip"><span>⠿ drag · PROTOTYPE · round 6</span><span id="pidx"></span></div>
+  <div class="grip"><span>⠿ drag · PROTOTYPE · round 13</span><span id="pidx"></span></div>
   <div class="row"><button class="arr" onclick="cycle(-1)">←</button><div class="name" id="pname"></div><button class="arr" onclick="cycle(1)">→</button></div>
   <div class="sub" id="psub"></div>
   <div class="lbl">Screen</div><div class="grp" id="pscreen"></div>
@@ -516,6 +659,8 @@ body.mobile .b-result{grid-template-columns:1fr}
 
 <script>
 const VARS = {
+  'Move': [{id:'stripe',name:'Move (settled)',sub:'R13: striped Loved · Q W E = Sub-band · 2–5 = Band'}],
+  'Split': [{id:'columns',name:'Split (settled)',sub:'R12: three columns · warn on Done if it saves < 100 · titles under covers'}],
   'Menu': [
     {id:'pop',    name:'S1 · Account popover', sub:'click your name at the bottom of the sidebar'},
     {id:'page',   name:'S2 · Settings page',   sub:'⚙ opens a full settings page over the main area'},
@@ -531,7 +676,7 @@ const VARS = {
   'Duel': [{id:'sheet',name:'Duel (settled)',sub:'R6: Move Band = bottom sheet'}],
 };
 const SCREENS=Object.keys(VARS);
-const HELP={'Menu':'←/→ design · open the menu from the bottom of the sidebar (S4: Ctrl+K) · try Log out, Start over, Pool, Restore','Import':'←/→ design · State = Confirm / Running (animates) / Rate-limited / Done','Preview':'←/→ design · State = Score Format · change Best / Worst / Linear-Bell live','Start':'←/→ design · use State to switch logged out / Pool setup','Duel':'Click ⇄ on a card, or press M then ←/→, then 1–5 · Esc closes · Shift+←/→ design','Band choice':'←/→ design','Rough Sort':'1–5 Band · 0 don\'t remember · ⌫ undo'};
+const HELP={'Move':'Duel inside Loved › Middle · the Move sheet opens by itself (Esc closes, ⇄ or M+←/→ reopens) · Shift+←/→ design','Split':'←/→ design (P4: Shift+←/→) · State = Offer / Splitting / Done · 1 2 3 = groups · Enter = next','Menu':'←/→ design · open the menu from the bottom of the sidebar (S4: Ctrl+K) · try Log out, Start over, Pool, Restore','Import':'←/→ design · State = Confirm / Running (animates) / Rate-limited / Done','Preview':'←/→ design · State = Score Format · change Best / Worst / Linear-Bell live','Start':'←/→ design · use State to switch logged out / Pool setup','Duel':'Click ⇄ on a card, or press M then ←/→, then 1–5 · Esc closes · Shift+←/→ design','Band choice':'←/→ design','Rough Sort':'1–5 Band · 0 don\'t remember · ⌫ undo'};
 const LABELS=['Loved','Liked','Okay','Meh','Hated'];
 const COL=['#ffb3c8','#ffe08a','#bfe8c9','#c9d4ff','#cfc9d6'];
 const KAO=['(♡˙︶˙♡)','(˶ᵔ ᵕ ᵔ˶)','( ・_・)','(´・ω・`)','(×﹏×)'];
@@ -555,7 +700,7 @@ let T0=['Frieren',"Steins;Gate",'Mob Psycho 100 II','Your Name.','Cowboy Bebop',
 let T=Array.from({length:50},(_,i)=>i<T0.length?T0[i]:{id:i,t:`Title ${i+1}`,y:2000+i%25,f:'TV',eps:12,c:`hsl(${i*47%360} 70% 55%)`});
 
 const sys=matchMedia('(prefers-color-scheme: dark)');
-let S={screen:'Menu',v:{'Menu':0,'Import':0,'Preview':0,'Start':0,'Duel':0,'Band choice':0,'Rough Sort':0},logged:false,media:'Anime',st:{Completed:true,Repeating:true,Current:false,Paused:false,Dropped:false},step:1,mobile:false,side:true,dark:sys.matches,moving:null,mPending:false,toast:null,rsHist:[],count:5};
+let S={screen:'Move',v:{'Move':0,'Split':0,'Menu':0,'Import':0,'Preview':0,'Start':0,'Duel':0,'Band choice':0,'Rough Sort':0},logged:false,media:'Anime',st:{Completed:true,Repeating:true,Current:false,Paused:false,Dropped:false},step:1,mobile:false,side:true,dark:sys.matches,moving:null,mPending:false,toast:null,rsHist:[],count:5};
 let E; resetEngine();
 function resetEngine(){ E={sorted:[[0]],queue:T.slice(1,14).map(x=>x.id),cur:null,lo:0,hi:1,count:0,hist:[]}; nextIns(); }
 function nextIns(){ if(!E.queue.length){E.cur=null;return} E.cur=E.queue.shift(); E.lo=0; E.hi=E.sorted.length; }
@@ -598,12 +743,12 @@ function duel(){
   const done=E.sorted.flat().length, tot=14, pct=done/tot*100, left=E.hi-E.lo;
   const [l,r]=pair().map(i=>T[i]);
   const card=(x,k)=>`<div class="card" onclick="answer(${x.id})">${bg(x)}${cv(x)}<div class="col" style="align-items:center;gap:6px"><div class="t">${x.t}</div><div class="m">${meta(x)}</div>${inlineChips(x)||`<span class="kbd">${k?'→':'←'}</span>`}</div>
-    <div class="corner ${k?'r':'l'}" ${stop}><button class="ibtn tip" data-tip="Don't remember (F${k?'→':'←'})" onclick="forget(${x.id})">${Q}</button><button class="ibtn tip ${S.moving===x.id?'on':''}" data-tip="Move Band (M${k?'→':'←'})" onclick="openMove(${x.id})">${IC.move}</button><a class="ibtn tip" data-tip="Open on AniList" href="${al(x)}" target="_blank">${IC.ext}</a></div>${movePicker(x,k)}</div>`;
+    <div class="corner ${k?'r':'l'}" ${stop}><button class="ibtn tip" data-tip="Don't remember (F${k?'→':'←'})" onclick="forget(${x.id})">${Q}</button><button class="ibtn tip ${S.moving===x.id?'on':''}" data-tip="Move Band (M${k?'→':'←'})" onclick="openMove(${x.id})">${IC.move}</button>${subCorner(x)}<a class="ibtn tip" data-tip="Open on AniList" href="${al(x)}" target="_blank">${IC.ext}</a></div>${movePicker(x,k)}</div>`;
   return `<div class="topline"><i style="width:${pct}%"></i></div>
-    <div class="float-info"><span class="pill">${kao(0,10)} ${LABELS[0]} · ${done}/${tot} · ${left} spot${left>1?'s':''} left${S.mPending?' · <b>M: pick ← or →</b>':''}</span></div>
+    <div class="float-info"><span class="pill">${kao(0,10)} ${LABELS[0]}${S.screen==='Move'?` › ${spPill(1,'Middle',10)}`:''} · ${done}/${tot} · ${left} spot${left>1?'s':''} left${S.mPending?' · <b>M: pick ← or →</b>':''}</span></div>
     <div class="pair">${card(l,0)}${card(r,1)}<button class="seam" onclick="answer('tie')">${IC.same}<span>Same</span><span class="kbd">↓</span></button></div>
     ${S.toast?`<div class="toast">${S.toast}<button onclick="undo()">Undo</button></div>`:''}
-    <div class="float-undo"><button class="pill" onclick="undo()">${IC.undo} Undo <span class="kbd">⌫</span></button></div>${sheet()}`;
+    <div class="float-undo"><button class="pill" onclick="undo()">${IC.undo} Undo <span class="kbd">⌫</span></button></div>${S.screen==='Move'?spSheet():sheet()}`;
 }
 
 function rough(){
@@ -915,6 +1060,136 @@ function menuOverlay(d){
     return `<div class="dscrim top" onclick="MN.open=false;render()"><div class="pal" onclick="event.stopPropagation()"><input id="palq" placeholder="Type an action… (backup, manga, log out)" value="${MN.q}" oninput="MN.q=this.value;render();const e=document.getElementById('palq');e.focus();e.setSelectionRange(e.value.length,e.value.length)">${list.map((i,k)=>itemBtn(i,k===0?'first':'')).join('')||'<div class="small" style="padding:12px">No action</div>'}</div></div>`; }
   return '';
 }
+
+// ---------- R11-12: split an oversized Band into 3 Sub-bands (handoff from the algorithm session) ----------
+// Mock Pool: 200 titles, beginner Bands 150/12/12/13/13. Duel estimates = sum of log2(n!) per group, no Tiers.
+// Settled R11: offer = bar chart with a danger line; split = paint covers; 3 groups; display = Loved row striped.
+const SPB=[150,12,12,13,13];
+const SP={state:'offer',paint:{},brush:0,sel:{},last:null,cur:0,pass:0,drag:null,down:false};
+const SP_STATES=[['offer','Offer'],['split','Splitting'],['done','Done']];
+const SPL=['Best','Middle','Lowest'], MID=1;
+const duelsFor=sizes=>Math.round(sizes.reduce((a,n)=>a+lg2f(n),0));
+const spGroup=i=>SP.paint[i]??MID;
+const spCounts=()=>{ const c=[0,0,0]; T.forEach((_,i)=>c[spGroup(i)]++); return c.map(x=>x*3); }; // mock shows 50 of 150
+const spSizes=()=>{ const c=spCounts(); return c[0]+c[2]?c:[34,70,46]; };
+const spBase=()=>duelsFor(SPB);
+const spAfter=()=>duelsFor([...spSizes(),...SPB.slice(1)]);
+const spSave=()=>spBase()-spAfter();
+const minsD=d=>Math.round(d*3/60); // ~3 s per Duel
+const spCol=k=>`hsl(345 100% ${70+k*10}%)`;
+const spPill=(k,txt=SPL[k],fs)=>`<span class="kao" style="background:${spCol(k)}${fs?`;font-size:${fs}px`:''}">${txt}</span>`;
+const spGo=()=>{SP.state='split';render()};
+const setG=(i,g)=>{ if(g===MID) delete SP.paint[i]; else SP.paint[i]=g; };
+const flash=t=>{ S.toast=t; render(); clearTimeout(flash.t); flash.t=setTimeout(()=>{S.toast=null;render(false)},2600); };
+const spSkip=()=>flash('Skipped. Loved stays one Band');
+const spToast=()=>S.toast?`<div class="toast">${S.toast}</div>`:'';
+const spDoneBtn=`<button class="go sm" onclick="spFinish()">Done <span class="kbd">Enter</span></button>`;
+const liveSave=()=>spBase()-duelsFor([...spCounts(),...SPB.slice(1)]);
+function spFinish(force){ if(!force&&liveSave()<100){SP.warn=true;render();return} SP.warn=false; SP.state='done'; render(); }
+function spWarn(){ if(!SP.warn) return ''; const c=spCounts();
+  return `<div class="dscrim" onclick="SP.warn=false;render()"><div class="dlg" onclick="event.stopPropagation()"><div class="h2">Middle still has ${c[1]} titles</div>
+  <p>That only saves <b>${liveSave()}</b> Duels. Move a few more up to Best or down to Lowest and it saves a lot more: a quarter each way is about −${spBase()-duelsFor([38,74,38,...SPB.slice(1)])}.</p>
+  <div class="row" style="justify-content:flex-end;gap:10px;margin-top:6px"><button class="link" onclick="spFinish(true)">Finish anyway</button><button class="go" onclick="SP.warn=false;render()">Keep sorting</button></div></div></div>`; }
+const spCountChips=()=>{ const c=spCounts(); const sv=spBase()-duelsFor([...c,...SPB.slice(1)]); return `<div class="row" style="gap:6px">${SPL.map((l,k)=>`${spPill(k,`${l} ${c[k]}`,11)}`).join('')}<span class="livesave ${sv<100?'low':''}">−${sv} Duels</span></div>`; };
+const spHead=(title,hint)=>`<div class="row sphead"><div class="col grow" style="gap:2px"><b class="strong" style="font-size:18px">${title}</b><span class="small">${hint}</span></div>${spCountChips()}${spDoneBtn}</div>`;
+const spMock=`<div class="small fine">Mock shows 50 of the 150 Loved titles (counts ×3). The real grid is sorted like Rough Sort: most recently completed first.</div>`;
+const tcv=(x,extra='')=>`${cv(x)}<span class="tt">${x.t}</span>${extra}`;
+
+function spChart(split){ const H=200;
+  const bars=split?[...spSizes().map((s,k)=>({s,c:spCol(k),l:spPill(k,SPL[k],10)})),...SPB.slice(1).map((s,i)=>({s,c:COL[i+1],l:kao(i+1,10)}))]
+    :SPB.map((s,b)=>({s,c:COL[b],l:kao(b,10)}));
+  return `<div class="spchart"><div class="bars">${bars.map(x=>`<div class="c1"><span class="cnt">${x.s}</span><div class="barv" style="height:${Math.min(x.s,150)/150*H}px;background:${x.c}"></div></div>`).join('')}
+    <div class="line" style="bottom:${40/150*H}px"><span>above ~40 titles, Duels pile up fast</span></div></div>
+    <div class="labs">${bars.map(x=>`<span>${x.l}</span>`).join('')}</div></div>`; }
+
+// --- Offer (settled) ---
+function spOffer(){ const s=duelsFor(SPB)-duelsFor([34,70,46,...SPB.slice(1)]);
+  return `<div class="bc"><div class="h1">Your Bands are lopsided</div><div class="sub">Duels only happen inside a Band, and one big Band costs far more Duels than a few small ones.</div>${spChart(false)}
+    <div class="spcount"><b class="strong">Split Loved into 3 groups?</b><span class="small">Mark the ones that are your very best and the ones that are only just Loved. Everything you leave alone stays in the middle.</span>
+    <div class="spnums"><div><b>${spBase()}</b><span class="small">Duels now</span></div><div class="eq">→</div><div class="good"><b>~${spBase()-s}</b><span class="small">after splitting · −${s} (~${minsD(s)} min)</span></div></div>
+    <div class="row"><button class="go" onclick="spGo()">Split Loved <span class="kbd">Enter</span></button><button class="link" onclick="spSkip()">Keep it as it is</button></div></div>${spToast()}</div>`; }
+
+// --- Splitting: 5 ways to paint ---
+function spBrushGrid(){ // P1 brush + click or sweep
+  return `<div class="sppaint" onpointerup="SP.down=false" onpointerleave="SP.down=false">${spHead('Paint Loved into 3 groups','Pick a brush (1–3), then click covers, or hold and sweep across them. Unpainted = Middle.')}
+    <div class="brushes">${SPL.map((l,k)=>`<button class="brush ${SP.brush===k?'on':''}" style="--b:${spCol(k)}" onclick="SP.brush=${k};render()"><span class="kbd">${k+1}</span>${l}${k===MID?' (eraser)':''}</button>`).join('')}</div>
+    <div class="pgrid">${T.map((x,i)=>{const g=SP.paint[i]; return `<button class="pc ${g!=null?'on':''}" style="--b:${spCol(spGroup(i))}" onpointerdown="SP.down=true;spBrush(${i})" onpointerenter="if(SP.down)spBrush(${i})">${tcv(x,g!=null?`<span class="pb">${SPL[g]}</span>`:'')}</button>`}).join('')}</div>${spMock}</div>`; }
+function spBrush(i){ if(spGroup(i)===SP.brush&&!SP.down) return; setG(i,SP.brush); render(false); }
+
+function spColumns(){ // P2 three columns, drag between them
+  return `<div class="sppaint">${spHead('Sort Loved into 3 columns','Everything starts in Middle. Drag a cover to Best or Lowest, or use its ↑ ↓ buttons. Aim for about a quarter in each.')}
+    <div class="spcols">${SPL.map((l,k)=>{const ids=T.map((_,i)=>i).filter(i=>spGroup(i)===k);
+      return `<div class="spcol ${k===MID?'mid':''}" style="--b:${spCol(k)}" ondragover="event.preventDefault();this.classList.add('over')" ondragleave="this.classList.remove('over')" ondrop="setG(SP.drag,${k});render()">
+        <div class="spcolh">${spPill(k)}<span class="small">${ids.length*3}</span></div>
+        <div class="pgrid sm">${ids.map(i=>`<div class="pc" draggable="true" ondragstart="SP.drag=${i}">${tcv(T[i])}<span class="arrows">${k>0?`<button onclick="setG(${i},${k-1});render()">↑</button>`:''}${k<2?`<button onclick="setG(${i},${k+1});render()">↓</button>`:''}</span></div>`).join('')||'<div class="small empty">drop covers here</div>'}</div></div>`}).join('')}</div>${spMock}</div>`; }
+
+function spSelect(){ // P3 select many, then assign
+  const sel=Object.keys(SP.sel).map(Number), n=sel.length;
+  return `<div class="sppaint">${spHead('Select, then file','Click covers to select (Shift+click for a range), then press 1 / 2 / 3 to file them. Like a photo app.')}
+    <div class="pgrid">${T.map((x,i)=>{const g=SP.paint[i]; return `<button class="pc ${g!=null?'on':''} ${SP.sel[i]?'sel':''}" style="--b:${spCol(spGroup(i))}" onclick="spSel(${i},event.shiftKey)">${tcv(x,`${g!=null?`<span class="pb">${SPL[g]}</span>`:''}<span class="tick">${SP.sel[i]?'✓':''}</span>`)}</button>`}).join('')}</div>${spMock}
+    ${n?`<div class="selbar"><b>${n} selected</b><span class="small">move to</span>${SPL.map((l,k)=>`<button style="--b:${spCol(k)}" onclick="spFile(${k})"><span class="kbd">${k+1}</span>${l}</button>`).join('')}<button class="x" onclick="SP.sel={};render()">${IC.x}</button></div>`:''}</div>`; }
+function spSel(i,shift){ if(shift&&SP.last!=null){ const [a,b]=[SP.last,i].sort((x,y)=>x-y); for(let k=a;k<=b;k++) SP.sel[k]=true; } else { if(SP.sel[i]) delete SP.sel[i]; else SP.sel[i]=true; } SP.last=i; render(); }
+function spFile(k){ Object.keys(SP.sel).forEach(i=>setG(+i,k)); SP.sel={}; SP.last=null; render(); }
+
+function spCursor(){ // P4 keyboard cursor with a big preview
+  const x=T[SP.cur];
+  return `<div class="spcur"><div class="sppaint">${spHead('Fly through Loved','Arrows move · 1 Best · 2 Middle · 3 Lowest (then it jumps to the next) · click works too · Shift+←/→ switches design')}
+    <div class="pgrid">${T.map((y,i)=>{const g=SP.paint[i]; return `<button class="pc ${g!=null?'on':''} ${i===SP.cur?'focus':''}" style="--b:${spCol(spGroup(i))}" onclick="SP.cur=${i};render()">${cv(y)}${g!=null?`<span class="pb">${SPL[g]}</span>`:''}</button>`}).join('')}</div>${spMock}</div>
+    <aside class="spprev">${bg(x)}<div class="in">${cv(x)}<b>${x.t}</b><span class="small">${meta(x)}</span><div class="col" style="gap:6px;width:100%">${SPL.map((l,k)=>`<button class="bandbtn ${spGroup(SP.cur)===k?'cur2':''}" onclick="spCurSet(${k})"><span class="kbd">${k+1}</span>${spPill(k)}</button>`).join('')}</div></div></aside></div>`; }
+function spCurSet(k){ setG(SP.cur,k); SP.cur=Math.min(T.length-1,SP.cur+1); render(); }
+function spCurMove(dx,dy){ const cols=Math.max(1,Math.round((document.querySelector('.spcur .pgrid')?.clientWidth||600)/86)); SP.cur=Math.max(0,Math.min(T.length-1,SP.cur+dx+dy*cols)); render(); }
+
+function spPasses(){ // P5 two passes, one click each, no brushes
+  const p=SP.pass, ids=T.map((_,i)=>i).filter(i=>p===0||SP.paint[i]!==0);
+  return `<div class="sppaint"><div class="spsteps"><span class="${p===0?'on':'done'}">① Your very best</span><span class="${p===1?'on':''}">② Only just Loved</span><span>③ The rest stay Middle</span></div>
+    <div class="row sphead"><div class="col grow" style="gap:2px"><b class="strong" style="font-size:20px">${p===0?'Tap the ones that are your <u>very best</u>':'Now tap the ones that are only <u>just</u> Loved'}</b><span class="small">${p===0?'Usually a small handful. Tap again to unpick.':'The ones you already picked as Best are hidden.'}</span></div>${spCountChips()}
+    ${p===0?`<button class="go sm" onclick="SP.pass=1;render()">Next <span class="kbd">Enter</span></button>`:`<button class="link" onclick="SP.pass=0;render()">Back</button>${spDoneBtn}`}</div>
+    <div class="pgrid">${ids.map(i=>{const on=SP.paint[i]===(p?2:0); return `<button class="pc ${on?'on':''}" style="--b:${spCol(p?2:0)}" onclick="setG(${i},${on?MID:(p?2:0)});render()">${tcv(T[i],on?`<span class="pb">${p?'Lowest':'Best'}</span>`:'')}</button>`}).join('')}</div>${spMock}</div>`; }
+
+function spSplit(){ return spColumns()+spWarn()+spToast(); }
+
+// --- Done (settled: striped) ---
+function spDone(){ const s=spSave();
+  return `<div class="bc"><div class="h1">Loved is split ${kao(0,18)}</div><div class="sub">About <b class="strong">${spAfter()}</b> Duels to go instead of ${spBase()}: ${s} fewer.</div>${spChart(true)}
+    <button class="go" onclick="pickBand(0)">Start Duels in Loved › Best <span class="kbd">Enter</span></button>
+    <p class="small" style="margin-top:10px">Loved stays one row in the sidebar; its bar is striped by group. Duels go Best → Middle → Lowest.</p></div>`; }
+function splitScreen(){ return SP.state==='offer'?spOffer():SP.state==='split'?spSplit():spDone(); }
+
+// sidebar rows while on the Split screen
+function spSide(){
+  const row=(pill,bar,c)=>`<div class="bandrow">${pill}${bar}<span>${c}</span></div>`, empty='<div class="bar"><i style="width:0"></i></div>';
+  const others=[1,2,3,4].map(b=>row(kao(b,10),empty,`0/${SPB[b]}`)).join('');
+  const segs=S.screen==='Split'&&SP.state==='offer'?'<div class="bar over"><i style="width:0"></i></div>':`<div class="bar segs">${spSizes().map((c,k)=>`<i style="flex:${c};background:${spCol(k)}"></i>`).join('')}</div>`;
+  return row(kao(0,10),segs,'0/150')+others;
+}
+
+// ---------- R13: moving a title between Sub-bands during Duels (title is in Loved › Middle) ----------
+const MV={exp:false}, CURSUB=1;
+function mvAuto(){ MV.exp=false; if(S.screen==='Move'&&vid()!=='corner'&&E.cur!=null) S.moving=pair()[0]; }
+function mvSub(id,k){ if(k===CURSUB) return; takeOut(id); S.moving=null; MV.exp=false; S.toast=`Moved <b>${nm(id)}</b> to ${kao(0,11)} › ${spPill(k,SPL[k],11)}`; render(); }
+const subCorner=x=>S.screen==='Move'&&vid()==='corner'?`<button class="ibtn tip" data-tip="Higher in Loved (Best)" onclick="mvSub(${x.id},0)">↑</button><button class="ibtn tip" data-tip="Lower in Loved (Lowest)" onclick="mvSub(${x.id},2)">↓</button>`:'';
+function spSheet(){ if(S.moving==null) return ''; const x=T[S.moving], d=vid();
+  if(d==='corner') return sheet();
+  const hd=`<div class="hd">${cv(x)}<div class="grow">Move “${x.t}”<div class="small" style="font-weight:400">now in ${kao(0,10)} › ${spPill(1,'Middle',10)}</div></div><button onclick="openMove(${x.id})">${IC.x}</button></div>`;
+  const wrap=inner=>`<div class="mv-scrim" onclick="openMove(${x.id})"><div class="mv-sheet" ${stop}>${hd}${inner}</div></div>`;
+  const band=(i,key=i+1)=>`<button class="bandbtn" onclick="event.stopPropagation();moveTo(${x.id},${i})">${kao(i)}<span class="lab">${LABELS[i]}</span><span class="kbd">${key}</span></button>`;
+  const sub=(k,key,pre='')=>`<button class="bandbtn ${k===CURSUB?'curband':''}" onclick="event.stopPropagation();mvSub(${x.id},${k})">${pre}${spPill(k)}<span class="lab">${k===CURSUB?'current':''}</span><span class="kbd">${key}</span></button>`;
+  if(d==='two') return wrap(MV.exp?`<div class="grid g4"><button class="bandbtn" onclick="event.stopPropagation();MV.exp=false;render()"><span class="lab">← all Bands</span><span class="kbd">Esc</span></button>${[0,1,2].map(k=>sub(k,k+1)).join('')}</div>`
+    :`<div class="grid"><button class="bandbtn" onclick="event.stopPropagation();MV.exp=true;render()">${kao(0)}<span class="lab">Loved ›</span><span class="kbd">1</span></button>${[1,2,3,4].map(i=>band(i)).join('')}</div>`);
+  if(d==='flat7') return wrap(`<div class="grid g7">${[0,1,2].map(k=>sub(k,k+1,kao(0,10))).join('')}${[1,2,3,4].map(i=>band(i,i+3)).join('')}</div>`);
+  if(d==='stripe') return wrap(`<div class="grid g5s"><div class="bandbtn stripe">${kao(0)}<div class="stripes">${[0,1,2].map(k=>`<button style="background:${spCol(k)}" class="${k===CURSUB?'cur':''}" onclick="event.stopPropagation();mvSub(${x.id},${k})">${SPL[k]}<span class="kbd">${'QWE'[k]}</span></button>`).join('')}</div></div>${[1,2,3,4].map(i=>band(i)).join('')}</div>`);
+  if(d==='nudge') return wrap(`<div class="nudge">${sub(0,'↑','<span class="lab">one step up ›</span>')}${sub(2,'↓','<span class="lab">one step down ›</span>')}</div>
+    ${MV.exp?`<div class="grid g4">${[1,2,3,4].map(i=>band(i)).join('')}</div>`:`<button class="link" onclick="event.stopPropagation();MV.exp=true;render()">Another Band… <span class="kbd">B</span></button>`}`);
+}
+function mvKey(e){ const d=vid(), k=e.key.toLowerCase(), n=/^[1-7]$/.test(k)?+k:0, id=S.moving;
+  if(d==='corner') return false;
+  const go=f=>{e.preventDefault();f();return true};
+  if(d==='two'){ if(MV.exp){ if(n>=1&&n<=3) return go(()=>mvSub(id,n-1)); if(k==='escape'||k==='backspace') return go(()=>{MV.exp=false;render()}); return false; }
+    if(n===1) return go(()=>{MV.exp=true;render()}); if(n>=2&&n<=5) return go(()=>moveTo(id,n-1)); return false; }
+  if(d==='flat7'){ if(n>=1&&n<=3) return go(()=>mvSub(id,n-1)); if(n>=4&&n<=7) return go(()=>moveTo(id,n-3)); return false; }
+  if(d==='stripe'){ const q='qwe'.indexOf(k); if(q>=0) return go(()=>mvSub(id,q)); if(n>=2&&n<=5) return go(()=>moveTo(id,n-1)); return false; }
+  if(d==='nudge'){ if(k==='arrowup') return go(()=>mvSub(id,0)); if(k==='arrowdown') return go(()=>mvSub(id,2)); if(k==='b') return go(()=>{MV.exp=true;render()}); if(MV.exp&&n>=2&&n<=5) return go(()=>moveTo(id,n-1)); return false; }
+  return false; }
 let timer=null;
 function runCountdown(){ clearInterval(timer); S.count=5; S.countdownP=0; if(S.screen!=='Band choice'||vid()!=='party') return;
   timer=setInterval(()=>{ S.count--; S.countdownP=(5-S.count)*20; if(S.count<=0){clearInterval(timer); S.count='→'; } render(false); },1000); }
@@ -930,25 +1205,25 @@ function render(restart=true){
   const rows=LABELS.map((b,i)=>{ const p=isDuel?(i==0?pct:0):BC[i].done/BC[i].n*100, c=isDuel?(i==0?`${done}/${tot}`:`0/${BC[i].n}`):`${BC[i].done}/${BC[i].n}`;
     return `<${sidePick?`button onclick="pickBand(${i})"`:'div'} class="bandrow ${isDuel&&i==0?'cur':''}">${kao(i,10)}<div class="bar"><i style="width:${p}%"></i></div><span>${c}</span></${sidePick?'button':'div'}>`}).join('');
   const sidebar=`<aside class="side"><div class="row"><div class="logo grow">Ani<b>Duel!</b></div><button class="hide-m sbtn" title="Theme" onclick="S.dark=!S.dark;render()">${S.dark?IC.sun:IC.moon}</button><button class="hide-m sbtn" title="Hide sidebar ([)" onclick="setSide(0)">${IC.hide}</button></div>
-    <div class="small hide-m">zen · Anime · 142 titles</div>
-    <div class="col hide-m" style="gap:4px">${rows}</div>
-    <div class="small hide-m row">${kao(0,10)} Ranking so far</div>
-    <div class="rank hide-m">${E.sorted.map((tier,i)=>{const inb=E.cur!=null&&i>=E.lo&&i<E.hi,pv=E.cur!=null&&i===pivotIdx();return `<div class="${pv?'piv':inb?'inb':'out'}">${i+1}. ${tier.map(nm).join(' = ')}</div>`}).join('')}</div>
+    <div class="small hide-m">zen · Anime · ${S.screen==='Split'||S.screen==='Move'?200:142} titles</div>
+    <div class="col hide-m" style="gap:4px">${S.screen==='Split'||S.screen==='Move'?spSide():rows}</div>
+    ${S.screen==='Split'?'':`<div class="small hide-m row">${kao(0,10)} Ranking so far</div>`}
+    <div class="rank hide-m" ${S.screen==='Split'?'style="display:none"':''}>${E.sorted.map((tier,i)=>{const inb=E.cur!=null&&i>=E.lo&&i<E.hi,pv=E.cur!=null&&i===pivotIdx();return `<div class="${pv?'piv':inb?'inb':'out'}">${i+1}. ${tier.map(nm).join(' = ')}</div>`}).join('')}</div>
     ${S.screen==='Menu'?`<div class="hide-m">${menuSideBottom(vid())}</div>`:''}
     ${S.mobile?`<div class="grow"></div>${kao(0,9)}<span class="small">${done}/${tot}</span>${IC.menu}`:''}</aside>`;
   const sideBtn=!S.side&&!S.mobile&&S.screen!=='Start'?`<div class="float-side"><button class="ibtn" onclick="setSide(1)">${IC.menu}</button></div>`:'';
-  const main={'Menu':duel,'Import':importScreen,'Preview':preview,'Start':start,'Duel':duel,'Band choice':bandChoice,'Rough Sort':rough}[S.screen]();
+  const main={'Move':duel,'Split':splitScreen,'Menu':duel,'Import':importScreen,'Preview':preview,'Start':start,'Duel':duel,'Band choice':bandChoice,'Rough Sort':rough}[S.screen]();
   app.innerHTML=sidebar+`<main class="main">${sideBtn}${main}${S.screen==='Menu'?menuOverlay(vid()):''}</main>${dialog()}`;
   const V=VARS[S.screen], cur=V[S.v[S.screen]];
   pname.textContent=cur.name; psub.textContent=cur.sub; pidx.textContent=`${S.v[S.screen]+1}/${V.length}`; phelp.textContent=HELP[S.screen];
   pscreen.innerHTML=SCREENS.map(v=>`<button class="${S.screen===v?'on':''}" onclick="go('${v}')">${v}</button>`).join('');
-  pstate.innerHTML=S.screen==='Import'?IM_STATES.map(([k,l])=>`<button class="${IM.state===k?'on':''}" onclick="imSet('${k}')">${l}</button>`).join(''):S.screen==='Preview'?Object.keys(FMT).map(k=>`<button class="${PV.fmt===k?'on':''}" onclick="PV.fmt='${k}';PV.filter=null;render()">${FMT[k].name}</button>`).join(''):S.screen==='Start'?['Logged out','Pool setup'].map((v,i)=>`<button class="${+S.logged===i?'on':''}" onclick="S.logged=${!!i};S.step=${i?2:1};render()">${v}</button>`).join(''):'<span style="color:#777;font-size:11px">—</span>';
+  pstate.innerHTML=S.screen==='Split'?SP_STATES.map(([k,l])=>`<button class="${SP.state===k?'on':''}" onclick="SP.state='${k}';render()">${l}</button>`).join(''):S.screen==='Import'?IM_STATES.map(([k,l])=>`<button class="${IM.state===k?'on':''}" onclick="imSet('${k}')">${l}</button>`).join(''):S.screen==='Preview'?Object.keys(FMT).map(k=>`<button class="${PV.fmt===k?'on':''}" onclick="PV.fmt='${k}';PV.filter=null;render()">${FMT[k].name}</button>`).join(''):S.screen==='Start'?['Logged out','Pool setup'].map((v,i)=>`<button class="${+S.logged===i?'on':''}" onclick="S.logged=${!!i};S.step=${i?2:1};render()">${v}</button>`).join(''):'<span style="color:#777;font-size:11px">—</span>';
   pview.innerHTML=['Desktop','Mobile'].map((v,i)=>`<button class="${+S.mobile===i?'on':''}" onclick="S.mobile=${!!i};render()">${v}</button>`).join('');
   if(restart) runCountdown();
 }
-function go(v){ S.screen=v; S.moving=null; S.toast=null; render(); }
+function go(v){ S.screen=v; S.moving=null; S.toast=null; mvAuto(); render(); }
 const setSide=i=>{S.side=!!i;render()};
-function cycle(n){ MN.open=false; MN.dlg=null; const V=VARS[S.screen]; S.v[S.screen]=(S.v[S.screen]+n+V.length)%V.length; S.moving=null; render() }
+function cycle(n){ MN.open=false; MN.dlg=null; const V=VARS[S.screen]; S.v[S.screen]=(S.v[S.screen]+n+V.length)%V.length; S.moving=null; mvAuto(); render() }
 sys.addEventListener('change',e=>{S.dark=e.matches;render()});
 document.addEventListener('click',e=>{ if(S.moving!=null&&!e.target.closest('.mv-pop,.mv-over,.mv-sheet,.mv-inline,.mv-radial,.ibtn')){S.moving=null;render()} });
 
@@ -958,8 +1233,10 @@ addEventListener('keydown',e=>{
   if(e.key==='Escape'&&(MN.open||MN.dlg)){MN.open=false;MN.dlg=null;render();return}
   if(e.target.tagName==='INPUT'){ if(e.key==='Enter'&&MN.open){const q=MN.q.toLowerCase(), it=ITEMS.find(i=>!q||i.t.toLowerCase().includes(q)||i.d.toLowerCase().includes(q)); if(it) mnDo(it.k);} return; }
   if(e.key==='[')setSide(+!S.side);
-  if(S.screen==='Duel'){
+  if(S.screen==='Duel'||S.screen==='Move'){
+    if(e.key==='Escape'&&S.screen==='Move'&&MV.exp){MV.exp=false;render();return}
     if(e.key==='Escape'){S.moving=null;S.mPending=false;render();return}
+    if(S.screen==='Move'&&S.moving!=null&&mvKey(e)) return;
     if(S.moving!=null&&'12345'.includes(e.key)&&e.key.length===1){moveTo(S.moving,+e.key-1);return}
     if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ const dir=e.key==='ArrowLeft'?-1:1; e.preventDefault();
       if(e.shiftKey){cycle(dir);return} if(E.cur==null)return; const [l,r]=pair(), id=dir<0?l:r;
@@ -967,6 +1244,16 @@ addEventListener('keydown',e=>{
       if(fMode){fMode=false;forget(id)} else answer(id); return; }
     if(e.key==='m'||e.key==='M'){S.mPending=true;render();return}
     if(e.key==='ArrowDown'){answer('tie');e.preventDefault()} if(e.key==='Backspace')undo(); if(e.key==='f'||e.key==='F')fMode=true;
+  } else if(S.screen==='Split'){
+    const cur=SP.state==='split'&&vid()==='cursor';
+    if((e.key==='ArrowLeft'||e.key==='ArrowRight')&&(!cur||e.shiftKey)){cycle(e.key==='ArrowLeft'?-1:1);e.preventDefault();return}
+    if(e.key==='Enter'){ if(SP.state==='offer') spGo(); else if(SP.state==='done') pickBand(0); else if(!SP.warn) spFinish(); return; }
+    if(SP.state!=='split') return;
+    const d=vid(), k=/^[1-3]$/.test(e.key)?+e.key-1:-1;
+    if(d==='brush'&&k>=0){SP.brush=k;render()}
+    if(d==='select'&&k>=0&&Object.keys(SP.sel).length) spFile(k);
+    if(d==='cursor'){ if(k>=0) spCurSet(k);
+      const mv={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key]; if(mv){e.preventDefault();spCurMove(...mv)} }
   } else if(S.screen==='Rough Sort'){
     if('12345'.includes(e.key)&&e.key.length===1)rsPick(+e.key-1); if(e.key==='0')rsPick(-1); if(e.key==='Backspace')rsUndo();
   } else {
