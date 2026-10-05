@@ -21,6 +21,12 @@
   --band-meh: #c9d4ff;
   --band-hated: #cfc9d6;
   --band-ink: #4a3b52;
+  /* Sub-bands of a split Band (ADR 0006): Best / Middle / Lowest */
+  --sub-best: hsl(345 100% 70%);
+  --sub-middle: hsl(345 100% 80%);
+  --sub-lowest: hsl(345 100% 90%);
+  --good: #3fae5a;
+  --bad: #f27d7d;
 
   /* Immersive screens (Rough Sort, Duel) sit on a dark blurred backdrop in both themes. */
   --ok: #7bd88f;
@@ -268,6 +274,15 @@ a {
   display: block;
   height: 100%;
   background: var(--blue);
+}
+.bar.over {
+  background: color-mix(in srgb, var(--bad) 33%, transparent);
+  box-shadow: 0 0 0 1px var(--bad);
+}
+.bar.segs {
+  display: flex;
+  gap: 1px;
+  background: none;
 }
 .cv {
   object-fit: cover;

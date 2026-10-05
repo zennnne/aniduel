@@ -1,8 +1,8 @@
-import { useEffect, useEffectEvent } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import type { ListEntry, MediaType, TitleLanguage } from '../../anilist/types.ts'
 import { displayTitle } from '../../pool/pool.ts'
-import { BANDS, type BandIndex, type RankingState } from '../../ranking/engine.ts'
-import { BAND_UI } from '../bands.ts'
+import { BANDS, SUB_BANDS, type BandIndex, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
+import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { EXT_ICON, UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { metaLine } from '../meta.ts'
@@ -11,6 +11,7 @@ import './roughsort.css'
 /**
  * Rough Sort = "Ladder" (issue #4): the title on the left, five Band buttons on the right
  * (Loved on top), with Don't remember / Undo / AniList underneath. Keys 1-5, 0, Backspace.
+ * A split Band opens a second tap under its button: Best / Middle / Lowest (Q / W / E; Esc or Backspace goes back).
  */
 export function RoughSortScreen(props: {
   state: RankingState
@@ -20,22 +21,45 @@ export function RoughSortScreen(props: {
   entries: ReadonlyMap<number, ListEntry>
   titleLanguage: TitleLanguage
   mediaType: MediaType
-  onBand: (band: BandIndex) => void
+  /** `sub` is set when the Band is split: the second tap (ADR 0006). */
+  onBand: (band: BandIndex, sub?: SubBandIndex) => void
   onForget: () => void
   onUndo: () => void
 }) {
   const { state, id, entries, titleLanguage, mediaType, onBand, onForget, onUndo } = props
   const { done, total } = state.progress.roughSort
+  // A split Band needs a second tap to pick its Sub-band; it never defaults to Middle (ADR 0006).
+  const [pending, setPending] = useState<BandIndex | null>(null)
+
+  function pickBand(band: BandIndex) {
+    if (state.bands[band].subBands) setPending(band)
+    else onBand(band)
+  }
+
+  function pickSub(sub: SubBandIndex) {
+    if (pending === null) return
+    setPending(null)
+    onBand(pending, sub)
+  }
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable]')) return
+    if (pending !== null) {
+      const sub = SUB_BANDS.find((s) => SUB_BAND_UI[s].key === e.key.toUpperCase())
+      if (sub !== undefined) pickSub(sub)
+      else if (e.key === 'Escape' || e.key === 'Backspace') {
+        e.preventDefault()
+        setPending(null)
+      } else if (e.key >= '1' && e.key <= '5') pickBand((Number(e.key) - 1) as BandIndex)
+      return
+    }
     if (e.key === 'Backspace') {
       e.preventDefault()
       if (state.canUndo) onUndo()
       return
     }
-    if (e.key >= '1' && e.key <= '5') onBand((Number(e.key) - 1) as BandIndex)
+    if (e.key >= '1' && e.key <= '5') pickBand((Number(e.key) - 1) as BandIndex)
     else if (e.key === '0') onForget()
   })
 
@@ -77,13 +101,32 @@ export function RoughSortScreen(props: {
         <div className="col">
           <div className="bands" role="group" aria-label="Band">
             {BANDS.map((band) => (
-              <button key={band} className="bandbtn" onClick={() => onBand(band)}>
-                <span className="row">
-                  <span className="kbd">{band + 1}</span>
-                  <Kao band={band} size={17} />
-                </span>
-                <span className="lab">{BAND_UI[band].label}</span>
-              </button>
+              <div key={band} className="bandslot">
+                <button
+                  className={pending === band ? 'bandbtn picked' : 'bandbtn'}
+                  onClick={() => (pending === band ? setPending(null) : pickBand(band))}
+                  aria-expanded={state.bands[band].subBands ? pending === band : undefined}
+                >
+                  <span className="row">
+                    <span className="kbd">{band + 1}</span>
+                    <Kao band={band} size={17} />
+                  </span>
+                  <span className="lab">
+                    {BAND_UI[band].label}
+                    {state.bands[band].subBands && pending !== band && <span className="fine"> · 3 groups</span>}
+                  </span>
+                </button>
+                {pending === band && (
+                  <div className="subtap" role="group" aria-label={`${BAND_UI[band].label}: which group?`}>
+                    {SUB_BANDS.map((sub) => (
+                      <button key={sub} style={{ background: SUB_BAND_UI[sub].colour }} onClick={() => pickSub(sub)} autoFocus={sub === 0}>
+                        {SUB_BAND_UI[sub].label}
+                        <span className="kbd">{SUB_BAND_UI[sub].key}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
           <div className="subrow">

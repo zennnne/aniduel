@@ -4,7 +4,7 @@ import { displayTitle } from '../../pool/pool.ts'
 import type { Prompt, RankingState } from '../../ranking/engine.ts'
 import { BAND_UI } from '../bands.ts'
 import { EXT_ICON, SAME_ICON, UNDO_ICON } from '../icons.tsx'
-import { Kao } from '../Kao.tsx'
+import { Kao, SubPill } from '../Kao.tsx'
 import { metaLine } from '../meta.ts'
 import './duel.css'
 
@@ -76,7 +76,14 @@ export function DuelScreen(props: {
 }) {
   const { state, prompt, entries, titleLanguage, mediaType, onPick, onTie, onForget, onUndo } = props
   const [forgetting, setForgetting] = useState(false)
-  const progress = state.progress.bands[prompt.band]
+  // Inside a split Band the pill counts the current Sub-band only.
+  const part = prompt.sub !== undefined ? state.bands[prompt.band].subBands?.[prompt.sub] : undefined
+  const progress = part
+    ? (() => {
+        const placed = part.tiers.reduce((n, tier) => n + tier.length, 0)
+        return { done: placed, total: placed + part.unplaced.length }
+      })()
+    : state.progress.bands[prompt.band]
   const overall = state.progress.ranked
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
@@ -132,7 +139,14 @@ export function DuelScreen(props: {
       </div>
       <div className="float-info">
         <span className="pill" aria-live="polite">
-          <Kao band={prompt.band} size={10} /> {BAND_UI[prompt.band].label} · {progress.done}/{progress.total} · {spots}{' '}
+          <Kao band={prompt.band} size={10} /> {BAND_UI[prompt.band].label}
+          {prompt.sub !== undefined && (
+            <>
+              {' › '}
+              <SubPill sub={prompt.sub} size={10} />
+            </>
+          )}{' '}
+          · {progress.done}/{progress.total} · {spots}{' '}
           {spots === 1 ? 'spot' : 'spots'} left
           {forgetting && (
             <>

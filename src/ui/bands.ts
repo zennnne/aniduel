@@ -1,4 +1,11 @@
-import type { BandIndex } from '../ranking/engine.ts'
+import type { BandIndex, SubBandIndex } from '../ranking/engine.ts'
+
+/** Display data for the three Sub-bands of a split Band (ADR 0006). Colours live in theme.css. */
+export const SUB_BAND_UI: Record<SubBandIndex, { label: string; colour: string; key: string }> = {
+  0: { label: 'Best', colour: 'var(--sub-best)', key: 'Q' },
+  1: { label: 'Middle', colour: 'var(--sub-middle)', key: 'W' },
+  2: { label: 'Lowest', colour: 'var(--sub-lowest)', key: 'E' },
+}
 
 /** Display data for the five Bands, top (Loved) to bottom (Hated). Colours live in theme.css. */
 export const BAND_UI: Record<BandIndex, { label: string; kao: string; colour: string }> = {

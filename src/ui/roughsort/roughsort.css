@@ -64,6 +64,39 @@
 .rs-ladder .bandbtn:hover {
   transform: translateX(6px);
 }
+.rs-ladder .bandslot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rs-ladder .bandbtn {
+  width: 100%;
+}
+.rs-ladder .bandbtn.picked {
+  outline: 2px solid var(--on-overlay);
+}
+/* Second tap for a split Band (ADR 0006): Best / Middle / Lowest */
+.subtap {
+  display: flex;
+  gap: 6px;
+  padding-left: 18px;
+}
+.subtap button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--band-ink);
+  font-weight: 800;
+  font-size: 13px;
+}
+.subtap button:hover,
+.subtap button:focus-visible {
+  outline: 2px solid var(--blue);
+}
 @media (max-width: 720px) {
   .rs-ladder {
     grid-template-columns: 1fr;
