@@ -19,6 +19,8 @@ export type PoolForm = {
   onStartRoughSort?: () => void
   /** Rough Sort progress of the Ranking saved for this Media Type, if there is one. */
   saved?: { done: number; total: number } | null
+  /** Expected Duels from the saved Ranking's real Band sizes once its Rough Sort is done (#1 US8); else equal Bands are assumed. */
+  bandDuels?: number | null
   /** Opens Restore from Backup (e.g. on a new browser). */
   onRestore?: () => void
 }
@@ -117,6 +119,7 @@ function PoolSetup(form: PoolForm) {
   const chosen = new Set(statuses)
   const label = (s: (typeof OFFERED_STATUSES)[number]) => statusLabel(s, mediaType)
   const n = pool?.titles.length ?? 0
+  const duels = form.bandDuels ?? pool?.expectedDuels ?? 0
 
   return (
     <>
@@ -161,9 +164,10 @@ function PoolSetup(form: PoolForm) {
       <div className="est" aria-live="polite">
         {pool ? (
           <>
-            <b>{n}</b> titles · about <b>{pool.expectedDuels}</b> Duels
+            <b>{n}</b> titles · about <b>{duels}</b> Duels
             <span className="small">
-              (~{estimateMinutes(pool.expectedDuels)} min at 3 s each, spread over as many sittings as you like)
+              ({form.bandDuels != null ? 'from your Band sizes, ' : ''}~{estimateMinutes(duels)} min at 3 s each, spread over
+              as many sittings as you like)
             </span>
           </>
         ) : (

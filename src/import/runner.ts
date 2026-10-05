@@ -210,7 +210,12 @@ export function formatDuration(ms: number): string {
   return minutes === 0 ? `${seconds} s` : `${minutes} min ${seconds % 60} s`
 }
 
-export type ImportSummary ={ written: number; skipped: number; failed: number; left: number; total: number }
+/** Each skipped title with why it was skipped ("changed on AniList", "not on your list"), in plan order. */
+export function skippedWrites(state: ImportState): { mediaId: number; reason: string }[] {
+  return state.writes.filter((w) => w.status === 'skipped').map((w) => ({ mediaId: w.mediaId, reason: w.error ?? 'skipped' }))
+}
+
+export type ImportSummary = { written: number; skipped: number; failed: number; left: number; total: number }
 
 export function importSummary(state: ImportState): ImportSummary {
   const count = (status: WriteStatus) => state.writes.filter((w) => w.status === status).length

@@ -4,6 +4,7 @@ import type { ListStatus, MediaType } from '../anilist/types.ts'
 import { parseImportState, type ImportState } from '../import/runner.ts'
 import { OFFERED_STATUSES } from '../pool/pool.ts'
 import type { DuelLog } from '../ranking/engine.ts'
+import type { TickOverrides } from '../ranking/preview.ts'
 import { parseSavedScoring, type SavedScoring } from '../ranking/scoring.ts'
 
 export type ProgressKey = { userId: number; mediaType: MediaType; part: string }
@@ -128,6 +129,34 @@ export function loadImportState(storage: Storage, key: RankingKey): ImportState 
 
 export function deleteImportState(storage: Storage, key: RankingKey): void {
   storage.removeItem(progressStorageKey({ ...key, part: IMPORT_PART }))
+}
+
+const TICKS_PART = 'import-ticks'
+
+/** Saves the Import ticks the user changed on Preview (#1 US52), so an unticked title stays unticked after a reload. */
+export function saveTickOverrides(storage: Storage, key: RankingKey, ticks: TickOverrides): void {
+  saveProgressPart(storage, { ...key, part: TICKS_PART }, JSON.stringify([...ticks]))
+}
+
+/** The saved tick changes; entries it doesn't understand are dropped, and none or unreadable gives an empty map. */
+export function loadTickOverrides(storage: Storage, key: RankingKey): Map<number, boolean> {
+  const raw = loadProgressPart(storage, { ...key, part: TICKS_PART })
+  if (raw === null) return new Map()
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return new Map()
+    const valid = parsed.filter(
+      (e: unknown): e is [number, boolean] =>
+        Array.isArray(e) && e.length === 2 && Number.isInteger(e[0]) && typeof e[1] === 'boolean',
+    )
+    return new Map(valid)
+  } catch {
+    return new Map()
+  }
+}
+
+export function deleteTickOverrides(storage: Storage, key: RankingKey): void {
+  storage.removeItem(progressStorageKey({ ...key, part: TICKS_PART }))
 }
 
 function lastMediaTypeKey(userId: number): string {

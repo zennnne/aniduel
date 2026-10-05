@@ -4,6 +4,7 @@ import {
   WRITE_SPACING_MS,
   formatDuration,
   importSummary,
+  skippedWrites,
   timeLeftMs,
   type ImportState,
   type RunnerStatus,
@@ -97,6 +98,7 @@ export function ImportScreen(props: {
           : `Writing about 1 every ${((status?.phase === 'writing' ? status.spacingMs : WRITE_SPACING_MS) / 1000).toFixed(1)} s to stay inside AniList's limit · ${left} left`
   }
   const failed = state.writes.filter((w) => w.status === 'failed')
+  const skipped = skippedWrites(state)
 
   return (
     <div className="im im-grid">
@@ -124,7 +126,7 @@ export function ImportScreen(props: {
             </div>
             <div>
               <b>{summary.skipped}</b>
-              <span>skipped (changed on AniList)</span>
+              <span>skipped</span>
             </div>
             <div className="bad">
               <b>{summary.failed}</b>
@@ -168,6 +170,17 @@ export function ImportScreen(props: {
           <button className="go" onClick={props.onRetry}>
             Retry {failed.length} failed
           </button>
+        </div>
+      )}
+      {stage === 'done' && skipped.length > 0 && (
+        <div className="imskip">
+          <b className="strong">Skipped</b>
+          {skipped.map((w) => (
+            <div key={w.mediaId} className="frow">
+              <span className="grow">{name(w.mediaId)}</span>
+              <span className="small">{w.reason}</span>
+            </div>
+          ))}
         </div>
       )}
       {stage !== 'running' && (

@@ -24,6 +24,7 @@ import {
 import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, displayTitle, roughSortOrder } from '../pool/pool.ts'
 import { syncEvents } from '../pool/sync.ts'
 import {
+  answeredDuels,
   appendEvent,
   replay,
   startLog,
@@ -74,11 +75,6 @@ type DialogName = 'logout' | 'restore' | 'start-over'
 
 const MEDIA_LABEL: Record<MediaType, string> = { ANIME: 'Anime', MANGA: 'Manga' }
 const TOAST_MS = 4000
-
-/** Duel answers in the log (cancelled ones included). */
-function countDuels(log: DuelLog): number {
-  return log.events.filter((e) => e.type === 'duel-answered').length
-}
 
 function loginRedirect() {
   window.location.assign(authorizeUrl(aniListClientId({ dev: import.meta.env.DEV })))
@@ -951,7 +947,7 @@ export function App() {
       {dialog === 'start-over' && viewer && (
         <StartOverDialog
           mediaType={mediaType}
-          counts={ranking && log ? { roughSort: ranking.progress.roughSort.done, duels: countDuels(log) } : null}
+          counts={ranking && log ? { roughSort: ranking.progress.roughSort.done, duels: answeredDuels(log) } : null}
           onConfirm={startOver}
           onSaveBackup={log ? saveBackup : undefined}
           onCancel={() => setDialog(null)}
