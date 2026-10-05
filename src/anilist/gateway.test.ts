@@ -216,3 +216,27 @@ describe('AniList Gateway: list', () => {
     expect(gateway.rateLimit()).toEqual({ remaining: 17, resetAt: 1760000000 })
   })
 })
+
+describe('AniList Gateway: saving a score', () => {
+  it('sends SaveMediaListEntry with only the mediaId and scoreRaw (spike #3: every other field is kept)', async () => {
+    const { fetch, calls } = fakeFetch({ json: { data: { SaveMediaListEntry: { mediaId: 7, score: 85 } } } })
+    const gateway = createAniListGateway({ fetch, token: 't' })
+
+    await gateway.saveScore(7, 85)
+
+    expect(calls[0].body.query).toContain('SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw)')
+    expect(calls[0].body.variables).toEqual({ mediaId: 7, scoreRaw: 85 })
+  })
+
+  it('reports a 429 as rate-limited and keeps its reset header', async () => {
+    const { fetch } = fakeFetch({
+      status: 429,
+      json: { errors: [{ message: 'Too Many Requests.', status: 429 }] },
+      headers: { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1760000060' },
+    })
+    const gateway = createAniListGateway({ fetch, token: 't' })
+
+    await expect(gateway.saveScore(7, 85)).rejects.toMatchObject({ kind: 'rate-limited' })
+    expect(gateway.rateLimit()).toEqual({ remaining: 0, resetAt: 1760000060 })
+  })
+})
