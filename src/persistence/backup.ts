@@ -1,11 +1,14 @@
 // Backup and Restore: one Ranking's Duel log and settings as a versioned JSON file (issue #12).
 import type { MediaType } from '../anilist/types.ts'
 import { ENGINE_VERSION, LOG_FORMAT_VERSION, replay, type DuelLog } from '../ranking/engine.ts'
+import { parseSavedScoring, type SavedScoring } from '../ranking/scoring.ts'
 import {
   loadDuelLog,
   loadPoolSettings,
+  loadScoringSettings,
   saveDuelLog,
   savePoolSettings,
+  saveScoringSettings,
   type PoolSettings,
   type RankingKey,
 } from './progress.ts'
@@ -20,7 +23,7 @@ export type Backup = {
   userId: number
   mediaType: MediaType
   log: DuelLog
-  settings: { pool: PoolSettings | null }
+  settings: { pool: PoolSettings | null; scoring: SavedScoring | null }
 }
 
 /** The Backup file for one Ranking, or null if there is nothing saved to back up. */
@@ -39,7 +42,10 @@ export function createBackup(
     userId,
     mediaType,
     log,
-    settings: { pool: loadPoolSettings(storage, { userId, mediaType }) },
+    settings: {
+      pool: loadPoolSettings(storage, { userId, mediaType }),
+      scoring: loadScoringSettings(storage, { userId, mediaType }),
+    },
   }
   return { fileName: backupFileName(key.userName, mediaType, now), json: JSON.stringify(backup, null, 1) }
 }
@@ -101,7 +107,10 @@ export function readBackup(json: string, key: RankingKey): Backup {
     userId: key.userId,
     mediaType: key.mediaType,
     log,
-    settings: { pool: pool && Array.isArray(pool.statuses) ? { statuses: pool.statuses } : null },
+    settings: {
+      pool: pool && Array.isArray(pool.statuses) ? { statuses: pool.statuses } : null,
+      scoring: parseSavedScoring(parsed.settings?.scoring ?? null),
+    },
   }
 }
 
@@ -109,4 +118,5 @@ export function readBackup(json: string, key: RankingKey): Backup {
 export function restoreBackup(storage: Storage, backup: Backup): void {
   saveDuelLog(storage, backup.log)
   if (backup.settings.pool) savePoolSettings(storage, backup.log.header, backup.settings.pool)
+  if (backup.settings.scoring) saveScoringSettings(storage, backup.log.header, backup.settings.scoring)
 }
