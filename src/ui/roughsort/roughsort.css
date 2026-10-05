@@ -64,24 +64,6 @@
 .rs-ladder .bandbtn:hover {
   transform: translateX(6px);
 }
-.rs-done {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  text-align: center;
-  padding: 40px 16px;
-}
-.rs-done .bands-summary {
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
-  justify-content: center;
-  color: var(--on-overlay);
-  font-weight: 700;
-}
 @media (max-width: 720px) {
   .rs-ladder {
     grid-template-columns: 1fr;

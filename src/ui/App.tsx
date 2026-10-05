@@ -1,7 +1,7 @@
 // Screens are chosen from app state, not by a router (ADR 0004).
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { AniListError, createAniListGateway } from '../anilist/gateway.ts'
-import type { ListEntry, ListStatus, MediaType, Viewer } from '../anilist/types.ts'
+import type { ListEntry, ListStatus, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import {
@@ -13,7 +13,9 @@ import {
   savePoolSettings,
 } from '../persistence/progress.ts'
 import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '../pool/pool.ts'
-import { replay, startLog, type DuelLog, type LogEvent } from '../ranking/engine.ts'
+import { replay, startLog, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
+import { CompleteScreen } from './duel/CompleteScreen.tsx'
+import { DuelScreen } from './duel/DuelScreen.tsx'
 import { LogoutDialog } from './LogoutDialog.tsx'
 import { RankingSidebar } from './RankingSidebar.tsx'
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
@@ -21,7 +23,7 @@ import { Shell, type Notice } from './Shell.tsx'
 import { StartScreen } from './start/StartScreen.tsx'
 import { useTheme } from './theme.ts'
 
-type Screen = 'start' | 'rough-sort'
+type Screen = 'start' | 'ranking'
 
 function loginRedirect() {
   window.location.assign(authorizeUrl(aniListClientId({ dev: import.meta.env.DEV })))
@@ -67,7 +69,7 @@ export function App() {
     window.history.replaceState({ screen: 'start' }, '')
     const onPop = (e: PopStateEvent) => {
       const state = e.state as { screen?: Screen } | null
-      setScreen(state?.screen === 'rough-sort' ? 'rough-sort' : 'start')
+      setScreen(state?.screen === 'ranking' ? 'ranking' : 'start')
     }
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
@@ -82,7 +84,7 @@ export function App() {
       if (saved) replay(saved) // refuse a log the engine can't replay before showing anything from it
       setCurrentLog(saved)
       setSavedBroken(false)
-      if (saved && resume) goTo('rough-sort')
+      if (saved && resume) goTo('ranking')
     } catch (e) {
       setCurrentLog(null)
       setSavedBroken(true)
@@ -183,7 +185,7 @@ export function App() {
       saveDuelLog(localStorage, fresh)
       setCurrentLog(fresh)
     }
-    goTo('rough-sort')
+    goTo('ranking')
   }
 
   const form = viewer
@@ -209,23 +211,48 @@ export function App() {
     : null
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
-  const inRanking = screen === 'rough-sort' && viewer && ranking && (list || notice)
+  const inRanking = screen === 'ranking' && viewer && ranking && (list || notice)
+
+  /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
+  function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
+    const prompt = state.prompt
+    const shared = { state, entries, titleLanguage, mediaType, onUndo: () => answer({ type: 'undo' }) }
+    switch (prompt.kind) {
+      case 'rough-sort':
+        return (
+          <RoughSortScreen
+            {...shared}
+            id={prompt.id}
+            onBand={(band) => answer({ type: 'band-assigned', id: prompt.id, band })}
+            onForget={() => answer({ type: 'forgotten', id: prompt.id })}
+          />
+        )
+      case 'duel':
+        return (
+          <DuelScreen
+            {...shared}
+            prompt={prompt}
+            onPick={(winner) => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: winner === prompt.a ? 'a' : 'b' })}
+            onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
+            onForget={(id) => answer({ type: 'forgotten', id })}
+          />
+        )
+      case 'all-complete':
+        return <CompleteScreen {...shared} />
+    }
+  }
 
   return (
     <Shell
       notice={notice}
-      sidebar={inRanking ? <RankingSidebar viewer={viewer} mediaType={mediaType} state={ranking} /> : undefined}
+      sidebar={
+        inRanking ? (
+          <RankingSidebar viewer={viewer} mediaType={mediaType} state={ranking} entries={entries} titleLanguage={viewer.titleLanguage} />
+        ) : undefined
+      }
     >
       {inRanking ? (
-        <RoughSortScreen
-          state={ranking}
-          entries={entries}
-          titleLanguage={viewer.titleLanguage}
-          mediaType={mediaType}
-          onBand={(band) => ranking.prompt.kind === 'rough-sort' && answer({ type: 'band-assigned', id: ranking.prompt.id, band })}
-          onForget={() => ranking.prompt.kind === 'rough-sort' && answer({ type: 'forgotten', id: ranking.prompt.id })}
-          onUndo={() => answer({ type: 'undo' })}
-        />
+        rankingScreen(ranking, viewer.titleLanguage)
       ) : (
         <StartScreen
           form={form}

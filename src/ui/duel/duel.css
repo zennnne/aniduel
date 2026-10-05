@@ -1,0 +1,202 @@
+/* Duel = split-bleed + Immersive controls (issue #4 prototype, section 5) */
+.duel {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--nav);
+}
+.pair {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  position: relative;
+}
+.card {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+.card > *:not(.bg) {
+  position: relative;
+  z-index: 1;
+}
+.card .bg {
+  position: absolute;
+  inset: -20px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(14px) brightness(0.45);
+  z-index: 0;
+}
+.card .cv {
+  height: 60%;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px var(--overlay-strong);
+}
+.card .info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.card:hover {
+  box-shadow: inset 0 0 0 4px var(--blue);
+}
+.seam {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--blue);
+  color: var(--on-accent);
+  font-weight: 800;
+  box-shadow: 0 0 0 6px var(--nav);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  gap: 2px;
+}
+.corner {
+  position: absolute !important;
+  bottom: 14px;
+  display: flex;
+  gap: 8px;
+  z-index: 3;
+}
+.corner.l {
+  left: 14px;
+}
+.corner.r {
+  right: 14px;
+}
+.ibtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #0009;
+  color: var(--on-overlay);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+}
+.ibtn:hover,
+.ibtn.on {
+  background: var(--blue);
+}
+.tip {
+  position: relative;
+}
+.tip:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: 115%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #000;
+  color: var(--on-overlay);
+  font-size: 11px;
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 9;
+}
+.float-undo {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+}
+
+@media (max-width: 720px) {
+  .pair {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .card {
+    flex-direction: row;
+    justify-content: flex-start;
+    text-align: left;
+    padding: 14px;
+    gap: 12px;
+  }
+  .card .cv {
+    height: 100%;
+    max-height: 200px;
+  }
+  .card .info {
+    align-items: flex-start;
+  }
+  .card .t {
+    font-size: 17px;
+  }
+  .seam {
+    width: 66px;
+    height: 66px;
+  }
+  .ibtn {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Every Band ranked */
+.ranked {
+  flex: 1;
+  overflow: auto;
+  padding: 46px 40px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+}
+.ranked .h1 {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--tx-strong);
+}
+.ranked .res {
+  background: var(--fg);
+  border-radius: 16px;
+  padding: 16px;
+}
+.ranked .ln {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--fg2);
+}
+.ranked .ln b {
+  color: var(--tx-strong);
+}
+.ranked .tie {
+  font-size: 11px;
+  color: var(--blue);
+}
+@media (max-width: 720px) {
+  .ranked {
+    padding: 44px 16px 20px;
+  }
+}
