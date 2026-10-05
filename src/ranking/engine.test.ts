@@ -178,6 +178,7 @@ describe('a golden log', () => {
         ],
         ranked: { done: 3, total: 3 },
       },
+      bandChoice: null,
       canUndo: true,
     }
     expect(replay(golden)).toEqual(expected)

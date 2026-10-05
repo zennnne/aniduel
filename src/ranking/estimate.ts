@@ -20,3 +20,17 @@ export function equalBandSizes(n: number): number[] {
   const extra = n % BAND_COUNT
   return Array.from({ length: BAND_COUNT }, (_, i) => base + (i < extra ? 1 : 0))
 }
+
+type Part = { readonly tiers: readonly unknown[]; readonly unplaced: readonly unknown[] }
+
+/**
+ * Expected Duels left in a Band, rounded: each unplaced title lands in one of (Tiers + 1) places, about log2 of
+ * that many Duels, and the Band grows by one Tier per title. A split Band counts Sub-band by Sub-band.
+ */
+export function duelsLeft(band: Part & { readonly subBands?: readonly Part[] }): number {
+  let sum = 0
+  for (const part of band.subBands ?? [band]) {
+    for (let k = 1; k <= part.unplaced.length; k++) sum += Math.log2(part.tiers.length + k)
+  }
+  return Math.round(sum)
+}

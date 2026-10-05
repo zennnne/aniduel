@@ -7,9 +7,10 @@ export const LOG_FORMAT_VERSION = 1
  * 2 added `band-split` and `sub` on `band-assigned` (ADR 0006). Version 2 replays every version 1 log exactly as
  * version 1 did, so both are accepted; a version 1 log may not contain version 2 events. `appendEvent` stamps
  * the current version on the header, so an older app refuses a log it would replay differently (ADR 0005).
+ * 3 added `band-selected`; it replays every version 1 and 2 log exactly as before.
  */
-export const ENGINE_VERSION = 2
-const KNOWN_ENGINE_VERSIONS: readonly number[] = [1, 2]
+export const ENGINE_VERSION = 3
+const KNOWN_ENGINE_VERSIONS: readonly number[] = [1, 2, 3]
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
 export type BandIndex = 0 | 1 | 2 | 3 | 4
@@ -44,6 +45,11 @@ export type LogEvent =
    * insertion queue; inside a Sub-band they keep the order they had in that queue.
    */
   | { type: 'band-split'; band: BandIndex; cuts: [number, number]; unplaced: [number[], number[], number[]] }
+  /**
+   * Navigation (ADR 0005): Duels go on in this Band until it has no title left to place. Engine version 3+.
+   * Ignored while Rough Sort isn't done or when the Band has nothing to place. Undo skips over it.
+   */
+  | { type: 'band-selected'; band: BandIndex }
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
@@ -105,6 +111,13 @@ export type RankingState = {
     /** Over every Band. */
     ranked: Progress
   }
+  /**
+   * A Band choice is due: Rough Sort is done, some Band still has titles to place, and no Band is being worked
+   * on (right after Rough Sort, or because the chosen Band just finished). `finished` is the Band that just
+   * finished (null right after Rough Sort); `next` is the default, the top Band with titles to place, which is
+   * also the Band the Duel prompt is in until a `band-selected` picks another.
+   */
+  bandChoice: { finished: BandIndex | null; next: BandIndex } | null
   /** Whether an Undo appended now would cancel anything. */
   canUndo: boolean
 }
@@ -162,6 +175,10 @@ type Machine = {
   /** Every title currently in the log's Pool (Rough Sort queue, a Band, or Forgotten). */
   present: Set<number>
   total: number
+  /** The Band Duels are worked on in (chosen, or the one a Duel was answered in); null while a choice is due. */
+  focus: BandIndex | null
+  /** The Band whose last title was just placed while it had the focus; null right after Rough Sort. */
+  finished: BandIndex | null
 }
 
 /** The open interval of Tier indexes an insertion may still land in: between Tier lo-1 and Tier hi. */
@@ -208,12 +225,14 @@ function removeTier(segment: Segment, t: number): void {
 
 /**
  * How Undo treats each event (ADR 0005): user events can be cancelled; system (sync) events are a barrier
- * that Undo never reaches past. Later kinds: `band-selected` is 'navigation' (skipped over).
+ * that Undo never reaches past; navigation (`band-selected`) is skipped over, neither a step nor a barrier.
  */
-function undoRole(event: Exclude<LogEvent, { type: 'undo' }>): 'user' | 'barrier' {
+function undoRole(event: Exclude<LogEvent, { type: 'undo' }>): 'user' | 'barrier' | 'navigation' {
   switch (event.type) {
     case 'titles-added':
       return 'barrier'
+    case 'band-selected':
+      return 'navigation'
     case 'band-assigned':
     case 'duel-answered':
     case 'forgotten':
@@ -222,17 +241,29 @@ function undoRole(event: Exclude<LogEvent, { type: 'undo' }>): 'user' | 'barrier
   }
 }
 
-/** Resolves every Undo: returns the events that still count, in log order, and whether one more Undo would act. */
+/**
+ * Resolves every Undo: returns the events that still count, in log order, and whether one more Undo would act.
+ * Navigation after the cancelled event goes with it: it was chosen from a state that no longer exists, and this
+ * way Undo returns to the prompt the cancelled answer was given at (e.g. the last Duel of a finished Band).
+ */
 function resolveUndo(events: readonly LogEvent[]): { effective: Exclude<LogEvent, { type: 'undo' }>[]; canUndo: boolean } {
   const cancelled = new Set<number>()
   let undoable: number[] = []
+  let navigation: number[] = []
   events.forEach((event, i) => {
     if (event.type === 'undo') {
       const target = undoable.pop()
-      if (target !== undefined) cancelled.add(target)
+      if (target === undefined) return
+      cancelled.add(target)
+      for (const n of navigation) if (n > target) cancelled.add(n)
+      navigation = navigation.filter((n) => n < target)
       return
     }
-    if (undoRole(event) === 'barrier') undoable = []
+    const role = undoRole(event)
+    if (role === 'barrier') {
+      undoable = []
+      navigation = []
+    } else if (role === 'navigation') navigation.push(i)
     else undoable.push(i)
   })
   const effective = events.filter(
@@ -271,6 +302,7 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
         throw new ReplayError(`Duel answer for ${event.a} vs ${event.b}, but the engine prompts ${expected}`)
       }
       const { segment, insertion } = at
+      m.focus = at.band
       if (event.result === 'tie') {
         segment.queue.shift()
         pivot.members.push(insertion.id)
@@ -291,17 +323,43 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
     case 'band-split':
       splitBand(m, event)
       return
+    case 'band-selected':
+      requireEngine(m, 3, 'Band selected')
+      if (!BANDS.includes(event.band)) throw new ReplayError(`There is no Band ${String(event.band)}`)
+      if (m.roughSortQueue.length === 0 && hasWork(m.bands[event.band])) {
+        m.focus = event.band
+        m.finished = null
+      }
+      return
   }
 }
 
-function requireEngine2(m: Machine, what: string): void {
-  if (m.engine < 2) throw new ReplayError(`${what} needs engine version 2, but the log says ${m.engine}`)
+function hasWork(segments: readonly Segment[]): boolean {
+  return segments.some((segment) => segment.queue.length > 0)
+}
+
+/**
+ * Runs after every event: Duels never start while a title waits in Rough Sort, so a pending Rough Sort drops the
+ * focus; a focused Band with nothing left to place is finished, so a Band choice is due.
+ */
+function refocus(m: Machine): void {
+  if (m.roughSortQueue.length > 0) {
+    m.focus = null
+    m.finished = null
+  } else if (m.focus !== null && !hasWork(m.bands[m.focus])) {
+    m.finished = m.focus
+    m.focus = null
+  }
+}
+
+function requireEngine(m: Machine, version: number, what: string): void {
+  if (m.engine < version) throw new ReplayError(`${what} needs engine version ${version}, but the log says ${m.engine}`)
 }
 
 /** The Segment a title goes to in a Band: the Band itself, or the chosen Sub-band of a split Band. */
 function destination(m: Machine, band: BandIndex, sub: SubBandIndex | undefined): Segment {
   const segments = m.bands[band]
-  if (sub !== undefined) requireEngine2(m, 'A Sub-band target')
+  if (sub !== undefined) requireEngine(m, 2, 'A Sub-band target')
   if (segments.length === 1) {
     if (sub !== undefined) throw new ReplayError(`Band ${band} is not split, so it has no Sub-band ${sub}`)
     return segments[0]
@@ -317,7 +375,7 @@ function destination(m: Machine, band: BandIndex, sub: SubBandIndex | undefined)
  * bounds that fall inside its new Sub-band and drops the rest (that edge becomes the Sub-band's edge).
  */
 function splitBand(m: Machine, event: Extract<LogEvent, { type: 'band-split' }>): void {
-  requireEngine2(m, 'Band split')
+  requireEngine(m, 2, 'Band split')
   const segments = m.bands[event.band]
   if (segments.length !== 1) throw new ReplayError(`Band ${event.band} is already split`)
   const [whole] = segments
@@ -362,11 +420,12 @@ function sideHash(seed: number, low: number, high: number): number {
 }
 
 /**
- * The insertion Duels work on now: Band by Band from the top, and inside a split Band Best → Middle → Lowest.
+ * The insertion Duels work on now: in the focused Band if there is one, else Band by Band from the top; inside a
+ * split Band Best → Middle → Lowest (so a chosen split Band starts at its first Sub-band with titles to place).
  * lo / hi / pivot are Tier indexes inside its Segment; `offset` is how many of the Band's Tiers come before it.
  */
 function current(m: Machine) {
-  for (const band of BANDS) {
+  for (const band of m.focus === null ? BANDS : [m.focus]) {
     const segments = m.bands[band]
     let offset = 0
     for (let s = 0; s < segments.length; s++) {
@@ -412,11 +471,14 @@ export function replay(log: DuelLog): RankingState {
     forgotten: [],
     present: new Set(),
     total: 0,
+    focus: null,
+    finished: null,
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (const event of effective) {
     apply(m, seed, event)
     m.segments.forEach(settle)
+    refocus(m)
   }
   const bands = m.bands.map((segments): BandState => {
     const parts = segments.map((segment) => ({
@@ -426,6 +488,8 @@ export function replay(log: DuelLog): RankingState {
     const whole = { tiers: parts.flatMap((p) => p.tiers), unplaced: parts.flatMap((p) => p.unplaced) }
     return parts.length === 3 ? { ...whole, subBands: [parts[0], parts[1], parts[2]] } : whole
   })
+  const at = m.roughSortQueue.length === 0 && m.focus === null ? current(m) : null
+  const bandChoice = at ? { finished: m.finished, next: at.band } : null
   const bandProgress = bands.map((band) => {
     const done = band.tiers.reduce((sum, tier) => sum + tier.length, 0)
     return { done, total: done + band.unplaced.length }
@@ -442,6 +506,7 @@ export function replay(log: DuelLog): RankingState {
         total: bandProgress.reduce((sum, p) => sum + p.total, 0),
       },
     },
+    bandChoice,
     canUndo,
   }
 }
