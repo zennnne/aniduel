@@ -27,6 +27,30 @@ export function estimateMinutes(duels: number): number {
   return Math.round((duels * SECONDS_PER_DUEL) / 60)
 }
 
+/** Sort key for a completion date; missing month/day sort before any known one in that year. null = undated. */
+function completedKey(entry: ListEntry): number | null {
+  const { year, month, day } = entry.completedAt
+  if (year === null) return null
+  return year * 10000 + (month ?? 0) * 100 + (day ?? 0)
+}
+
+/**
+ * The order Rough Sort shows titles in (issue #4): most recently completed first, undated titles last,
+ * sorted by the name the user sees. Returns media ids, ready for a `titles-added` event.
+ */
+export function roughSortOrder(entries: readonly ListEntry[], language: TitleLanguage): number[] {
+  const byName = (a: ListEntry, b: ListEntry) =>
+    displayTitle(a.title, language).localeCompare(displayTitle(b.title, language))
+  return [...entries]
+    .sort((a, b) => {
+      const ka = completedKey(a)
+      const kb = completedKey(b)
+      if (ka === null || kb === null) return ka === kb ? byName(a, b) : ka === null ? 1 : -1
+      return kb - ka || byName(a, b)
+    })
+    .map((entry) => entry.mediaId)
+}
+
 export type Pool = {
   titles: ListEntry[]
   countByStatus: Record<OfferedStatus, number>
