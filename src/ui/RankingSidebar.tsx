@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import type { ListEntry, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
 import { displayTitle } from '../pool/pool.ts'
-import { BANDS, type RankingState } from '../ranking/engine.ts'
+import { BANDS, SUB_BANDS, type BandIndex, type RankingState } from '../ranking/engine.ts'
+import { SUB_BAND_UI } from './bands.ts'
 import { Kao } from './Kao.tsx'
 
 /**
@@ -16,8 +17,10 @@ export function RankingSidebar(props: {
   entries: ReadonlyMap<number, ListEntry>
   titleLanguage: TitleLanguage
   menu?: ReactNode
+  /** Bands offered a split right now: their bar is outlined in red. */
+  offered?: readonly BandIndex[]
 }) {
-  const { viewer, mediaType, state, entries, titleLanguage, menu } = props
+  const { viewer, mediaType, state, entries, titleLanguage, menu, offered } = props
   const prompt = state.prompt
   const duel = prompt.kind === 'duel' ? prompt : null
   const roughSorting = prompt.kind === 'rough-sort'
@@ -39,12 +42,28 @@ export function RankingSidebar(props: {
           const p = state.progress.bands[band]
           // During Rough Sort the bar shows each Band's share so far; afterwards, how much of it is placed.
           const share = roughSorting ? (done ? p.total / done : 0) : p.total ? p.done / p.total : 0
+          const subBands = state.bands[band].subBands
           return (
             <div key={band} className={duel?.band === band ? 'bandrow cur' : 'bandrow'}>
               <Kao band={band} size={10} />
-              <div className="bar">
-                <i style={{ width: `${share * 100}%` }} />
-              </div>
+              {subBands ? (
+                // A split Band stays one row; its bar is striped by Sub-band (titles per Sub-band).
+                <div className="bar segs" title="Best / Middle / Lowest">
+                  {SUB_BANDS.map((sub) => (
+                    <i
+                      key={sub}
+                      style={{
+                        flex: subBands[sub].tiers.reduce((n, t) => n + t.length, 0) + subBands[sub].unplaced.length,
+                        background: SUB_BAND_UI[sub].colour,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className={offered?.includes(band) ? 'bar over' : 'bar'}>
+                  <i style={{ width: `${share * 100}%` }} />
+                </div>
+              )}
               <span>{roughSorting ? p.total : `${p.done}/${p.total}`}</span>
             </div>
           )

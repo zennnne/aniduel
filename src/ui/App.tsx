@@ -17,8 +17,11 @@ import {
   saveScoringSettings,
 } from '../persistence/progress.ts'
 import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '../pool/pool.ts'
-import { replay, startLog, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
+import { appendEvent, replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
 import { settingsFor, type ScoringSettings } from '../ranking/scoring.ts'
+import { splitOffers } from '../ranking/split.ts'
+import { BAND_UI } from './bands.ts'
+import { SplitScreen } from './split/SplitScreen.tsx'
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
 import { LogoutDialog } from './LogoutDialog.tsx'
@@ -69,6 +72,9 @@ export function App() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const [retries, setRetries] = useState(0)
   const [dialog, setDialog] = useState<DialogName | null>(null)
+  const [splitView, setSplitView] = useState<{ band: BandIndex } | null>(null)
+  // Bands whose split offer was turned down ("Keep it as it is") in this session.
+  const [skippedSplits, setSkippedSplits] = useState<readonly BandIndex[]>([])
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
   // Best / worst / Distribution for the Score Format AniList reported when Preview opened; null until then.
@@ -115,6 +121,8 @@ export function App() {
    */
   function openRanking(userId: number, type: MediaType, resume: boolean): boolean {
     setMediaType(type)
+    setSplitView(null)
+    setSkippedSplits([])
     setScoring(null)
     setTicks(new Map())
     setStatuses(loadPoolSettings(localStorage, { userId, mediaType: type })?.statuses ?? DEFAULT_STATUSES)
@@ -145,6 +153,7 @@ export function App() {
     setStatuses(DEFAULT_STATUSES)
     setCurrentLog(null)
     setSavedBroken(false)
+    setSplitView(null)
     setScreen('start')
   }
 
@@ -203,11 +212,19 @@ export function App() {
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const ranking = useMemo(() => (log ? replay(log) : null), [log])
 
+  // Band split (ADR 0006). Offered on its own after Rough Sort, before the first Duel answer, for each Band that
+  // qualifies and wasn't skipped in this session; later only from the menu. `splitView` pins the Split screen open
+  // (from the menu, or through its "done" step, when the Band no longer qualifies).
+  const offers = ranking ? splitOffers(ranking) : []
+  const autoOffer =
+    ranking?.prompt.kind === 'duel' && log && countDuels(log) === 0 ? offers.find((band) => !skippedSplits.includes(band)) : undefined
+  const splitBand = splitView?.band ?? autoOffer ?? null
+
   /** Appends one answer, checks it replays, and saves the log before showing the result. */
   function answer(event: LogEvent) {
     const current = logRef.current
     if (!current) return
-    const next: DuelLog = { ...current, events: [...current.events, event] }
+    const next = appendEvent(current, event)
     try {
       replay(next)
     } catch {
@@ -360,6 +377,22 @@ export function App() {
         run: saveBackup,
       })
     }
+    // Split offers after Rough Sort, under the same rule as the automatic offer (ADR 0006).
+    if (ranking && ranking.prompt.kind !== 'rough-sort') {
+      for (const band of offers) {
+        menuItems.push({
+          id: `split-band-${band}`,
+          group: 'This Ranking',
+          icon: '⫼',
+          title: `Split ${BAND_UI[band].label} into 3 groups`,
+          description: `${ranking.bands[band].unplaced.length} titles without a place: Best / Middle / Lowest cuts the Duels`,
+          run: () => {
+            setSplitView({ band })
+            goTo('ranking')
+          },
+        })
+      }
+    }
     menuItems.push({
       id: 'restore',
       group: 'This Ranking',
@@ -428,13 +461,38 @@ export function App() {
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
     const prompt = state.prompt
     const shared = { state, entries, titleLanguage, mediaType, onUndo: () => answer({ type: 'undo' }) }
+    if (splitBand !== null) {
+      const band = splitBand
+      return (
+        <SplitScreen
+          key={band}
+          state={state}
+          band={band}
+          entries={entries}
+          titleLanguage={titleLanguage}
+          onSplit={(event) => {
+            setSplitView({ band })
+            answer(event)
+          }}
+          onSkip={() => {
+            setSkippedSplits((prev) => [...prev, band])
+            setSplitView(null)
+            showToast(<>Skipped. {BAND_UI[band].label} stays one Band</>)
+          }}
+          onClose={() => setSplitView(null)}
+        />
+      )
+    }
     switch (prompt.kind) {
       case 'rough-sort':
         return (
           <RoughSortScreen
             {...shared}
+            key={prompt.id}
             id={prompt.id}
-            onBand={(band) => answer({ type: 'band-assigned', id: prompt.id, band })}
+            onBand={(band, sub) =>
+              answer(sub === undefined ? { type: 'band-assigned', id: prompt.id, band } : { type: 'band-assigned', id: prompt.id, band, sub })
+            }
             onForget={() => answer({ type: 'forgotten', id: prompt.id })}
           />
         )
@@ -465,6 +523,7 @@ export function App() {
             state={ranking}
             entries={entries}
             titleLanguage={viewer.titleLanguage}
+            offered={splitBand !== null && !ranking.bands[splitBand].subBands ? [splitBand] : undefined}
             menu={
               <AccountMenu
                 name={viewer.name}
