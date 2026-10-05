@@ -156,6 +156,8 @@ type Machine = {
   roughSortQueue: number[]
   /** Per Band: one Segment, or three (Best, Middle, Lowest) once it is split. */
   bands: Segment[][]
+  /** Every Segment of every Band, top to bottom (`bands` flattened; rebuilt when a Band is split). */
+  segments: Segment[]
   forgotten: number[]
   /** Every title currently in the log's Pool (Rough Sort queue, a Band, or Forgotten). */
   present: Set<number>
@@ -183,7 +185,7 @@ function settle(segment: Segment): void {
 function takeOut(m: Machine, id: number): void {
   const at = m.roughSortQueue.indexOf(id)
   if (at >= 0) m.roughSortQueue.splice(at, 1)
-  for (const segment of m.bands.flat()) {
+  for (const segment of m.segments) {
     const queued = segment.queue.findIndex((insertion) => insertion.id === id)
     if (queued >= 0) segment.queue.splice(queued, 1)
     const t = segment.tiers.findIndex((tier) => tier.members.includes(id))
@@ -259,17 +261,16 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
       return
     }
     case 'duel-answered': {
-      const prompt = nextPrompt(m, seed)
-      const samePair =
-        prompt.kind === 'duel' &&
-        ((event.a === prompt.a && event.b === prompt.b) || (event.a === prompt.b && event.b === prompt.a))
-      const at = current(m)
-      if (!samePair || !at) {
+      const at = m.roughSortQueue.length === 0 ? current(m) : null
+      const pivot = at?.segment.tiers[at.pivot]
+      const a = at?.insertion.id
+      const b = pivot?.members[0]
+      if (!at || !pivot || !((event.a === a && event.b === b) || (event.a === b && event.b === a))) {
+        const prompt = nextPrompt(m, seed)
         const expected = prompt.kind === 'duel' ? `${prompt.a} vs ${prompt.b}` : prompt.kind
         throw new ReplayError(`Duel answer for ${event.a} vs ${event.b}, but the engine prompts ${expected}`)
       }
       const { segment, insertion } = at
-      const pivot = segment.tiers[at.pivot]
       if (event.result === 'tie') {
         segment.queue.shift()
         pivot.members.push(insertion.id)
@@ -342,6 +343,7 @@ function splitBand(m: Machine, event: Extract<LogEvent, { type: 'band-split' }>)
     part.queue.push({ id: insertion.id, above: keep(insertion.above), below: keep(insertion.below) })
   }
   m.bands[event.band] = parts
+  m.segments = m.bands.flat()
 }
 
 /** `hash(seed, min, max)` for left/right placement (display only). 32-bit FNV-1a over the three words, then a final mix. */
@@ -367,7 +369,8 @@ function current(m: Machine) {
   for (const band of BANDS) {
     const segments = m.bands[band]
     let offset = 0
-    for (const [s, segment] of segments.entries()) {
+    for (let s = 0; s < segments.length; s++) {
+      const segment = segments[s]
       const insertion = segment.queue[0]
       if (insertion) {
         const { lo, hi } = interval(segment, insertion)
@@ -400,10 +403,12 @@ export function replay(log: DuelLog): RankingState {
   const { format, engine, seed } = log.header
   if (format !== LOG_FORMAT_VERSION) throw new ReplayError(`Unknown log format version ${format}`)
   if (!KNOWN_ENGINE_VERSIONS.includes(engine)) throw new ReplayError(`Unknown engine version ${engine}`)
+  const bandSegments: Segment[][] = BANDS.map(() => [{ tiers: [], queue: [] }])
   const m: Machine = {
     engine,
     roughSortQueue: [],
-    bands: BANDS.map(() => [{ tiers: [], queue: [] }]),
+    bands: bandSegments,
+    segments: bandSegments.flat(),
     forgotten: [],
     present: new Set(),
     total: 0,
@@ -411,7 +416,7 @@ export function replay(log: DuelLog): RankingState {
   const { effective, canUndo } = resolveUndo(log.events)
   for (const event of effective) {
     apply(m, seed, event)
-    m.bands.flat().forEach(settle)
+    m.segments.forEach(settle)
   }
   const bands = m.bands.map((segments): BandState => {
     const parts = segments.map((segment) => ({
