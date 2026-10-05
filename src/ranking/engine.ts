@@ -9,9 +9,10 @@ export const LOG_FORMAT_VERSION = 1
  * the current version on the header, so an older app refuses a log it would replay differently (ADR 0005).
  * 3 added `band-selected`; it replays every version 1 and 2 log exactly as before.
  * 4 added `titles-removed` (sync, #13); it replays every version 1 to 3 log exactly as before.
+ * 5 added `band-moved`, `rerank-requested` and `unforgotten`; it replays every older log exactly as before.
  */
-export const ENGINE_VERSION = 4
-const KNOWN_ENGINE_VERSIONS: readonly number[] = [1, 2, 3, 4]
+export const ENGINE_VERSION = 5
+const KNOWN_ENGINE_VERSIONS: readonly number[] = [1, 2, 3, 4, 5]
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
 export type BandIndex = 0 | 1 | 2 | 3 | 4
@@ -57,6 +58,19 @@ export type LogEvent =
    * Ignored while Rough Sort isn't done or when the Band has nothing to place. Undo skips over it.
    */
   | { type: 'band-selected'; band: BandIndex }
+  /**
+   * Fixing the Ranking (ADR 0005), engine version 4+. `band-moved` takes a title out of its Band (or Sub-band) and
+   * puts it at the front of another one's insertion queue; `sub` follows the `band-assigned` rule (required for a
+   * split Band, refused otherwise). It may name another Sub-band of the same Band.
+   */
+  | { type: 'band-moved'; id: number; band: BandIndex; sub?: SubBandIndex }
+  /** Takes a title out of its place and puts it at the front of its own (Sub-)band's insertion queue. */
+  | { type: 'rerank-requested'; id: number }
+  /**
+   * Brings a Forgotten title back: to the front of the (Sub-)band it was last in, or to the front of the Rough Sort
+   * queue if it never had one, or if its Band was split since (so the second tap asks for the Sub-band).
+   */
+  | { type: 'unforgotten'; id: number }
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
@@ -186,7 +200,19 @@ type Machine = {
   focus: BandIndex | null
   /** The Band whose last title was just placed while it had the focus; null right after Rough Sort. */
   finished: BandIndex | null
+  /** The (Sub-)band each title in a Band is in, kept after it is Forgotten so Unforgotten can send it back. */
+  lastPlace: Map<number, Place>
+  /**
+   * A title sent to the front of a queue by a fix (move, Re-rank, Unforgotten) is placed straight away; then Duels
+   * go back to where they were (`resume`). Null when no fix is being placed.
+   */
+  detour: { id: number; band: BandIndex; sub?: SubBandIndex; resume: Resume } | null
+  /** Unforgotten titles waiting in Rough Sort (no usable last Sub-band): the detour starts once they are sorted. */
+  returning: Map<number, Resume>
 }
+
+type Place = { band: BandIndex; sub?: SubBandIndex }
+type Resume = { focus: BandIndex | null; finished: BandIndex | null }
 
 /** The open interval of Tier indexes an insertion may still land in: between Tier lo-1 and Tier hi. */
 function interval(segment: Segment, insertion: Insertion): { lo: number; hi: number } {
@@ -245,6 +271,9 @@ function undoRole(event: Exclude<LogEvent, { type: 'undo' }>): 'user' | 'barrier
     case 'duel-answered':
     case 'forgotten':
     case 'band-split':
+    case 'band-moved':
+    case 'rerank-requested':
+    case 'unforgotten':
       return 'user'
   }
 }
@@ -298,6 +327,9 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
         const forgotten = m.forgotten.indexOf(id)
         if (forgotten >= 0) m.forgotten.splice(forgotten, 1)
         m.present.delete(id)
+        // Added again later, it is a new title (ADR 0005): no last Band to bring it back to.
+        m.lastPlace.delete(id)
+        m.returning.delete(id)
         m.total--
       }
       return
@@ -307,7 +339,17 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
       }
       const segment = destination(m, event.band, event.sub)
       takeOut(m, event.id)
-      segment.queue.push({ id: event.id, above: null, below: null })
+      const place = placeAt(event.band, event.sub)
+      m.lastPlace.set(event.id, place)
+      const resume = m.returning.get(event.id)
+      if (!resume) {
+        segment.queue.push({ id: event.id, above: null, below: null })
+        return
+      }
+      // A title brought back through Rough Sort is placed next, like any other fix.
+      m.returning.delete(event.id)
+      segment.queue.unshift({ id: event.id, above: null, below: null })
+      if (m.roughSortQueue.length === 0) startDetour(m, event.id, place, resume)
       return
     }
     case 'duel-answered': {
@@ -348,9 +390,81 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
       if (m.roughSortQueue.length === 0 && hasWork(m.bands[event.band])) {
         m.focus = event.band
         m.finished = null
+        m.detour = null
       }
       return
+    case 'band-moved': {
+      requireEngine(m, 5, 'Band moved')
+      if (!placeOf(m, event.id)) throw new ReplayError(`Title ${event.id} can't be moved: it is not in a Band`)
+      sendToFront(m, event.id, placeAt(event.band, event.sub))
+      return
+    }
+    case 'rerank-requested': {
+      requireEngine(m, 5, 'Re-rank requested')
+      const place = placeOf(m, event.id)
+      if (!place) throw new ReplayError(`Title ${event.id} can't be re-ranked: it is not in a Band`)
+      sendToFront(m, event.id, place)
+      return
+    }
+    case 'unforgotten': {
+      requireEngine(m, 5, 'Unforgotten')
+      const at = m.forgotten.indexOf(event.id)
+      if (at < 0) throw new ReplayError(`Title ${event.id} can't be brought back: it is not Forgotten`)
+      m.forgotten.splice(at, 1)
+      const last = m.lastPlace.get(event.id)
+      // Its last Sub-band only counts if the Band is still split the same way (a Band split since needs a second tap).
+      if (last && (last.sub === undefined) === (m.bands[last.band].length === 1)) {
+        sendToFront(m, event.id, last)
+        return
+      }
+      m.roughSortQueue.unshift(event.id)
+      m.returning.set(event.id, m.detour?.resume ?? { focus: m.focus, finished: m.finished })
+      return
+    }
   }
+}
+
+function placeAt(band: BandIndex, sub: SubBandIndex | undefined): Place {
+  return sub === undefined ? { band } : { band, sub }
+}
+
+/** The Band (and Sub-band) a title is in, ranked or waiting in its insertion queue; null if it is in none. */
+function placeOf(m: Machine, id: number): Place | null {
+  for (const band of BANDS) {
+    const segments = m.bands[band]
+    for (let s = 0; s < segments.length; s++) {
+      const segment = segments[s]
+      if (segment.queue.some((q) => q.id === id) || segment.tiers.some((tier) => tier.members.includes(id))) {
+        return placeAt(band, segments.length > 1 ? (s as SubBandIndex) : undefined)
+      }
+    }
+  }
+  return null
+}
+
+/** Band moved / Re-rank / Unforgotten (ADR 0005): out of its place, to the front of `place`'s queue, placed next. */
+function sendToFront(m: Machine, id: number, place: Place): void {
+  const segment = destination(m, place.band, place.sub)
+  takeOut(m, id)
+  segment.queue.unshift({ id, above: null, below: null })
+  m.lastPlace.set(id, place)
+  startDetour(m, id, place, m.detour?.resume ?? { focus: m.focus, finished: m.finished })
+}
+
+function startDetour(m: Machine, id: number, place: Place, resume: Resume): void {
+  m.detour = { id, ...place, resume }
+  m.focus = place.band
+  m.finished = null
+}
+
+/** The Segment the detour title waits at the front of, or null once it is placed (or gone). */
+function detourSegment(m: Machine): Segment | null {
+  const d = m.detour
+  if (!d) return null
+  const segments = m.bands[d.band]
+  if ((d.sub === undefined) !== (segments.length === 1)) return null
+  const segment = segments[d.sub ?? 0]
+  return segment.queue[0]?.id === d.id ? segment : null
 }
 
 function hasWork(segments: readonly Segment[]): boolean {
@@ -362,9 +476,15 @@ function hasWork(segments: readonly Segment[]): boolean {
  * focus; a focused Band with nothing left to place is finished, so a Band choice is due.
  */
 function refocus(m: Machine): void {
+  if (m.detour && !detourSegment(m)) {
+    m.focus = m.detour.resume.focus
+    m.finished = m.detour.resume.finished
+    m.detour = null
+  }
   if (m.roughSortQueue.length > 0) {
     m.focus = null
     m.finished = null
+    m.detour = null
   } else if (m.focus !== null && !hasWork(m.bands[m.focus])) {
     m.finished = m.focus
     m.focus = null
@@ -421,6 +541,11 @@ function splitBand(m: Machine, event: Extract<LogEvent, { type: 'band-split' }>)
   }
   m.bands[event.band] = parts
   m.segments = m.bands.flat()
+  parts.forEach((part, sub) => {
+    const place = placeAt(event.band, sub as SubBandIndex)
+    for (const tier of part.tiers) for (const id of tier.members) m.lastPlace.set(id, place)
+    for (const insertion of part.queue) m.lastPlace.set(insertion.id, place)
+  })
 }
 
 /** `hash(seed, min, max)` for left/right placement (display only). 32-bit FNV-1a over the three words, then a final mix. */
@@ -444,13 +569,15 @@ function sideHash(seed: number, low: number, high: number): number {
  * lo / hi / pivot are Tier indexes inside its Segment; `offset` is how many of the Band's Tiers come before it.
  */
 function current(m: Machine) {
-  for (const band of m.focus === null ? BANDS : [m.focus]) {
+  const detour = detourSegment(m)
+  const bands = m.detour && detour ? [m.detour.band] : m.focus === null ? BANDS : [m.focus]
+  for (const band of bands) {
     const segments = m.bands[band]
     let offset = 0
     for (let s = 0; s < segments.length; s++) {
       const segment = segments[s]
       const insertion = segment.queue[0]
-      if (insertion) {
+      if (insertion && (!detour || segment === detour)) {
         const { lo, hi } = interval(segment, insertion)
         const sub = segments.length > 1 ? (s as SubBandIndex) : undefined
         return { band, sub, segment, insertion, lo, hi, pivot: Math.floor((lo + hi) / 2), offset }
@@ -492,6 +619,9 @@ export function replay(log: DuelLog): RankingState {
     total: 0,
     focus: null,
     finished: null,
+    lastPlace: new Map(),
+    detour: null,
+    returning: new Map(),
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (const event of effective) {

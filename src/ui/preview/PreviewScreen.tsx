@@ -15,7 +15,7 @@ type Filter = 'changing' | 'all'
 /**
  * Preview ("score rows", issue #4): best / worst / Distribution, one row per score level with the covers
  * that get it, each Band's level range, and the Forgotten titles. Everything recomputes live.
- * Re-rank, Move Band and Bring back stay disabled until their handlers are passed (#11); Import until #10.
+ * Re-rank, Move Band, Bring back and Import stay disabled while their handlers are not passed.
  */
 export function PreviewScreen(props: {
   state: RankingState
