@@ -21,16 +21,24 @@ One comparison between two titles in the Pool, where the user picks the better o
 _Avoid_: Match, battle, comparison, pair
 
 **Ranking**:
-The ordered result of all Duels so far: an ordering of Tiers from best to worst.
+The ordered result of Rough Sort and all Duels so far: the five Bands in order, Tiers in order inside each Band, and titles inside each Tier.
 _Avoid_: Sort, order, list
+
+**Duel log**:
+The append-only record of every answer and change (Band choices, Duel answers, Forgotten, moves, Undo, sync). The Ranking is rebuilt by replaying it, and it is never rewritten.
+_Avoid_: History, save, state
 
 **Tier**:
 A group of titles the user considers equal, all sharing one position in the Ranking and receiving the same score.
 _Avoid_: Tie group, bucket
 
 **Forgotten**:
-A title the user can no longer remember well enough to judge; it is removed from the Ranking and its existing AniList score is left untouched.
+A title the user can no longer remember well enough to judge, marked during Rough Sort or a Duel; it is removed from the Ranking and its existing AniList score is left untouched.
 _Avoid_: Skipped, excluded
+
+**Undo**:
+Cancelling the user's most recent answer or change. It is recorded as an event in the Duel log, not by deleting anything, and it can't reach back past a sync.
+_Avoid_: Revert, back
 
 **Re-rank**:
 Taking one title out of the Ranking and running Duels again to find its new place.
@@ -44,9 +52,17 @@ _Avoid_: Curve, mapping
 The AniList setting that decides which scale the user sees: 100 points, 10 points, 10 points with decimals, 5 stars, or 3 smileys. Scores are calculated at the levels of this scale.
 _Avoid_: Scale, rating system
 
+**Preview**:
+The screen that shows every title's old and new score before an Import, where the user ticks which titles to write and fixes the Ranking.
+_Avoid_: Review, summary
+
 **Import**:
 Writing the chosen new scores from the Ranking back to the user's AniList list.
 _Avoid_: Export, sync, upload
+
+**Backup**:
+A file holding one Ranking's Duel log and settings, which the user can Restore in another browser.
+_Avoid_: Export, progress file, save file
 
 **Media Type**:
 Anime or Manga. Each Pool, and so each Ranking, contains only one Media Type.

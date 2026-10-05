@@ -1,6 +1,6 @@
 # Bands decide order only; the Distribution decides scores
 
-Rough Sort puts every title into one of 5 fixed Bands so that Duels only happen inside a Band. This cuts a full sort of 200 titles from about 1,300 Duels to about 800. Bands are fixed boundaries in the Ranking, but they are **not** score ranges: scores come from applying the Distribution (Linear or Bell) to the whole Ranking. When a title's score falls outside what its Band suggests, the preview warns the user and lets them fix it.
+Rough Sort puts every title into one of 5 fixed Bands so that Duels only happen inside a Band. This cuts a full sort of 200 titles from about 1,250 Duels to about 800 when the Bands are equal (40 each). Real Bands won't be equal: with 150/12/12/13/13 it is about 1,000, which is still a saving. Bands are fixed boundaries in the Ranking, but they are **not** score ranges: scores come from applying the Distribution (Linear or Bell) to the whole Ranking. When a title's score falls outside what its Band suggests, the preview warns the user and lets them fix it.
 
 We chose this because the target user is a beginner who tends to put most titles in the top Band. A well-spread Distribution is the main value of the app, and Bands exist to save Duels, not to fix scores.
 
