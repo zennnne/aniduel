@@ -133,6 +133,47 @@ describe('a consistent oracle answering every Duel', () => {
     }
   })
 
+  it('keeps the oracle\'s order when syncs add and remove titles (pivots included) mid-Ranking', () => {
+    const random = rng(6)
+    for (let trial = 0; trial < 100; trial++) {
+      const c = randomCase(random, 30, 1 + Math.floor(random() * 15), [0, 1])
+      // Start with half of the titles; the rest arrive through syncs, and some leave (and may come back).
+      const outside = c.ids.slice(15)
+      let log = startLog({ seed: trial, userId: 1, mediaType: 'ANIME', ids: c.ids.slice(0, 15) })
+      const push = (event: LogEvent) => {
+        log = { ...log, events: [...log.events, event] }
+      }
+      for (let state = replay(log), steps = 0; ; state = replay(log), steps++) {
+        if (steps > 10_000) throw new Error('runaway')
+        const p = state.prompt
+        if (random() < 0.08) {
+          const inPool = c.ids.filter((id) => !outside.includes(id))
+          if (outside.length > 0 && random() < 0.5) {
+            push({ type: 'titles-added', ids: outside.splice(0, 1 + Math.floor(random() * 3)) })
+          } else if (inPool.length > 0) {
+            const choices = p.kind === 'duel' ? [p.a, p.b, ...inPool] : inPool
+            const id = choices[Math.floor(random() * choices.length)]
+            push({ type: 'titles-removed', ids: [id] })
+            outside.push(id)
+          }
+          continue
+        }
+        if (p.kind === 'all-complete') break
+        if (p.kind === 'rough-sort') push({ type: 'band-assigned', id: p.id, band: c.band.get(p.id)! })
+        else {
+          const vx = c.value.get(p.a)!
+          const vy = c.value.get(p.b)!
+          push({ type: 'duel-answered', a: p.a, b: p.b, result: vx === vy ? 'tie' : vx > vy ? 'a' : 'b' })
+        }
+      }
+      const state = replay(log)
+      for (const band of BANDS) expectOracleOrder(state.bands[band].tiers, c.value)
+      const placed = state.bands.flatMap((b) => b.tiers.flat())
+      expect(new Set(placed)).toEqual(new Set(c.ids.filter((id) => !outside.includes(id))))
+      expect(state.progress.ranked).toEqual({ done: placed.length, total: placed.length })
+    }
+  })
+
   it('replays the same log to the same Ranking every time', () => {
     const random = rng(5)
     const c = randomCase(random, 40, 12)
