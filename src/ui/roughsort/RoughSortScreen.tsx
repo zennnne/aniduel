@@ -112,11 +112,11 @@ export function RoughSortScreen(props: {
                   </span>
                   <span className="lab">
                     {BAND_UI[band].label}
-                    {state.bands[band].subBands && pending !== band && <span className="fine"> · 3 groups</span>}
+                    {state.bands[band].subBands && pending !== band && <span className="fine"> · 3 Sub-bands</span>}
                   </span>
                 </button>
                 {pending === band && (
-                  <div className="subtap" role="group" aria-label={`${BAND_UI[band].label}: which group?`}>
+                  <div className="subtap" role="group" aria-label={`${BAND_UI[band].label}: which Sub-band?`}>
                     {SUB_BANDS.map((sub) => (
                       <button key={sub} style={{ background: SUB_BAND_UI[sub].colour }} onClick={() => pickSub(sub)} autoFocus={sub === 0}>
                         {SUB_BAND_UI[sub].label}

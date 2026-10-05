@@ -429,8 +429,16 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
   }
 }
 
+/**
+ * `value` with `sub` only when a Sub-band is named: the field is left out rather than undefined, as events, prompts
+ * and places expect (e.g. `withSub({ type: 'band-moved', id, band }, sub)`).
+ */
+export function withSub<const T extends object>(value: T, sub: SubBandIndex | undefined): T & { sub?: SubBandIndex } {
+  return sub === undefined ? value : { ...value, sub }
+}
+
 function placeAt(band: BandIndex, sub: SubBandIndex | undefined): Place {
-  return sub === undefined ? { band } : { band, sub }
+  return withSub({ band }, sub)
 }
 
 /** Whether a Band's Segments are three Sub-bands (ADR 0006) rather than the one whole Band. */
@@ -628,7 +636,7 @@ function nextPrompt(machine: Machine, seed: number): Prompt {
   const high = Math.max(insertion.id, b)
   const [left, right] = sideHash(seed, low, high) & 1 ? [high, low] : [low, high]
   const bounds = { lo: lo + offset, hi: hi + offset, pivot: pivot + offset }
-  return { kind: 'duel', band, ...(sub === undefined ? {} : { sub }), a: insertion.id, b, left, right, bounds }
+  return withSub({ kind: 'duel', band, a: insertion.id, b, left, right, bounds }, sub)
 }
 
 /** Rebuilds the derived state from the log. Throws ReplayError if the log can't be trusted. */

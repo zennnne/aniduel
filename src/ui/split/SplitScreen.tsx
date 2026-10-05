@@ -296,7 +296,7 @@ export function SplitScreen(props: {
           {first !== null ? `Start Duels in ${label} › ${SUB_BAND_UI[first].label}` : 'Continue'} <span className="kbd">Enter</span>
         </button>
         <div className="small">
-          {label} stays one row in the sidebar; its bar is striped by group. Duels go Best → Middle → Lowest.
+          {label} stays one row in the sidebar; its bar is striped by Sub-band. Duels go Best → Middle → Lowest.
         </div>
       </div>
     )
@@ -310,7 +310,7 @@ export function SplitScreen(props: {
         <div className="sub">Duels only happen inside a Band, and one big Band costs far more Duels than a few small ones.</div>
         <SplitChart state={state} over={band} />
         <div className="spcount">
-          <b className="strong">Split {label} into 3 groups?</b>
+          <b className="strong">Split {label} into Best / Middle / Lowest?</b>
           <div className="small">
             Mark the ones that are your very best and the ones that are only just {label}. Everything you leave alone stays in the
             middle.

@@ -1,41 +1,36 @@
 // Screens are chosen from app state, not by a router (ADR 0004).
-import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from 'react'
 import { AniListError, createAniListGateway } from '../anilist/gateway.ts'
 import type { ListEntry, ListStatus, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
-import { planHash, resumeImport } from '../import/plan.ts'
-import { browserClock, importSummary, newImport, retryFailed, runImport, type ImportState, type RunnerStatus } from '../import/runner.ts'
+import { retryFailed } from '../import/runner.ts'
 import {
   deleteDuelLog,
-  deleteImportState,
   loadDuelLog,
-  loadImportState,
-  saveImportState,
   loadLastMediaType,
   loadPoolSettings,
-  loadScoringSettings,
-  saveDuelLog,
+  loadScoringFor,
   saveLastMediaType,
   savePoolSettings,
   saveScoringSettings,
+  type RankingKey,
 } from '../persistence/progress.ts'
-import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, displayTitle, roughSortOrder } from '../pool/pool.ts'
+import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '../pool/pool.ts'
 import { syncEvents } from '../pool/sync.ts'
 import {
   answeredDuels,
-  appendEvent,
   replay,
   startLog,
+  withSub,
   type BandIndex,
-  type DuelLog,
   type LogEvent,
   type RankingState,
   type SubBandIndex,
 } from '../ranking/engine.ts'
-import { importPlan, previewRows, type PendingWrite } from '../ranking/preview.ts'
-import { score, settingsFor, type ScoringSettings } from '../ranking/scoring.ts'
+import { duelsFromBands } from '../ranking/estimate.ts'
+import type { ScoringSettings } from '../ranking/scoring.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
@@ -46,34 +41,26 @@ import { Kao, SubPill } from './Kao.tsx'
 import { MoveSheet } from './move/MoveSheet.tsx'
 import { LogoutDialog } from './LogoutDialog.tsx'
 import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
-import type { MenuItem } from './menu/menuItems.ts'
+import { buildMenuItems } from './menu/buildMenuItems.ts'
 import { RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
-import { ImportScreen, type ImportStage } from './import/ImportScreen.tsx'
+import { ImportScreen } from './import/ImportScreen.tsx'
+import { useImport } from './import/useImport.ts'
+import { MEDIA_LABEL, count, titleName } from './meta.ts'
 import { PreviewScreen } from './preview/PreviewScreen.tsx'
 import { SCORE_FORMAT_LABEL } from './preview/scoreFormat.ts'
 import { RankingSidebar } from './RankingSidebar.tsx'
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { StartScreen } from './start/StartScreen.tsx'
-import { statusLabel } from './start/statusLabel.ts'
 import { useTheme } from './theme.ts'
+import { useDuelLog } from './useDuelLog.ts'
 
 /** 'bands' = the Band choice, opened by going Back from a Duel or from the menu. */
 type Screen = 'start' | 'ranking' | 'bands' | 'preview' | 'import'
 const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'preview', 'import']
 
-/** The Import screen: the plan with each write's status, what the Runner is doing, and which step is showing. */
-type ImportView = { stage: ImportStage; state: ImportState; status: RunnerStatus | null; writtenBefore: number | null }
-
-/** A saved Import that still has titles to write or retry. */
-function unfinished(state: ImportState | null): ImportState | null {
-  if (!state) return null
-  const { left, failed } = importSummary(state)
-  return left + failed > 0 ? state : null
-}
 type DialogName = 'logout' | 'restore' | 'start-over'
 
-const MEDIA_LABEL: Record<MediaType, string> = { ANIME: 'Anime', MANGA: 'Manga' }
 const TOAST_MS = 4000
 
 function loginRedirect() {
@@ -93,7 +80,8 @@ export function App() {
   const [lists, setLists] = useState<Partial<Record<MediaType, ListEntry[]>>>({})
   const [mediaType, setMediaType] = useState<MediaType>('ANIME')
   const [statuses, setStatuses] = useState<readonly ListStatus[]>(DEFAULT_STATUSES)
-  const [log, setLog] = useState<DuelLog | null>(null)
+  const duelLog = useDuelLog(localStorage)
+  const { log, ranking } = duelLog
   // Saved progress that exists but can't be used. Starting over would overwrite it, so Start is blocked.
   const [savedBroken, setSavedBroken] = useState(false)
   const [screen, setScreen] = useState<Screen>('start')
@@ -107,21 +95,42 @@ export function App() {
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
   // Best / worst / Distribution for the Score Format AniList reported when Preview opened; null until then.
   const [scoring, setScoring] = useState<ScoringSettings | null>(null)
-  // Import ticks the user changed on Preview (the default is "ticked if the score changes").
-  const [ticks, setTicks] = useState<ReadonlyMap<number, boolean>>(new Map())
   const [openingPreview, setOpeningPreview] = useState(false)
-  const [importView, setImportView] = useState<ImportView | null>(null)
-  // An Import saved in this browser that was cut off or has failures; offered as "Resume" in a banner.
-  const [savedImport, setSavedImport] = useState<ImportState | null>(null)
-  const importStop = useRef<AbortController | null>(null)
   // A fix started from Preview (#11): its Duels run on the Ranking screen, then Preview opens again.
   const [previewFix, setPreviewFix] = useState<{ id: number; verb: string } | null>(null)
   // The title whose Move sheet is open over Preview.
   const [previewMoving, setPreviewMoving] = useState<number | null>(null)
-  // The latest log, updated synchronously so two quick key presses never append to a stale log.
-  const logRef = useRef<DuelLog | null>(null)
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
+  // The open Ranking's user and Media Type: the key everything saved for it lives under.
+  const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
+
+  const list = lists[mediaType]
+  const pool = useMemo(() => (list ? buildPool(list, statuses) : null), [list, statuses])
+  const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
+  const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
+
+  const imports = useImport({
+    storage: localStorage,
+    gateway,
+    viewer,
+    setViewer,
+    key: rankingKey,
+    latestLog: duelLog.latest,
+    oldScores: pool ? oldScores : null,
+    setScoring,
+    setNotice,
+    onImportScreen: screen === 'import',
+    goTo,
+    onGatewayError: handleGatewayError,
+    onWritten: (key, written) =>
+      // Preview should show the scores AniList has now.
+      setLists((prev) => {
+        const current = prev[key.mediaType]
+        if (!current) return prev
+        return { ...prev, [key.mediaType]: current.map((e) => (written.has(e.mediaId) ? { ...e, oldScore100: written.get(e.mediaId)! } : e)) }
+      }),
+  })
 
   const showToast = (message: ReactNode) => setToast({ message })
   useEffect(() => {
@@ -129,11 +138,6 @@ export function App() {
     const timer = window.setTimeout(() => setToast(null), TOAST_MS)
     return () => window.clearTimeout(timer)
   }, [toast])
-
-  function setCurrentLog(next: DuelLog | null) {
-    logRef.current = next
-    setLog(next)
-  }
 
   /** Every screen change pushes a history entry, so the browser's back button returns to the previous screen. */
   function goTo(next: Screen) {
@@ -155,31 +159,28 @@ export function App() {
    * Loads what is saved for this user and Media Type; with `resume`, a saved Ranking opens straight away.
    * Returns whether a usable Ranking was found.
    */
-  function openRanking(userId: number, type: MediaType, resume: boolean): boolean {
-    setMediaType(type)
+  function openRanking(key: RankingKey, resume: boolean): boolean {
+    setMediaType(key.mediaType)
     setSplitView(null)
     setSkippedSplits([])
     setScoring(null)
-    setTicks(new Map())
-    stopImportRun()
-    setImportView(null)
-    setSavedImport(unfinished(loadImportState(localStorage, { userId, mediaType: type })))
+    imports.open(key)
     setPreviewFix(null)
     setPreviewMoving(null)
-    setStatuses(loadPoolSettings(localStorage, { userId, mediaType: type })?.statuses ?? DEFAULT_STATUSES)
+    setStatuses(loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES)
     try {
-      const saved = loadDuelLog(localStorage, { userId, mediaType: type })
+      const saved = loadDuelLog(localStorage, key)
       if (saved) replay(saved) // refuse a log the engine can't replay before showing anything from it
-      setCurrentLog(saved)
+      duelLog.show(saved)
       setSavedBroken(false)
       if (saved && resume) goTo('ranking')
       return saved !== null
     } catch (e) {
-      setCurrentLog(null)
+      duelLog.show(null)
       setSavedBroken(true)
       setNotice({
         tone: 'error',
-        message: `Your saved ${MEDIA_LABEL[type]} progress in this browser can't be used (${e instanceof Error ? e.message : 'unknown error'}). It was left untouched.`,
+        message: `Your saved ${MEDIA_LABEL[key.mediaType]} progress in this browser can't be used (${e instanceof Error ? e.message : 'unknown error'}). It was left untouched.`,
         action: { label: 'Restore a Backup', onClick: () => setDialog('restore') },
       })
       return false
@@ -192,12 +193,10 @@ export function App() {
     setViewer(null)
     setLists({})
     setStatuses(DEFAULT_STATUSES)
-    setCurrentLog(null)
+    duelLog.show(null)
     setSavedBroken(false)
     setSplitView(null)
-    stopImportRun()
-    setImportView(null)
-    setSavedImport(null)
+    imports.close()
     setScreen('start')
   }
 
@@ -223,7 +222,7 @@ export function App() {
 
   const onViewer = useEffectEvent((v: Viewer) => {
     setViewer(v)
-    openRanking(v.id, loadLastMediaType(localStorage, v.id) ?? 'ANIME', true)
+    openRanking({ userId: v.id, mediaType: loadLastMediaType(localStorage, v.id) ?? 'ANIME' }, true)
   })
 
   useEffect(() => {
@@ -258,11 +257,6 @@ export function App() {
     }
   }, [gateway, viewer, mediaType, lists, retries])
 
-  const list = lists[mediaType]
-  const pool = useMemo(() => (list ? buildPool(list, statuses) : null), [list, statuses])
-  const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
-  const ranking = useMemo(() => (log ? replay(log) : null), [log])
-
   // Band split (ADR 0006). Offered on its own after Rough Sort (also after a sync added titles), before the next
   // Duel answer, for each Band that qualifies and wasn't skipped in this session; later only from the menu. `splitView` pins the Split screen open
   // (from the menu, or through its "done" step, when the Band no longer qualifies).
@@ -278,13 +272,12 @@ export function App() {
    * Restore. Does nothing without a usable log or a list. Returns what changed, for a toast (null = nothing).
    */
   function syncPool(type: MediaType, fetched: readonly ListEntry[] | undefined, chosen: readonly ListStatus[]): string | null {
-    const current = logRef.current
+    const current = duelLog.latest()
     if (!viewer || !fetched || !current || current.header.mediaType !== type) return null
     const events = syncEvents(current, fetched, chosen, viewer.titleLanguage)
     if (events.length === 0) return null
-    const next = events.reduce(appendEvent, current)
     try {
-      replay(next)
+      duelLog.append(...events)
     } catch (e) {
       setNotice({
         tone: 'error',
@@ -292,14 +285,11 @@ export function App() {
       })
       return null
     }
-    saveDuelLog(localStorage, next)
-    setCurrentLog(next)
     const added = events.reduce((sum, e) => sum + (e.type === 'titles-added' ? e.ids.length : 0), 0)
     const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
     // New titles can push a Band over the split threshold again (ADR 0006), so a skipped offer may show again.
     if (added > 0) setSkippedSplits([])
-    const titles = (n: number) => `${n} title${n === 1 ? '' : 's'}`
-    const changes = [added > 0 && `${titles(added)} added to Rough Sort`, removed > 0 && `${titles(removed)} left the Ranking`]
+    const changes = [added > 0 && `${count(added, 'title')} added to Rough Sort`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
     return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
   }
 
@@ -308,17 +298,13 @@ export function App() {
    * null if the answer was dropped. Once a fix started from Preview is placed (or undone), Preview opens again.
    */
   function answer(event: LogEvent): RankingState | null {
-    const current = logRef.current
-    if (!current) return null
-    const next = appendEvent(current, event)
-    let state: RankingState
+    let state: RankingState | null
     try {
-      state = replay(next)
+      state = duelLog.append(event)
     } catch {
       return null // an answer for a prompt that is no longer showing (e.g. a double key press)
     }
-    saveDuelLog(localStorage, next)
-    setCurrentLog(next)
+    if (!state) return null
     if (previewFix && state.prompt.kind === 'all-complete') {
       setPreviewFix(null)
       if (screen !== 'preview') goTo('preview')
@@ -326,26 +312,23 @@ export function App() {
     return state
   }
 
-  const titleName = (id: number) => {
-    const entry = entries.get(id)
-    return entry && viewer ? displayTitle(entry.title, viewer.titleLanguage) : `Title #${id}`
-  }
+  const nameOf = (id: number) => titleName(viewer ? entries.get(id) : undefined, id, viewer?.titleLanguage ?? 'ROMAJI')
 
   /** Band moved (ADR 0005): the title is placed next in its new (Sub-)band. The toast offers Undo while nothing else happened. */
   function moveTitle(id: number, band: BandIndex, sub?: SubBandIndex) {
-    const state = answer(sub === undefined ? { type: 'band-moved', id, band } : { type: 'band-moved', id, band, sub })
+    const state = answer(withSub({ type: 'band-moved', id, band }, sub))
     if (!state) return null
-    const moved = logRef.current
+    const moved = duelLog.latest()
     showToast(
       <>
-        Moved <b>{titleName(id)}</b> to <Kao band={band} size={11} />
+        Moved <b>{nameOf(id)}</b> to <Kao band={band} size={11} />
         {sub !== undefined && (
           <>
             {' › '}
             <SubPill sub={sub} size={11} />
           </>
         )}{' '}
-        <button className="link" onClick={() => logRef.current === moved && answer({ type: 'undo' })}>
+        <button className="link" onClick={() => duelLog.latest() === moved && answer({ type: 'undo' })}>
           Undo
         </button>
       </>,
@@ -364,7 +347,7 @@ export function App() {
       if (verb !== 'Moving') {
         showToast(
           <>
-            No Duels needed: <b>{titleName(id)}</b> has its place
+            No Duels needed: <b>{nameOf(id)}</b> has its place
           </>,
         )
       }
@@ -379,7 +362,8 @@ export function App() {
    * its own history entry, so Back from the Duel returns to it.
    */
   function chooseBand(band: BandIndex) {
-    const state = logRef.current ? replay(logRef.current) : null
+    const current = duelLog.latest()
+    const state = current ? replay(current) : null
     if (!state || state.bands[band].unplaced.length === 0) return
     const alreadyThere = state.prompt.kind === 'duel' && !state.bandChoice && state.prompt.band === band
     if (!alreadyThere) answer({ type: 'band-selected', band })
@@ -389,16 +373,16 @@ export function App() {
 
   function startOrContinue() {
     if (!viewer) return
-    if (!logRef.current) {
+    if (!duelLog.latest()) {
       if (!pool) return
-      const fresh = startLog({
-        seed: newSeed(),
-        userId: viewer.id,
-        mediaType,
-        ids: roughSortOrder(pool.titles, viewer.titleLanguage),
-      })
-      saveDuelLog(localStorage, fresh)
-      setCurrentLog(fresh)
+      duelLog.save(
+        startLog({
+          seed: newSeed(),
+          userId: viewer.id,
+          mediaType,
+          ids: roughSortOrder(pool.titles, viewer.titleLanguage),
+        }),
+      )
     } else {
       // The statuses may have changed on Start: titles that now match join, the rest leave.
       const summary = syncPool(mediaType, list, statuses)
@@ -419,13 +403,9 @@ export function App() {
         setOpeningPreview(false)
         setViewer(fresh)
         const key = { userId: fresh.id, mediaType }
-        const saved = loadScoringSettings(localStorage, key)
-        const { settings, converted } = settingsFor(saved, fresh.scoreFormat)
+        const { settings, converted } = loadScoringFor(localStorage, key, fresh.scoreFormat)
         if (converted) {
-          saveScoringSettings(localStorage, key, { format: fresh.scoreFormat, settings })
-          // Scores planned in the old Score Format can't be written (ADR 0003).
-          deleteImportState(localStorage, key)
-          setSavedImport(null)
+          imports.dropForFormatChange(key)
           setNotice({
             tone: 'info',
             message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[fresh.scoreFormat]}. Best / Worst were converted. Check them before importing.`,
@@ -442,127 +422,9 @@ export function App() {
   }
 
   function changeScoring(settings: ScoringSettings) {
-    if (!viewer) return
-    saveScoringSettings(localStorage, { userId: viewer.id, mediaType }, { format: viewer.scoreFormat, settings })
+    if (!viewer || !rankingKey) return
+    saveScoringSettings(localStorage, rankingKey, { format: viewer.scoreFormat, settings })
     setScoring(settings)
-  }
-
-  /** Ends the running Import, if any. Its progress is already saved; the run's ending no longer touches the screen. */
-  function stopImportRun() {
-    importStop.current?.abort()
-    importStop.current = null
-  }
-
-  /** The Import plan for the current Ranking, as Preview would make it; empty unless the Ranking is finished. */
-  function currentPlan(state: RankingState, format: Viewer['scoreFormat'], settings: ScoringSettings): PendingWrite[] {
-    if (state.prompt.kind !== 'all-complete' || !pool) return []
-    return importPlan(previewRows(state, score(state, format, settings), oldScores, format), ticks)
-  }
-
-  /** Preview's Import button: the plan is shown for confirmation; nothing is written yet. */
-  function planImport(plan: PendingWrite[]) {
-    if (!viewer || !scoring || !logRef.current) return
-    const hash = planHash(logRef.current, { format: viewer.scoreFormat, settings: scoring })
-    setImportView({ stage: 'confirm', state: newImport(plan, { hash, format: viewer.scoreFormat }), status: null, writtenBefore: null })
-    goTo('import')
-  }
-
-  /** Saves the plan and writes it; every write's status is saved as it happens, so a cut-off Import can resume. */
-  async function writeImport(state: ImportState) {
-    if (!gateway || !viewer) return
-    const key = { userId: viewer.id, mediaType }
-    stopImportRun()
-    const stop = new AbortController()
-    importStop.current = stop
-    saveImportState(localStorage, key, state)
-    setSavedImport(null)
-    setImportView({ stage: 'running', state, status: null, writtenBefore: null })
-    const show = (next: ImportState, status: RunnerStatus | null) => {
-      if (importStop.current === stop) setImportView((v) => v && { ...v, state: next, status: status ?? v.status })
-    }
-    let final = state
-    try {
-      final = await runImport(
-        {
-          gateway,
-          clock: browserClock,
-          userId: key.userId,
-          mediaType: key.mediaType,
-          save: (s) => {
-            final = s
-            saveImportState(localStorage, key, s)
-            show(s, null)
-          },
-        },
-        state,
-        { signal: stop.signal, onStatus: (status, s) => show(s, status) },
-      )
-    } catch (e) {
-      handleGatewayError(e)
-    }
-    if (importStop.current !== stop) return // another Media Type, a logout or a newer run took over
-    importStop.current = null
-    const { left, failed } = importSummary(final)
-    if (left + failed === 0) deleteImportState(localStorage, key)
-    setSavedImport(unfinished(final))
-    setImportView((v) => v && { ...v, state: final, stage: left > 0 ? 'stopped' : 'done' })
-    // Preview should show the scores AniList has now.
-    const written = new Map(final.writes.filter((w) => w.status === 'done').map((w) => [w.mediaId, w.scoreRaw]))
-    setLists((prev) => {
-      const current = prev[key.mediaType]
-      if (!current) return prev
-      return { ...prev, [key.mediaType]: current.map((e) => (written.has(e.mediaId) ? { ...e, oldScore100: written.get(e.mediaId)! } : e)) }
-    })
-  }
-
-  /**
-   * Resumes a saved Import (or retries its failures). Runs `Viewer` again first: a changed Score Format drops the plan
-   * (ADR 0003); a changed Duel log or scoring settings means a recalculated plan, confirmed again.
-   */
-  function resumeSavedImport(saved: ImportState) {
-    if (!gateway || !viewer) return
-    gateway.viewer().then((fresh) => {
-      setViewer(fresh)
-      const log = logRef.current
-      if (!log) return
-      const key = { userId: fresh.id, mediaType }
-      const { settings, converted } = settingsFor(loadScoringSettings(localStorage, key), fresh.scoreFormat)
-      if (converted) saveScoringSettings(localStorage, key, { format: fresh.scoreFormat, settings })
-      setScoring(settings)
-      const state = replay(log)
-      const decision = resumeImport(saved, {
-        hash: planHash(log, { format: fresh.scoreFormat, settings }),
-        format: fresh.scoreFormat,
-        plan: () => currentPlan(state, fresh.scoreFormat, settings),
-      })
-      const drop = (message: string) => {
-        deleteImportState(localStorage, key)
-        setSavedImport(null)
-        setImportView(null)
-        setNotice({ tone: 'info', message })
-        if (screen === 'import') goTo(state.prompt.kind === 'all-complete' ? 'preview' : 'ranking')
-      }
-      switch (decision.kind) {
-        case 'dropped':
-          drop(`Your Score Format changed to ${SCORE_FORMAT_LABEL[fresh.scoreFormat]}, so the unfinished Import was dropped. Check the scores on Preview and import again.`)
-          return
-        case 'continue':
-          if (screen !== 'import') goTo('import')
-          void writeImport(decision.state)
-          return
-        case 'confirm-again':
-          if (decision.state.writes.length === 0) {
-            drop(
-              state.prompt.kind === 'all-complete'
-                ? 'Your Ranking changed since the last Import, and no score is left to write.'
-                : 'Your Ranking changed since the last Import and is not finished, so the unfinished Import was dropped.',
-            )
-            return
-          }
-          setImportView({ stage: 'confirm', state: decision.state, status: null, writtenBefore: decision.writtenBefore })
-          if (screen !== 'import') goTo('import')
-      }
-    }, handleGatewayError)
   }
 
   /** Downloads the Backup file for the current user and Media Type. */
@@ -588,17 +450,17 @@ export function App() {
 
   /** Runs only after the user confirmed in the Restore dialog, which already checked the file for this user and Media Type. */
   function restore(backup: Backup) {
-    if (!viewer) return
+    if (!rankingKey) return
     restoreBackup(localStorage, backup)
     setDialog(null)
     setNotice(null)
     const restored = `Restored ${backup.log.events.length} events from Backup`
-    if (!openRanking(viewer.id, mediaType, false)) {
+    if (!openRanking(rankingKey, false)) {
       showToast(restored)
       return
     }
     // The Backup may be older than the list: bring its Pool up to date under the restored statuses.
-    const chosen = loadPoolSettings(localStorage, { userId: viewer.id, mediaType })?.statuses ?? DEFAULT_STATUSES
+    const chosen = loadPoolSettings(localStorage, rankingKey)?.statuses ?? DEFAULT_STATUSES
     const summary = syncPool(mediaType, list, chosen)
     goTo('ranking')
     showToast(summary ? `${restored} · ${summary}` : restored)
@@ -606,12 +468,12 @@ export function App() {
 
   /** Runs only after the user confirmed in the Start over dialog. */
   function startOver() {
-    if (!viewer) return
-    deleteDuelLog(localStorage, { userId: viewer.id, mediaType })
-    deleteImportState(localStorage, { userId: viewer.id, mediaType })
+    if (!rankingKey) return
+    deleteDuelLog(localStorage, rankingKey)
+    imports.discard(rankingKey)
     setDialog(null)
     setNotice(null)
-    openRanking(viewer.id, mediaType, false)
+    openRanking(rankingKey, false)
     goTo('start')
     showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was thrown away.`)
   }
@@ -620,114 +482,36 @@ export function App() {
     if (!viewer || type === mediaType) return
     saveLastMediaType(localStorage, viewer.id, type)
     const inRankingNow = screen === 'ranking'
-    if (!openRanking(viewer.id, type, inRankingNow) && inRankingNow) goTo('start')
+    if (!openRanking({ userId: viewer.id, mediaType: type }, inRankingNow) && inRankingNow) goTo('start')
   }
 
-  const otherMediaType: MediaType = mediaType === 'ANIME' ? 'MANGA' : 'ANIME'
   const hasProgress = Boolean(log) || savedBroken
-  const menuItems: MenuItem[] = []
-  if (viewer) {
-    menuItems.push(
-      // run() is only ever called from a click or key handler, never during render.
-      // oxlint-disable-next-line react/refs
-      {
-        id: 'switch-media-type',
-        group: 'This Ranking',
-        icon: '⇆',
-        title: `Switch to ${MEDIA_LABEL[otherMediaType]}`,
-        description: 'Each Media Type keeps its own Ranking',
-        run: () => {
-          switchMediaType(otherMediaType)
-          showToast(
-            <>
-              Switched to <b>{MEDIA_LABEL[otherMediaType]}</b> — your {MEDIA_LABEL[mediaType]} Ranking is kept
-            </>,
-          )
-        },
-      },
-      {
-        id: 'statuses',
-        group: 'This Ranking',
-        icon: '☰',
-        title: 'Change list statuses',
-        description: `${statuses.map((st) => statusLabel(st, mediaType)).join(', ')} · titles join or leave the Ranking`,
-        run: () => goTo('start'),
-      },
-    )
-    if (log) {
-      menuItems.push({
-        id: 'backup',
-        group: 'This Ranking',
-        icon: '↓',
-        title: 'Save Backup file',
-        description: 'Download your Duel log and settings',
-        run: saveBackup,
-      })
-    }
-    // Split offers after Rough Sort, under the same rule as the automatic offer (ADR 0006).
-    if (ranking?.prompt.kind === 'duel' && !ranking.bandChoice && screen !== 'bands') {
-      menuItems.push({
-        id: 'choose-band',
-        group: 'This Ranking',
-        icon: '▤',
-        title: 'Choose a Band',
-        description: 'Pick which Band to Duel in next',
-        run: () => goTo('bands'),
-      })
-    }
-    if (ranking && ranking.prompt.kind !== 'rough-sort') {
-      for (const band of offers) {
-        menuItems.push({
-          id: `split-band-${band}`,
-          group: 'This Ranking',
-          icon: '⫼',
-          title: `Split ${BAND_UI[band].label} into 3 groups`,
-          description: `${ranking.bands[band].unplaced.length} titles without a place: Best / Middle / Lowest cuts the Duels`,
-          run: () => {
+  const menuItems = viewer
+    ? buildMenuItems(
+        { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers },
+        {
+          switchMediaType: (type) => {
+            switchMediaType(type)
+            showToast(
+              <>
+                Switched to <b>{MEDIA_LABEL[type]}</b> — your {MEDIA_LABEL[mediaType]} Ranking is kept
+              </>,
+            )
+          },
+          changeStatuses: () => goTo('start'),
+          saveBackup,
+          chooseBand: () => goTo('bands'),
+          splitBand: (band) => {
             setSplitView({ band })
             goTo('ranking')
           },
-        })
-      }
-    }
-    menuItems.push({
-      id: 'restore',
-      group: 'This Ranking',
-      icon: '↑',
-      title: 'Restore from Backup',
-      description: 'Load a Backup file from another browser',
-      run: () => setDialog('restore'),
-    })
-    if (hasProgress) {
-      menuItems.push({
-        id: 'start-over',
-        group: 'This Ranking',
-        icon: '↺',
-        title: 'Start this Ranking over',
-        description: `Throws away all Duels for ${MEDIA_LABEL[mediaType]}`,
-        danger: true,
-        run: () => setDialog('start-over'),
-      })
-    }
-    menuItems.push(
-      {
-        id: 'theme',
-        group: 'App',
-        icon: '◐',
-        title: 'Light / dark theme',
-        description: 'Follows your system unless you pick one',
-        run: toggleTheme,
-      },
-      {
-        id: 'logout',
-        group: 'Account',
-        icon: '⎋',
-        title: 'Log out',
-        description: 'Removes your AniList token from this browser',
-        run: () => setDialog('logout'),
-      },
-    )
-  }
+          restore: () => setDialog('restore'),
+          startOver: () => setDialog('start-over'),
+          toggleTheme,
+          logout: () => setDialog('logout'),
+        },
+      )
+    : []
 
   const form = viewer
     ? {
@@ -736,6 +520,7 @@ export function App() {
         statuses,
         pool,
         saved: ranking?.progress.roughSort ?? null,
+        bandDuels: ranking ? duelsFromBands(ranking) : null,
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
           const next = statuses.includes(s) ? statuses.filter((x) => x !== s) : [...statuses, s]
@@ -751,10 +536,10 @@ export function App() {
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
     (screen === 'ranking' || screen === 'bands' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
+  const importView = imports.view
   const inImport = screen === 'import' && importView
   // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows.
   const inPreview = screen === 'preview' && ranking?.prompt.kind === 'all-complete' && scoring && pool
-  const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
 
   /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
@@ -793,9 +578,7 @@ export function App() {
             {...shared}
             key={prompt.id}
             id={prompt.id}
-            onBand={(band, sub) =>
-              answer(sub === undefined ? { type: 'band-assigned', id: prompt.id, band } : { type: 'band-assigned', id: prompt.id, band, sub })
-            }
+            onBand={(band, sub) => answer(withSub({ type: 'band-assigned', id: prompt.id, band }, sub))}
             onForget={() => answer({ type: 'forgotten', id: prompt.id })}
           />
         )
@@ -823,7 +606,7 @@ export function App() {
             onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
             onForget={(id) => answer({ type: 'forgotten', id })}
             onMove={moveTitle}
-            note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${titleName(prompt.a)}` : undefined}
+            note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : undefined}
           />
         )
       case 'all-complete':
@@ -831,20 +614,10 @@ export function App() {
     }
   }
 
-  // A cut-off Import (or one with failures) is offered again until it finishes, the plan is dropped, or Start over.
-  const savedImportLeft = savedImport ? importSummary(savedImport) : null
-  const importNotice: Notice | null =
-    savedImport && savedImportLeft && viewer && screen !== 'import'
-      ? {
-          tone: 'info',
-          message: `Your last Import didn't finish: ${savedImportLeft.left + savedImportLeft.failed} of ${savedImportLeft.total} scores still to write.`,
-          action: list ? { label: 'Resume Import', onClick: () => resumeSavedImport(savedImport) } : undefined,
-        }
-      : null
-
   return (
     <Shell
-      notice={notice ?? importNotice}
+      // A cut-off Import (or one with failures) is offered again until it finishes, the plan is dropped, or Start over.
+      notice={notice ?? imports.notice(Boolean(list))}
       toast={toast?.message}
       sidebar={
         inRanking ? (
@@ -859,7 +632,7 @@ export function App() {
               <AccountMenu
                 name={viewer.name}
                 avatarUrl={viewer.avatarUrl}
-                detail={`${MEDIA_LABEL[mediaType]} · ${ranking.progress.roughSort.total} titles`}
+                detail={`${MEDIA_LABEL[mediaType]} · ${count(ranking.progress.roughSort.total, 'title')}`}
                 items={menuItems}
               />
             }
@@ -876,10 +649,10 @@ export function App() {
           entries={entries}
           titleLanguage={viewer.titleLanguage}
           format={importView.state.format}
-          onConfirm={() => void writeImport(importView.state)}
-          onStop={() => importStop.current?.abort()}
-          onResume={() => resumeSavedImport(importView.state)}
-          onRetry={() => resumeSavedImport(retryFailed(importView.state))}
+          onConfirm={() => void imports.write(importView.state)}
+          onStop={imports.stop}
+          onResume={() => imports.resume(importView.state)}
+          onRetry={() => imports.resume(retryFailed(importView.state))}
           onBack={() => goTo('preview')}
         />
       ) : inRanking && inPreview ? (
@@ -891,9 +664,9 @@ export function App() {
           format={viewer.scoreFormat}
           settings={scoring}
           onSettings={changeScoring}
-          overrides={ticks}
-          onTick={(id, ticked) => setTicks((prev) => new Map(prev).set(id, ticked))}
-          onImport={importView?.stage === 'running' ? undefined : planImport}
+          overrides={imports.ticks}
+          onTick={imports.tick}
+          onImport={importView?.stage === 'running' ? undefined : (plan) => imports.plan(plan, scoring)}
           onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
           onMove={setPreviewMoving}
           onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}

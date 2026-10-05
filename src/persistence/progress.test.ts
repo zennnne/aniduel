@@ -12,6 +12,7 @@ import {
   saveImportState,
   loadLastMediaType,
   loadPoolSettings,
+  loadScoringFor,
   loadScoringSettings,
   saveDuelLog,
   saveScoringSettings,
@@ -107,6 +108,19 @@ describe('Scoring settings', () => {
       storage.setItem(key, bad)
       expect(loadScoringSettings(storage, anime)).toBeNull()
     }
+  })
+
+  it('gives the settings for the current Score Format, converting and saving them when it changed (ADR 0003)', () => {
+    const storage = memoryStorage()
+    saveScoringSettings(storage, anime, saved)
+    expect(loadScoringFor(storage, anime, 'POINT_10')).toEqual({ settings: saved.settings, converted: false })
+
+    const converted = loadScoringFor(storage, anime, 'POINT_5')
+
+    // 9 / 2 of 10 is 90 / 20 of 100: 5 / 1 star.
+    expect(converted).toEqual({ settings: { distribution: 'bell', best: 5, worst: 1 }, converted: true })
+    expect(loadScoringSettings(storage, anime)).toEqual({ format: 'POINT_5', settings: converted.settings })
+    expect(loadScoringFor(storage, anime, 'POINT_5').converted).toBe(false)
   })
 })
 
