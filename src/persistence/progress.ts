@@ -58,6 +58,14 @@ export function loadDuelLog(storage: Storage, key: RankingKey): DuelLog | null {
   return log
 }
 
+/**
+ * Start over: throws away the Ranking for this user and Media Type. The log itself is never edited (ADR 0005);
+ * it is deleted as a whole. The Pool settings stay, so a new Ranking starts from the same statuses.
+ */
+export function deleteDuelLog(storage: Storage, key: RankingKey): void {
+  storage.removeItem(progressStorageKey({ ...key, part: LOG_PART }))
+}
+
 export type PoolSettings = { statuses: ListStatus[] }
 
 const POOL_PART = 'pool-settings'

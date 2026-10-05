@@ -1,10 +1,12 @@
 // Screens are chosen from app state, not by a router (ADR 0004).
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AniListError, createAniListGateway } from '../anilist/gateway.ts'
 import type { ListEntry, ListStatus, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
+import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
 import {
+  deleteDuelLog,
   loadDuelLog,
   loadLastMediaType,
   loadPoolSettings,
@@ -17,6 +19,9 @@ import { replay, startLog, type DuelLog, type LogEvent, type RankingState } from
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
 import { LogoutDialog } from './LogoutDialog.tsx'
+import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
+import type { MenuItem } from './menu/menuItems.ts'
+import { RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
 import { RankingSidebar } from './RankingSidebar.tsx'
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
@@ -24,6 +29,15 @@ import { StartScreen } from './start/StartScreen.tsx'
 import { useTheme } from './theme.ts'
 
 type Screen = 'start' | 'ranking'
+type DialogName = 'logout' | 'restore' | 'start-over'
+
+const MEDIA_LABEL: Record<MediaType, string> = { ANIME: 'Anime', MANGA: 'Manga' }
+const TOAST_MS = 4000
+
+/** Duel answers in the log (cancelled ones included). */
+function countDuels(log: DuelLog): number {
+  return log.events.filter((e) => e.type === 'duel-answered').length
+}
 
 function loginRedirect() {
   window.location.assign(authorizeUrl(aniListClientId({ dev: import.meta.env.DEV })))
@@ -48,11 +62,20 @@ export function App() {
   const [screen, setScreen] = useState<Screen>('start')
   const [notice, setNotice] = useState<Notice | null>(null)
   const [retries, setRetries] = useState(0)
-  const [confirmingLogout, setConfirmingLogout] = useState(false)
+  const [dialog, setDialog] = useState<DialogName | null>(null)
+  // A new object per toast, so showing the same message twice restarts its timer.
+  const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
   // The latest log, updated synchronously so two quick key presses never append to a stale log.
   const logRef = useRef<DuelLog | null>(null)
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
+
+  const showToast = (message: ReactNode) => setToast({ message })
+  useEffect(() => {
+    if (!toast) return
+    const timer = window.setTimeout(() => setToast(null), TOAST_MS)
+    return () => window.clearTimeout(timer)
+  }, [toast])
 
   function setCurrentLog(next: DuelLog | null) {
     logRef.current = next
@@ -75,8 +98,11 @@ export function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  /** Loads what is saved for this user and Media Type; with `resume`, a saved Ranking opens straight away. */
-  function openRanking(userId: number, type: MediaType, resume: boolean) {
+  /**
+   * Loads what is saved for this user and Media Type; with `resume`, a saved Ranking opens straight away.
+   * Returns whether a usable Ranking was found.
+   */
+  function openRanking(userId: number, type: MediaType, resume: boolean): boolean {
     setMediaType(type)
     setStatuses(loadPoolSettings(localStorage, { userId, mediaType: type })?.statuses ?? DEFAULT_STATUSES)
     try {
@@ -85,13 +111,16 @@ export function App() {
       setCurrentLog(saved)
       setSavedBroken(false)
       if (saved && resume) goTo('ranking')
+      return saved !== null
     } catch (e) {
       setCurrentLog(null)
       setSavedBroken(true)
       setNotice({
         tone: 'error',
-        message: `Your saved ${type === 'ANIME' ? 'Anime' : 'Manga'} progress in this browser can't be used (${e instanceof Error ? e.message : 'unknown error'}). It was left untouched.`,
+        message: `Your saved ${MEDIA_LABEL[type]} progress in this browser can't be used (${e instanceof Error ? e.message : 'unknown error'}). It was left untouched.`,
+        action: { label: 'Restore a Backup', onClick: () => setDialog('restore') },
       })
+      return false
     }
   }
 
@@ -188,6 +217,135 @@ export function App() {
     goTo('ranking')
   }
 
+  /** Downloads the Backup file for the current user and Media Type. */
+  function saveBackup() {
+    if (!viewer) return
+    const file = createBackup(localStorage, { userId: viewer.id, mediaType, userName: viewer.name }, new Date())
+    if (!file) {
+      showToast(`There is no ${MEDIA_LABEL[mediaType]} Ranking to back up yet.`)
+      return
+    }
+    const url = URL.createObjectURL(new Blob([file.json], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.fileName
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    showToast(
+      <>
+        Saved <b>{file.fileName}</b>
+      </>,
+    )
+  }
+
+  /** Runs only after the user confirmed in the Restore dialog, which already checked the file for this user and Media Type. */
+  function restore(backup: Backup) {
+    if (!viewer) return
+    restoreBackup(localStorage, backup)
+    setDialog(null)
+    setNotice(null)
+    if (openRanking(viewer.id, mediaType, false)) goTo('ranking')
+    showToast(`Restored ${backup.log.events.length} events from Backup`)
+  }
+
+  /** Runs only after the user confirmed in the Start over dialog. */
+  function startOver() {
+    if (!viewer) return
+    deleteDuelLog(localStorage, { userId: viewer.id, mediaType })
+    setDialog(null)
+    setNotice(null)
+    openRanking(viewer.id, mediaType, false)
+    goTo('start')
+    showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was thrown away.`)
+  }
+
+  function switchMediaType(type: MediaType) {
+    if (!viewer || type === mediaType) return
+    saveLastMediaType(localStorage, viewer.id, type)
+    const inRankingNow = screen === 'ranking'
+    if (!openRanking(viewer.id, type, inRankingNow) && inRankingNow) goTo('start')
+  }
+
+  const otherMediaType: MediaType = mediaType === 'ANIME' ? 'MANGA' : 'ANIME'
+  const hasProgress = Boolean(log) || savedBroken
+  const menuItems: MenuItem[] = []
+  if (viewer) {
+    menuItems.push(
+      // run() is only ever called from a click or key handler, never during render.
+      // oxlint-disable-next-line react/refs
+      {
+        id: 'switch-media-type',
+        group: 'This Ranking',
+        icon: '⇆',
+        title: `Switch to ${MEDIA_LABEL[otherMediaType]}`,
+        description: 'Each Media Type keeps its own Ranking',
+        run: () => {
+          switchMediaType(otherMediaType)
+          showToast(
+            <>
+              Switched to <b>{MEDIA_LABEL[otherMediaType]}</b> — your {MEDIA_LABEL[mediaType]} Ranking is kept
+            </>,
+          )
+        },
+      },
+      {
+        id: 'statuses',
+        group: 'This Ranking',
+        icon: '☰',
+        title: 'Change list statuses',
+        description: 'Choose which list statuses are in the Pool',
+        run: () => goTo('start'),
+      },
+    )
+    if (log) {
+      menuItems.push({
+        id: 'backup',
+        group: 'This Ranking',
+        icon: '↓',
+        title: 'Save Backup file',
+        description: 'Download your Duel log and settings',
+        run: saveBackup,
+      })
+    }
+    menuItems.push({
+      id: 'restore',
+      group: 'This Ranking',
+      icon: '↑',
+      title: 'Restore from Backup',
+      description: 'Load a Backup file from another browser',
+      run: () => setDialog('restore'),
+    })
+    if (hasProgress) {
+      menuItems.push({
+        id: 'start-over',
+        group: 'This Ranking',
+        icon: '↺',
+        title: 'Start this Ranking over',
+        description: `Throws away all Duels for ${MEDIA_LABEL[mediaType]}`,
+        danger: true,
+        run: () => setDialog('start-over'),
+      })
+    }
+    menuItems.push(
+      {
+        id: 'theme',
+        group: 'App',
+        icon: '◐',
+        title: 'Light / dark theme',
+        description: 'Follows your system unless you pick one',
+        run: toggleTheme,
+      },
+      {
+        id: 'logout',
+        group: 'Account',
+        icon: '⎋',
+        title: 'Log out',
+        description: 'Removes your AniList token from this browser',
+        run: () => setDialog('logout'),
+      },
+    )
+  }
+
   const form = viewer
     ? {
         viewer,
@@ -195,18 +353,15 @@ export function App() {
         statuses,
         pool,
         saved: ranking?.progress.roughSort ?? null,
-        onMediaType: (type: MediaType) => {
-          if (type === mediaType) return
-          saveLastMediaType(localStorage, viewer.id, type)
-          openRanking(viewer.id, type, false)
-        },
+        onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
           const next = statuses.includes(s) ? statuses.filter((x) => x !== s) : [...statuses, s]
           savePoolSettings(localStorage, { userId: viewer.id, mediaType }, { statuses: next })
           setStatuses(next)
         },
-        onLogout: () => setConfirmingLogout(true),
+        onLogout: () => setDialog('logout'),
         onStartRoughSort: savedBroken ? undefined : startOrContinue,
+        onRestore: () => setDialog('restore'),
       }
     : null
 
@@ -245,9 +400,24 @@ export function App() {
   return (
     <Shell
       notice={notice}
+      toast={toast?.message}
       sidebar={
         inRanking ? (
-          <RankingSidebar viewer={viewer} mediaType={mediaType} state={ranking} entries={entries} titleLanguage={viewer.titleLanguage} />
+          <RankingSidebar
+            viewer={viewer}
+            mediaType={mediaType}
+            state={ranking}
+            entries={entries}
+            titleLanguage={viewer.titleLanguage}
+            menu={
+              <AccountMenu
+                name={viewer.name}
+                avatarUrl={viewer.avatarUrl}
+                detail={`${MEDIA_LABEL[mediaType]} · ${ranking.progress.roughSort.total} titles`}
+                items={menuItems}
+              />
+            }
+          />
         ) : undefined
       }
     >
@@ -263,13 +433,33 @@ export function App() {
           onToggleTheme={toggleTheme}
         />
       )}
-      {confirmingLogout && (
+      {viewer && !dialog && <CommandPalette items={menuItems} />}
+      {dialog === 'logout' && (
         <LogoutDialog
-          onCancel={() => setConfirmingLogout(false)}
+          onCancel={() => setDialog(null)}
           onConfirm={(deleteProgress) => {
-            setConfirmingLogout(false)
+            setDialog(null)
             endSession(deleteProgress)
           }}
+        />
+      )}
+      {dialog === 'restore' && viewer && (
+        <RestoreDialog
+          userId={viewer.id}
+          userName={viewer.name}
+          mediaType={mediaType}
+          replacesProgress={hasProgress}
+          onRestore={restore}
+          onCancel={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'start-over' && viewer && (
+        <StartOverDialog
+          mediaType={mediaType}
+          counts={ranking && log ? { roughSort: ranking.progress.roughSort.done, duels: countDuels(log) } : null}
+          onConfirm={startOver}
+          onSaveBackup={log ? saveBackup : undefined}
+          onCancel={() => setDialog(null)}
         />
       )}
     </Shell>

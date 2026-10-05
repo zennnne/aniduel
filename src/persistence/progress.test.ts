@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { replay, startLog } from '../ranking/engine.ts'
 import {
+  deleteDuelLog,
   deleteSavedProgress,
   loadDuelLog,
   loadLastMediaType,
@@ -61,6 +62,21 @@ describe('Duel log', () => {
 
     storage.setItem(key, '{not json')
     expect(() => loadDuelLog(storage, { userId: 8, mediaType: 'ANIME' })).toThrow()
+  })
+})
+
+describe('Start over', () => {
+  it('throws away the Ranking for one Media Type only, keeping the chosen statuses', () => {
+    const storage = memoryStorage()
+    saveDuelLog(storage, startLog({ ...anime, seed: 1, ids: [1] }))
+    saveDuelLog(storage, startLog({ userId: 7, mediaType: 'MANGA', seed: 1, ids: [2] }))
+    savePoolSettings(storage, anime, { statuses: ['COMPLETED'] })
+
+    deleteDuelLog(storage, anime)
+
+    expect(loadDuelLog(storage, anime)).toBeNull()
+    expect(loadDuelLog(storage, { userId: 7, mediaType: 'MANGA' })).not.toBeNull()
+    expect(loadPoolSettings(storage, anime)).toEqual({ statuses: ['COMPLETED'] })
   })
 })
 

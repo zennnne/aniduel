@@ -1,0 +1,161 @@
+/* App menu: account popover, Ctrl+K palette, Restore drop zone, toast (issue #4 prototype, section 9). */
+.acct-wrap {
+  position: relative;
+}
+.acct {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border-radius: 10px;
+  background: #ffffff0d;
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: left;
+}
+.acct:hover {
+  background: #ffffff1a;
+}
+.acct .ava {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--blue);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+.mpop {
+  position: absolute;
+  bottom: 58px;
+  left: 0;
+  right: -60px;
+  background: var(--fg);
+  border-radius: 14px;
+  padding: 8px;
+  box-shadow: 0 10px 40px #000a;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mg {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.6;
+  padding: 8px 8px 2px;
+  color: var(--tx);
+}
+.mitem {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--tx-strong);
+  font-size: 13px;
+  width: 100%;
+}
+.mitem .small {
+  color: var(--tx);
+  font-size: 11px;
+}
+.mitem:hover,
+.mitem.first {
+  background: var(--fg2);
+}
+.mitem.danger {
+  color: #f27d7d;
+}
+.mic {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: var(--fg2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.dscrim.top {
+  align-items: flex-start;
+  padding-top: 12vh;
+}
+.pal {
+  background: var(--fg);
+  border-radius: 14px;
+  padding: 8px;
+  width: min(520px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 10px 40px #000a;
+}
+.pal input {
+  font: inherit;
+  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: none;
+  outline: none;
+  background: var(--fg2);
+  color: var(--tx-strong);
+}
+.drop {
+  border: 2px dashed var(--tx);
+  border-radius: 12px;
+  padding: 26px 16px;
+  text-align: center;
+  color: var(--tx-strong);
+  cursor: pointer;
+}
+.drop.over {
+  border-color: var(--blue);
+  background: var(--fg2);
+}
+.dlg .warn.err {
+  color: var(--danger);
+}
+.toast {
+  position: fixed;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--nav);
+  color: #fff;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  z-index: 70;
+  box-shadow: 0 6px 24px #0006;
+}
+
+/* Mobile: the popover becomes a bottom sheet. */
+@media (max-width: 720px) {
+  .acct {
+    width: auto;
+    background: none;
+  }
+  .mpop {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    border-radius: 16px 16px 0 0;
+    max-height: 80vh;
+    overflow: auto;
+  }
+}

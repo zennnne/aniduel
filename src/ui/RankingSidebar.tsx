@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import type { ListEntry, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
 import { displayTitle } from '../pool/pool.ts'
 import { BANDS, type RankingState } from '../ranking/engine.ts'
@@ -14,8 +15,9 @@ export function RankingSidebar(props: {
   state: RankingState
   entries: ReadonlyMap<number, ListEntry>
   titleLanguage: TitleLanguage
+  menu?: ReactNode
 }) {
-  const { viewer, mediaType, state, entries, titleLanguage } = props
+  const { viewer, mediaType, state, entries, titleLanguage, menu } = props
   const prompt = state.prompt
   const duel = prompt.kind === 'duel' ? prompt : null
   const roughSorting = prompt.kind === 'rough-sort'
@@ -71,6 +73,7 @@ export function RankingSidebar(props: {
       <span className="small">
         {done}/{total}
       </span>
+      {menu}
     </>
   )
 }
