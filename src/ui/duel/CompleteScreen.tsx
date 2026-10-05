@@ -5,14 +5,16 @@ import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import './duel.css'
 
-/** Shown once every Band is ranked: the whole Ranking, Bands → Tiers → titles. Scoring comes in a later step. */
+/** Shown once every Band is ranked: the whole Ranking, Bands → Tiers → titles, and the way on to Preview. */
 export function CompleteScreen(props: {
   state: RankingState
   entries: ReadonlyMap<number, ListEntry>
   titleLanguage: TitleLanguage
   onUndo: () => void
+  /** Goes on to scoring and Preview; undefined while it can't (e.g. waiting for AniList). */
+  onScore?: () => void
 }) {
-  const { state, entries, titleLanguage, onUndo } = props
+  const { state, entries, titleLanguage, onUndo, onScore } = props
   const name = (id: number) => {
     const entry = entries.get(id)
     return entry ? displayTitle(entry.title, titleLanguage) : `Title #${id}`
@@ -40,9 +42,14 @@ export function CompleteScreen(props: {
           ))}
         </section>
       ))}
-      <button className="go sm" onClick={onUndo} disabled={!state.canUndo}>
-        {UNDO_ICON} Undo last answer
-      </button>
+      <div className="row">
+        <button className="go" onClick={onScore} disabled={!onScore}>
+          Score my Ranking →
+        </button>
+        <button className="go sm" onClick={onUndo} disabled={!state.canUndo}>
+          {UNDO_ICON} Undo last answer
+        </button>
+      </div>
     </div>
   )
 }

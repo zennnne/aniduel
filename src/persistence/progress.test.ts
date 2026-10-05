@@ -6,7 +6,9 @@ import {
   loadDuelLog,
   loadLastMediaType,
   loadPoolSettings,
+  loadScoringSettings,
   saveDuelLog,
+  saveScoringSettings,
   saveLastMediaType,
   savePoolSettings,
 } from './progress.ts'
@@ -77,6 +79,28 @@ describe('Start over', () => {
     expect(loadDuelLog(storage, anime)).toBeNull()
     expect(loadDuelLog(storage, { userId: 7, mediaType: 'MANGA' })).not.toBeNull()
     expect(loadPoolSettings(storage, anime)).toEqual({ statuses: ['COMPLETED'] })
+  })
+})
+
+describe('Scoring settings', () => {
+  const saved = { format: 'POINT_10' as const, settings: { distribution: 'bell' as const, best: 9, worst: 2 } }
+
+  it('remembers the scoring settings and their Score Format for each Media Type', () => {
+    const storage = memoryStorage()
+    expect(loadScoringSettings(storage, anime)).toBeNull()
+    saveScoringSettings(storage, anime, saved)
+    expect(loadScoringSettings(storage, anime)).toEqual(saved)
+    expect(loadScoringSettings(storage, { userId: 7, mediaType: 'MANGA' })).toBeNull()
+  })
+
+  it('ignores saved scoring settings it does not understand', () => {
+    const storage = memoryStorage()
+    saveScoringSettings(storage, anime, saved)
+    const key = storage.key(0)!
+    for (const bad of ['nope', '{"format":"POINT_7","settings":{"distribution":"bell","best":9,"worst":2}}', '{"format":"POINT_10","settings":{"distribution":"zigzag","best":9,"worst":2}}', '{"format":"POINT_10","settings":{"distribution":"bell","best":9,"worst":0}}']) {
+      storage.setItem(key, bad)
+      expect(loadScoringSettings(storage, anime)).toBeNull()
+    }
   })
 })
 
