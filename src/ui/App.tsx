@@ -16,9 +16,18 @@ import {
   savePoolSettings,
   saveScoringSettings,
 } from '../persistence/progress.ts'
-import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '../pool/pool.ts'
+import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, displayTitle, roughSortOrder } from '../pool/pool.ts'
 import { syncEvents } from '../pool/sync.ts'
-import { appendEvent, replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
+import {
+  appendEvent,
+  replay,
+  startLog,
+  type BandIndex,
+  type DuelLog,
+  type LogEvent,
+  type RankingState,
+  type SubBandIndex,
+} from '../ranking/engine.ts'
 import { settingsFor, type ScoringSettings } from '../ranking/scoring.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
@@ -26,6 +35,8 @@ import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { SplitScreen } from './split/SplitScreen.tsx'
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
+import { Kao, SubPill } from './Kao.tsx'
+import { MoveSheet } from './move/MoveSheet.tsx'
 import { LogoutDialog } from './LogoutDialog.tsx'
 import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
 import type { MenuItem } from './menu/menuItems.ts'
@@ -86,6 +97,10 @@ export function App() {
   // Import ticks the user changed on Preview (the default is "ticked if the score changes").
   const [ticks, setTicks] = useState<ReadonlyMap<number, boolean>>(new Map())
   const [openingPreview, setOpeningPreview] = useState(false)
+  // A fix started from Preview (#11): its Duels run on the Ranking screen, then Preview opens again.
+  const [previewFix, setPreviewFix] = useState<{ id: number; verb: string } | null>(null)
+  // The title whose Move sheet is open over Preview.
+  const [previewMoving, setPreviewMoving] = useState<number | null>(null)
   // The latest log, updated synchronously so two quick key presses never append to a stale log.
   const logRef = useRef<DuelLog | null>(null)
 
@@ -129,6 +144,8 @@ export function App() {
     setSkippedSplits([])
     setScoring(null)
     setTicks(new Map())
+    setPreviewFix(null)
+    setPreviewMoving(null)
     setStatuses(loadPoolSettings(localStorage, { userId, mediaType: type })?.statuses ?? DEFAULT_STATUSES)
     try {
       const saved = loadDuelLog(localStorage, { userId, mediaType: type })
@@ -263,18 +280,75 @@ export function App() {
     return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
   }
 
-  /** Appends one answer, checks it replays, and saves the log before showing the result. */
-  function answer(event: LogEvent) {
+  /**
+   * Appends one answer, checks it replays, and saves the log before showing the result. Returns the new state, or
+   * null if the answer was dropped. Once a fix started from Preview is placed (or undone), Preview opens again.
+   */
+  function answer(event: LogEvent): RankingState | null {
     const current = logRef.current
-    if (!current) return
+    if (!current) return null
     const next = appendEvent(current, event)
+    let state: RankingState
     try {
-      replay(next)
+      state = replay(next)
     } catch {
-      return // an answer for a prompt that is no longer showing (e.g. a double key press)
+      return null // an answer for a prompt that is no longer showing (e.g. a double key press)
     }
     saveDuelLog(localStorage, next)
     setCurrentLog(next)
+    if (previewFix && state.prompt.kind === 'all-complete') {
+      setPreviewFix(null)
+      if (screen !== 'preview') goTo('preview')
+    }
+    return state
+  }
+
+  const titleName = (id: number) => {
+    const entry = entries.get(id)
+    return entry && viewer ? displayTitle(entry.title, viewer.titleLanguage) : `Title #${id}`
+  }
+
+  /** Band moved (ADR 0005): the title is placed next in its new (Sub-)band. The toast offers Undo while nothing else happened. */
+  function moveTitle(id: number, band: BandIndex, sub?: SubBandIndex) {
+    const state = answer(sub === undefined ? { type: 'band-moved', id, band } : { type: 'band-moved', id, band, sub })
+    if (!state) return null
+    const moved = logRef.current
+    showToast(
+      <>
+        Moved <b>{titleName(id)}</b> to <Kao band={band} size={11} />
+        {sub !== undefined && (
+          <>
+            {' › '}
+            <SubPill sub={sub} size={11} />
+          </>
+        )}{' '}
+        <button className="link" onClick={() => logRef.current === moved && answer({ type: 'undo' })}>
+          Undo
+        </button>
+      </>,
+    )
+    return state
+  }
+
+  /**
+   * Re-rank / Move / Bring back from Preview: the title's Duels run on the Ranking screen, then Preview opens again.
+   * A title that needs no Duel (e.g. moved into an empty Band) is placed at once and Preview stays.
+   */
+  function fixFromPreview(id: number, verb: string, state: RankingState | null) {
+    if (!state) return
+    if (state.prompt.kind === 'all-complete') {
+      // A move keeps its own toast (with Undo).
+      if (verb !== 'Moving') {
+        showToast(
+          <>
+            No Duels needed: <b>{titleName(id)}</b> has its place
+          </>,
+        )
+      }
+      return
+    }
+    setPreviewFix({ id, verb })
+    goTo('ranking')
   }
 
   /**
@@ -601,6 +675,8 @@ export function App() {
             onPick={(winner) => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: winner === prompt.a ? 'a' : 'b' })}
             onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
             onForget={(id) => answer({ type: 'forgotten', id })}
+            onMove={moveTitle}
+            note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${titleName(prompt.a)}` : undefined}
           />
         )
       case 'all-complete':
@@ -644,6 +720,9 @@ export function App() {
           onSettings={changeScoring}
           overrides={ticks}
           onTick={(id, ticked) => setTicks((prev) => new Map(prev).set(id, ticked))}
+          onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
+          onMove={setPreviewMoving}
+          onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}
         />
       ) : inRanking ? (
         rankingScreen(ranking, viewer.titleLanguage)
@@ -657,7 +736,21 @@ export function App() {
           onToggleTheme={toggleTheme}
         />
       )}
-      {viewer && !dialog && <CommandPalette items={menuItems} />}
+      {inRanking && inPreview && previewMoving !== null && (
+        <MoveSheet
+          state={ranking}
+          id={previewMoving}
+          entries={entries}
+          titleLanguage={viewer.titleLanguage}
+          onClose={() => setPreviewMoving(null)}
+          onMove={(band, sub) => {
+            const id = previewMoving
+            setPreviewMoving(null)
+            fixFromPreview(id, 'Moving', moveTitle(id, band, sub))
+          }}
+        />
+      )}
+      {viewer && !dialog && previewMoving === null && <CommandPalette items={menuItems} />}
       {dialog === 'logout' && (
         <LogoutDialog
           onCancel={() => setDialog(null)}
