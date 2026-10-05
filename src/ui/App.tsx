@@ -17,6 +17,7 @@ import {
   saveScoringSettings,
 } from '../persistence/progress.ts'
 import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, displayTitle, roughSortOrder } from '../pool/pool.ts'
+import { syncEvents } from '../pool/sync.ts'
 import {
   appendEvent,
   replay,
@@ -28,7 +29,7 @@ import {
   type SubBandIndex,
 } from '../ranking/engine.ts'
 import { settingsFor, type ScoringSettings } from '../ranking/scoring.ts'
-import { splitOffers } from '../ranking/split.ts'
+import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { SplitScreen } from './split/SplitScreen.tsx'
@@ -46,6 +47,7 @@ import { RankingSidebar } from './RankingSidebar.tsx'
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { StartScreen } from './start/StartScreen.tsx'
+import { statusLabel } from './start/statusLabel.ts'
 import { useTheme } from './theme.ts'
 
 /** 'bands' = the Band choice, opened by going Back from a Duel or from the menu. */
@@ -213,12 +215,19 @@ export function App() {
     }
   }, [gateway, viewer, retries])
 
+  // A freshly fetched list is the moment to sync a saved Ranking (resume, also months after an Import).
+  const onListFetched = useEffectEvent((type: MediaType, fetched: ListEntry[]) => {
+    setLists((prev) => ({ ...prev, [type]: fetched }))
+    const summary = syncPool(type, fetched, statuses)
+    if (summary) showToast(summary)
+  })
+
   useEffect(() => {
     if (!gateway || !viewer || lists[mediaType]) return
     let cancelled = false
     // Fetch every offered status once, so each chip can show its count and toggling needs no refetch.
     gateway.mediaList({ userId: viewer.id, type: mediaType, statuses: OFFERED_STATUSES }).then(
-      (list) => !cancelled && setLists((prev) => ({ ...prev, [mediaType]: list })),
+      (list) => !cancelled && onListFetched(mediaType, list),
       (e: unknown) => !cancelled && onGatewayError(e),
     )
     return () => {
@@ -231,13 +240,45 @@ export function App() {
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const ranking = useMemo(() => (log ? replay(log) : null), [log])
 
-  // Band split (ADR 0006). Offered on its own after Rough Sort, before the first Duel answer, for each Band that
-  // qualifies and wasn't skipped in this session; later only from the menu. `splitView` pins the Split screen open
+  // Band split (ADR 0006). Offered on its own after Rough Sort (also after a sync added titles), before the next
+  // Duel answer, for each Band that qualifies and wasn't skipped in this session; later only from the menu. `splitView` pins the Split screen open
   // (from the menu, or through its "done" step, when the Band no longer qualifies).
   const offers = ranking ? splitOffers(ranking) : []
   const autoOffer =
-    ranking?.prompt.kind === 'duel' && log && countDuels(log) === 0 ? offers.find((band) => !skippedSplits.includes(band)) : undefined
+    ranking?.prompt.kind === 'duel' && log && autoOfferDue(log) ? offers.find((band) => !skippedSplits.includes(band)) : undefined
   const splitBand = splitView?.band ?? autoOffer ?? null
+
+  /**
+   * Sync (#13, ADR 0005): brings the Pool in the log up to date with the fetched list and the chosen statuses.
+   * Added titles go to Rough Sort, removed ones leave the Ranking; both are recorded as events Undo can't cross.
+   * Runs on resume (once the list arrives), on Continue from Start (the statuses may have changed) and after a
+   * Restore. Does nothing without a usable log or a list. Returns what changed, for a toast (null = nothing).
+   */
+  function syncPool(type: MediaType, fetched: readonly ListEntry[] | undefined, chosen: readonly ListStatus[]): string | null {
+    const current = logRef.current
+    if (!viewer || !fetched || !current || current.header.mediaType !== type) return null
+    const events = syncEvents(current, fetched, chosen, viewer.titleLanguage)
+    if (events.length === 0) return null
+    const next = events.reduce(appendEvent, current)
+    try {
+      replay(next)
+    } catch (e) {
+      setNotice({
+        tone: 'error',
+        message: `Your ${MEDIA_LABEL[type]} Pool couldn't be brought up to date (${e instanceof Error ? e.message : 'unknown error'}). Your progress was left untouched.`,
+      })
+      return null
+    }
+    saveDuelLog(localStorage, next)
+    setCurrentLog(next)
+    const added = events.reduce((sum, e) => sum + (e.type === 'titles-added' ? e.ids.length : 0), 0)
+    const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
+    // New titles can push a Band over the split threshold again (ADR 0006), so a skipped offer may show again.
+    if (added > 0) setSkippedSplits([])
+    const titles = (n: number) => `${n} title${n === 1 ? '' : 's'}`
+    const changes = [added > 0 && `${titles(added)} added to Rough Sort`, removed > 0 && `${titles(removed)} left the Ranking`]
+    return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
+  }
 
   /**
    * Appends one answer, checks it replays, and saves the log before showing the result. Returns the new state, or
@@ -335,6 +376,10 @@ export function App() {
       })
       saveDuelLog(localStorage, fresh)
       setCurrentLog(fresh)
+    } else {
+      // The statuses may have changed on Start: titles that now match join, the rest leave.
+      const summary = syncPool(mediaType, list, statuses)
+      if (summary) showToast(summary)
     }
     goTo('ranking')
   }
@@ -403,8 +448,16 @@ export function App() {
     restoreBackup(localStorage, backup)
     setDialog(null)
     setNotice(null)
-    if (openRanking(viewer.id, mediaType, false)) goTo('ranking')
-    showToast(`Restored ${backup.log.events.length} events from Backup`)
+    const restored = `Restored ${backup.log.events.length} events from Backup`
+    if (!openRanking(viewer.id, mediaType, false)) {
+      showToast(restored)
+      return
+    }
+    // The Backup may be older than the list: bring its Pool up to date under the restored statuses.
+    const chosen = loadPoolSettings(localStorage, { userId: viewer.id, mediaType })?.statuses ?? DEFAULT_STATUSES
+    const summary = syncPool(mediaType, list, chosen)
+    goTo('ranking')
+    showToast(summary ? `${restored} · ${summary}` : restored)
   }
 
   /** Runs only after the user confirmed in the Start over dialog. */
@@ -452,7 +505,7 @@ export function App() {
         group: 'This Ranking',
         icon: '☰',
         title: 'Change list statuses',
-        description: 'Choose which list statuses are in the Pool',
+        description: `${statuses.map((st) => statusLabel(st, mediaType)).join(', ')} · titles join or leave the Ranking`,
         run: () => goTo('start'),
       },
     )

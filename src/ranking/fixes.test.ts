@@ -166,6 +166,17 @@ describe('Unforgotten', () => {
     expect(replay(plus(finished(), forget(2), unforget(2), undo))).toEqual(replay(plus(finished(), forget(2))))
   })
 
+  it('treats a title removed by a sync and added again as new: it has no last Band to go back to', () => {
+    const readded = plus(
+      finished(),
+      { type: 'titles-removed', ids: [2] },
+      { type: 'titles-added', ids: [2] },
+      forget(2),
+      unforget(2),
+    )
+    expect(replay(readded).prompt).toEqual({ kind: 'rough-sort', id: 2 })
+  })
+
   it('is refused for a title that is not Forgotten', () => {
     expect(() => replay(plus(finished(), unforget(2)))).toThrow(ReplayError)
   })

@@ -8,6 +8,7 @@ export const LOG_FORMAT_VERSION = 1
  * version 1 did, so both are accepted; a version 1 log may not contain version 2 events. `appendEvent` stamps
  * the current version on the header, so an older app refuses a log it would replay differently (ADR 0005).
  * 3 added `band-selected`; it replays every version 1 and 2 log exactly as before.
+ * 4 added `titles-removed` (sync, #13); it replays every version 1 to 3 log exactly as before.
  * 5 added `band-moved`, `rerank-requested` and `unforgotten`; it replays every older log exactly as before.
  */
 export const ENGINE_VERSION = 5
@@ -32,7 +33,13 @@ export type LogHeader = {
 export type DuelResult = 'a' | 'b' | 'tie'
 
 export type LogEvent =
+  /** Titles joining the Pool (the first Pool load, or a sync): they go to the back of the Rough Sort queue. */
   | { type: 'titles-added'; ids: number[] }
+  /**
+   * Titles leaving the Pool (a sync, ADR 0005): taken out of wherever they are, Forgotten included. A title
+   * added again later is a new title and starts from Rough Sort. Engine version 4+.
+   */
+  | { type: 'titles-removed'; ids: number[] }
   /** `sub` is required when the Band is split (the second tap in Rough Sort) and refused when it isn't. */
   | { type: 'band-assigned'; id: number; band: BandIndex; sub?: SubBandIndex }
   /** A Duel answer, by id (ADR 0005): `result` names the better title, or 'tie' for "about the same". */
@@ -256,6 +263,7 @@ function removeTier(segment: Segment, t: number): void {
 function undoRole(event: Exclude<LogEvent, { type: 'undo' }>): 'user' | 'barrier' | 'navigation' {
   switch (event.type) {
     case 'titles-added':
+    case 'titles-removed':
       return 'barrier'
     case 'band-selected':
       return 'navigation'
@@ -310,6 +318,20 @@ function apply(m: Machine, seed: number, event: Exclude<LogEvent, { type: 'undo'
       }
       m.roughSortQueue.push(...event.ids)
       m.total += event.ids.length
+      return
+    case 'titles-removed':
+      requireEngine(m, 4, 'Titles removed')
+      for (const id of event.ids) {
+        if (!m.present.has(id)) throw new ReplayError(`Title ${id} was removed, but it is not in the Pool`)
+        takeOut(m, id)
+        const forgotten = m.forgotten.indexOf(id)
+        if (forgotten >= 0) m.forgotten.splice(forgotten, 1)
+        m.present.delete(id)
+        // Added again later, it is a new title (ADR 0005): no last Band to bring it back to.
+        m.lastPlace.delete(id)
+        m.returning.delete(id)
+        m.total--
+      }
       return
     case 'band-assigned': {
       if (m.roughSortQueue[0] !== event.id) {

@@ -1,15 +1,8 @@
 import type { ListEntry, ListStatus, MediaType, Viewer } from '../../anilist/types.ts'
 import { OFFERED_STATUSES, displayTitle, estimateMinutes, type Pool } from '../../pool/pool.ts'
 import './start.css'
+import { statusLabel } from './statusLabel.ts'
 
-const STATUS_LABEL: Record<(typeof OFFERED_STATUSES)[number], string> = {
-  COMPLETED: 'Completed',
-  REPEATING: 'Repeating',
-  CURRENT: 'Watching',
-  PAUSED: 'Paused',
-  DROPPED: 'Dropped',
-}
-const MANGA_LABEL: Partial<typeof STATUS_LABEL> = { CURRENT: 'Reading' }
 
 const PLACEHOLDER_COLOURS = ['#3db4f2', '#c063ff', '#ffb3c8', '#bfe8c9', '#ffe08a', '#c9d4ff']
 
@@ -122,8 +115,7 @@ function Collage({ covers, viewer }: { covers: readonly ListEntry[]; viewer: Vie
 function PoolSetup(form: PoolForm) {
   const { viewer, mediaType, statuses, pool } = form
   const chosen = new Set(statuses)
-  const label = (s: (typeof OFFERED_STATUSES)[number]) =>
-    (mediaType === 'MANGA' && MANGA_LABEL[s]) || STATUS_LABEL[s]
+  const label = (s: (typeof OFFERED_STATUSES)[number]) => statusLabel(s, mediaType)
   const n = pool?.titles.length ?? 0
 
   return (
@@ -180,7 +172,8 @@ function PoolSetup(form: PoolForm) {
       </div>
       {form.saved && (
         <div className="small">
-          You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a Band.
+          You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a Band. On Continue,
+          titles that now match these statuses join Rough Sort and titles that no longer match leave the Ranking.
         </div>
       )}
       <button
