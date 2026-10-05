@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { replay, startLog, type DuelLog } from '../ranking/engine.ts'
 import { createBackup, readBackup, restoreBackup } from './backup.ts'
-import { loadDuelLog, loadPoolSettings, saveDuelLog, savePoolSettings } from './progress.ts'
+import {
+  loadDuelLog,
+  loadPoolSettings,
+  loadScoringSettings,
+  saveDuelLog,
+  savePoolSettings,
+  saveScoringSettings,
+} from './progress.ts'
 
 function memoryStorage(): Storage {
   const map = new Map<string, string>()
@@ -45,6 +52,21 @@ describe('Backup and Restore', () => {
     const restored = loadDuelLog(elsewhere, anime)!
     expect(replay(restored)).toEqual(replay(someProgress()))
     expect(loadPoolSettings(elsewhere, anime)).toEqual({ statuses: ['COMPLETED', 'DROPPED'] })
+  })
+
+  it('carries the scoring settings too, and still restores a Backup made before they existed', () => {
+    const scoring = { format: 'POINT_5' as const, settings: { distribution: 'bell' as const, best: 5, worst: 2 } }
+    const here = memoryStorage()
+    saveDuelLog(here, someProgress())
+    saveScoringSettings(here, anime, scoring)
+    const file = createBackup(here, { ...anime, userName: 'zen' }, now)!
+    const elsewhere = memoryStorage()
+    restoreBackup(elsewhere, readBackup(file.json, anime))
+    expect(loadScoringSettings(elsewhere, anime)).toEqual(scoring)
+
+    const old = JSON.parse(file.json) as { settings: Record<string, unknown> }
+    delete old.settings.scoring
+    expect(readBackup(JSON.stringify(old), anime).settings.scoring).toBeNull()
   })
 
   it('names the file after the user, Media Type and day', () => {

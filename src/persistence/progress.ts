@@ -3,6 +3,7 @@
 import type { ListStatus, MediaType } from '../anilist/types.ts'
 import { OFFERED_STATUSES } from '../pool/pool.ts'
 import type { DuelLog } from '../ranking/engine.ts'
+import { parseSavedScoring, type SavedScoring } from '../ranking/scoring.ts'
 
 export type ProgressKey = { userId: number; mediaType: MediaType; part: string }
 
@@ -83,6 +84,24 @@ export function loadPoolSettings(storage: Storage, key: RankingKey): PoolSetting
     if (!Array.isArray(parsed.statuses)) return null
     const offered: readonly string[] = OFFERED_STATUSES
     return { statuses: parsed.statuses.filter((s): s is ListStatus => offered.includes(s)) }
+  } catch {
+    return null
+  }
+}
+
+const SCORING_PART = 'scoring-settings'
+
+/** Saves best / worst / Distribution with the Score Format they were chosen in (ADR 0003). */
+export function saveScoringSettings(storage: Storage, key: RankingKey, saved: SavedScoring): void {
+  saveProgressPart(storage, { ...key, part: SCORING_PART }, JSON.stringify(saved))
+}
+
+/** The saved scoring settings, or null if none or unreadable. */
+export function loadScoringSettings(storage: Storage, key: RankingKey): SavedScoring | null {
+  const raw = loadProgressPart(storage, { ...key, part: SCORING_PART })
+  if (raw === null) return null
+  try {
+    return parseSavedScoring(JSON.parse(raw))
   } catch {
     return null
   }
