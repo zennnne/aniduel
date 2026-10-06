@@ -21,6 +21,7 @@ import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '.
 import { syncEvents } from '../pool/sync.ts'
 import {
   answeredDuels,
+  appendEvent,
   replay,
   startLog,
   withSub,
@@ -30,6 +31,7 @@ import {
   type SubBandIndex,
 } from '../ranking/engine.ts'
 import { duelsFromBands } from '../ranking/estimate.ts'
+import { planFromScores } from '../ranking/fromScores.ts'
 import type { ScoringSettings } from '../ranking/scoring.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
@@ -114,6 +116,16 @@ export function App() {
   const pool = useMemo(() => (list ? buildPool(list, statuses) : null), [list, statuses])
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
+  const titleLanguage = viewer?.titleLanguage
+  // A new Ranking's Rough Sort order, and the Rough Sort from Scores plan over it (ADR 0008).
+  const startOrder = useMemo(
+    () => (pool && titleLanguage ? roughSortOrder(pool.titles, titleLanguage) : null),
+    [pool, titleLanguage],
+  )
+  const scoresPlan = useMemo(
+    () => (startOrder ? planFromScores(startOrder.map((id) => ({ id, score100: oldScores.get(id) ?? 0 }))) : null),
+    [startOrder, oldScores],
+  )
 
   const imports = useImport({
     storage: localStorage,
@@ -388,18 +400,14 @@ export function App() {
     goTo('ranking')
   }
 
-  function startOrContinue() {
+  /** `fromScores`: the user turned on Rough Sort from Scores (ADR 0008), a new Ranking only. */
+  function startOrContinue(fromScores = false) {
     if (!viewer) return
     if (!duelLog.latest()) {
-      if (!pool) return
-      duelLog.save(
-        startLog({
-          seed: newSeed(),
-          userId: viewer.id,
-          mediaType,
-          ids: roughSortOrder(pool.titles, viewer.titleLanguage),
-        }),
-      )
+      if (!startOrder) return
+      const log = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder })
+      const plan = fromScores && scoresPlan?.offer ? scoresPlan : null
+      duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
     } else {
       // The statuses may have changed on Start: titles that now match join, the rest leave.
       const summary = syncPool(mediaType, list, statuses)
@@ -537,6 +545,8 @@ export function App() {
         statuses,
         pool,
         saved: ranking?.progress.roughSort ?? null,
+        // Offered for a new Ranking only.
+        scoresPlan: hasProgress ? null : scoresPlan,
         bandDuels: ranking ? duelsFromBands(ranking) : null,
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {

@@ -1,5 +1,10 @@
+import { useState } from 'react'
 import type { Cover, ListStatus, MediaType, Viewer } from '../../anilist/types.ts'
 import { OFFERED_STATUSES, displayTitle, estimateMinutes, type Pool } from '../../pool/pool.ts'
+import { BANDS } from '../../ranking/engine.ts'
+import type { ScoresPlan } from '../../ranking/fromScores.ts'
+import { BAND_UI } from '../bands.ts'
+import { Kao } from '../Kao.tsx'
 import { MEDIA_LABEL, pluralWord } from '../meta.ts'
 import './start.css'
 import { statusLabel } from './statusLabel.ts'
@@ -16,8 +21,13 @@ export type PoolForm = {
   onMediaType: (type: MediaType) => void
   onToggleStatus: (status: ListStatus) => void
   onLogout: () => void
-  /** Starts a new Ranking, or continues the saved one. Undefined while it can't (e.g. saved progress is unreadable). */
-  onStartRoughSort?: () => void
+  /**
+   * Starts a new Ranking, or continues the saved one. Undefined while it can't (e.g. saved progress is unreadable).
+   * `fromScores`: start a new Ranking with Rough Sort from Scores (ADR 0008).
+   */
+  onStartRoughSort?: (fromScores?: boolean) => void
+  /** Rough Sort from Scores for a new Ranking (null for a saved one); no card unless `offer`. */
+  scoresPlan?: ScoresPlan | null
   /** Rough Sort progress of the Ranking saved for this Media Type, if there is one. */
   saved?: { done: number; total: number } | null
   /** Expected Duels from the saved Ranking's real Band sizes once its Rough Sort is done (#1 US8); else equal Bands are assumed. */
@@ -117,6 +127,9 @@ function Collage({ covers, viewer }: { covers: readonly Cover[]; viewer: Viewer 
 
 function PoolSetup(form: PoolForm) {
   const { viewer, mediaType, statuses, pool } = form
+  // The switch of the Rough Sort from Scores card: off by default; starting with it off declines (#32).
+  const [fromScores, setFromScores] = useState(false)
+  const plan = form.scoresPlan?.offer ? form.scoresPlan : null
   const chosen = new Set(statuses)
   const label = (s: (typeof OFFERED_STATUSES)[number]) => statusLabel(s, mediaType)
   const n = pool?.titles.length ?? 0
@@ -181,10 +194,11 @@ function PoolSetup(form: PoolForm) {
           titles that now match these statuses join Rough Sort and titles that no longer match leave the Ranking.
         </div>
       )}
+      {plan && !form.saved && <ScoresOffer plan={plan} on={fromScores} onToggle={() => setFromScores((on) => !on)} />}
       <button
         className="go"
         disabled={!form.onStartRoughSort || (!form.saved && (!pool || n === 0))}
-        onClick={form.onStartRoughSort}
+        onClick={() => form.onStartRoughSort?.(Boolean(plan) && fromScores)}
       >
         {form.saved ? 'Continue →' : 'Start Rough Sort →'}
       </button>
@@ -195,5 +209,68 @@ function PoolSetup(form: PoolForm) {
       )}
       <Reassure />
     </>
+  )
+}
+
+/**
+ * The Rough Sort from Scores offer (ADR 0008, decided on #32): a switch card under the estimate. When on, it shows
+ * the per-Band preview, a "no score" row for titles still sorted by hand, the drawback, and below 80% scored a red
+ * warning (the subtitle says "not recommended" even while off).
+ */
+function ScoresOffer({ plan, on, onToggle }: { plan: ScoresPlan; on: boolean; onToggle: () => void }) {
+  const unscored = plan.total - plan.scored
+  const largest = Math.max(...plan.counts, unscored, 1)
+  const percent = Math.floor((plan.scored / plan.total) * 100)
+  return (
+    <div className={on ? 'offer on' : 'offer'}>
+      <button className="swrow" role="switch" aria-checked={on} onClick={onToggle}>
+        <span className="switch" aria-hidden="true">
+          <i />
+        </span>
+        <span className="grow">
+          <b className="strong">Use my AniList scores for Rough Sort</b>
+          <span className="small">
+            {plan.scored} of {plan.total} titles have a score
+            {plan.warn && (
+              <>
+                {' · '}
+                <span className="red">not recommended</span>
+              </>
+            )}
+          </span>
+        </span>
+      </button>
+      {on && (
+        <div className="det">
+          <div className="bbars" aria-label="Titles per Band">
+            {BANDS.map((band) => (
+              <div className="bb" key={band}>
+                <Kao band={band} size={10} />
+                <div className="track">
+                  <i style={{ width: `${(plan.counts[band] / largest) * 100}%`, background: BAND_UI[band].colour }} />
+                </div>
+                <b>{plan.counts[band]}</b>
+              </div>
+            ))}
+            {unscored > 0 && (
+              <div className="bb">
+                <span className="kao noscore">no score</span>
+                <div className="track dashed" />
+                <b>{unscored}</b>
+              </div>
+            )}
+          </div>
+          {plan.warn && (
+            <div className="redwarn" role="alert">
+              <b>Not recommended.</b> Only {percent}% of your titles have a score, so {unscored} still need Rough Sort by
+              hand, and the Bands are guessed from few scores.
+            </div>
+          )}
+          <div className="small">
+            Titles in different Bands are never compared. You'll check the Bands on the Board before Duels start.
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
