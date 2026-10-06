@@ -484,6 +484,29 @@ a {
 .rank .out {
   opacity: 0.35;
 }
+/* Under Scores: one row per score level, its titles as chips sorted by name (#25) */
+.rank .lvl {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 6px;
+  align-items: start;
+  white-space: normal;
+}
+.rank .lvl b {
+  color: var(--on-overlay);
+}
+.rank .lvchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 0;
+}
+.rank .lvchips span {
+  background: #ffffff14;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+}
 @media (max-width: 720px) {
   .hide-m {
     display: none !important;

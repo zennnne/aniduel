@@ -90,7 +90,7 @@ export function BandChoiceScreen(props: {
     return () => window.removeEventListener('keydown', listener)
   }, [])
 
-  const lines = finished === null ? [] : rankingLines(state, finished)
+  const lines = finished === null ? [] : rankingLines(state, finished, name)
 
   return (
     <div className="bc">

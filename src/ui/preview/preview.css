@@ -36,6 +36,18 @@
   color: var(--tx-strong);
   font-size: 13px;
 }
+/* Score Step locked on Whole under Scores (#25): the other steps greyed and not clickable */
+.seg.lock button {
+  cursor: default;
+}
+.seg.lock button:not(.on) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.pv-set .link:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 .pv-filter {
   margin-bottom: 10px;
 }
