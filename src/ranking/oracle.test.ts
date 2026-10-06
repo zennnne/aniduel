@@ -116,7 +116,8 @@ describe('a consistent oracle answering every Duel', () => {
       expect(duels).toBeGreaterThanOrEqual(Math.floor(ideal * 0.95))
       expect(duels).toBeLessThanOrEqual(Math.ceil(ideal * 1.1))
     }
-  })
+    // About 5 s on its own (20 Rankings of up to 200 titles, replayed after every answer): more under a full run.
+  }, 30_000)
 
   it('keeps the oracle\'s order when titles, including pivots, are marked Forgotten mid-insertion', () => {
     const random = rng(4)
