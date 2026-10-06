@@ -25,7 +25,14 @@ export type Scores = {
   titles: ReadonlyMap<number, TitleScore>
   /** Per Band (index = BandIndex): the range of levels its titles get, or null if it has none (ADR 0002). */
   bands: readonly (LevelRange | null)[]
+  /**
+   * Scores only (ADR 0007): every title in a Band that has no level yet because it is not settled, with the levels it
+   * can still get, best first. Empty on Full Ranking.
+   */
+  unsettled: ReadonlyMap<number, UnsettledScore>
 }
+
+export type UnsettledScore = { band: BandIndex; levels: readonly number[] }
 
 /** Inverse of the standard normal CDF (Acklam's rational approximation, relative error < 1.15e-9). */
 function inverseNormal(p: number): number {
@@ -250,13 +257,16 @@ export function score(ranking: RankingState, format: ScoreFormat, settings: Scor
     const range = bands[band]
     bands[band] = range ? { min: Math.min(range.min, level), max: Math.max(range.max, level) } : { min: level, max: level }
   }
+  const unsettled = new Map<number, UnsettledScore>()
   const standing = ranking.standing
   if (standing) {
     for (const [id, { band, min, max }] of standing.titles) {
-      const level = levelAt(format, settings, min, standing.size)
-      if (level === levelAt(format, settings, max, standing.size)) add(id, band, level)
+      const best = levelAt(format, settings, min, standing.size)
+      const worst = levelAt(format, settings, max, standing.size)
+      if (best === worst) add(id, band, best)
+      else unsettled.set(id, { band, levels: levels(format, settings.step).filter((l) => l <= best && l >= worst) })
     }
-    return { titles, bands }
+    return { titles, bands, unsettled }
   }
   const tiers = ranking.bands.flatMap((b, band) => b.tiers.map((members) => ({ band: band as BandIndex, members })))
   const n = tiers.reduce((sum, t) => sum + t.members.length, 0)
@@ -266,7 +276,7 @@ export function score(ranking: RankingState, format: ScoreFormat, settings: Scor
     for (const id of tier.members) add(id, tier.band, level)
     position += tier.members.length
   }
-  return { titles, bands }
+  return { titles, bands, unsettled }
 }
 
 /** A score level and the titles on it. */

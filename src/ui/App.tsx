@@ -827,7 +827,7 @@ export function App() {
           format={viewer.scoreFormat}
           settings={scoring}
           onSettings={changeScoring}
-          onSortGoal={requestSortGoal}
+          onSwitchGoal={requestSortGoal}
           overrides={imports.ticks}
           onTick={imports.tick}
           onImport={importView?.stage === 'running' ? undefined : (plan) => imports.plan(plan, scoring)}

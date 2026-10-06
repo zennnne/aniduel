@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
 import { BANDS, type RankingState, type SortGoal } from '../../ranking/engine.ts'
+import { importPlan, isTicked, previewRows, settledRows, type PendingWrite, type SettledRow, type TickOverrides } from '../../ranking/preview.ts'
 import { goalOf } from '../../ranking/sortGoal.ts'
-import { importPlan, isTicked, previewRows, type PendingWrite, type PreviewRow, type TickOverrides } from '../../ranking/preview.ts'
 import { formatLevel, hasHumanStep, levelOfRaw, levels, score, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
@@ -28,28 +28,36 @@ export function PreviewScreen(props: {
   format: ScoreFormat
   settings: ScoringSettings
   onSettings: (settings: ScoringSettings) => void
-  /** Switch the Sort Goal (#28): Full Ranking asks first. No Sort Goal `seg` without it. */
-  onSortGoal?: (goal: SortGoal) => void
   overrides: TickOverrides
   onTick: (id: number, ticked: boolean) => void
   onImport?: (plan: PendingWrite[]) => void
   onRerank?: (id: number) => void
   onMove?: (id: number) => void
   onBringBack?: (id: number) => void
+  /**
+   * Asks to switch the Sort Goal, from the Sort Goal `seg` and the "Need 0.5? Switch to Full Ranking" caption under
+   * Scores. To Full Ranking it opens the switch dialog (#25, #28). Without it there is no `seg` and the link is disabled.
+   */
+  onSwitchGoal?: (goal: SortGoal) => void
 }) {
   const { state, entries, oldScores, titleLanguage, format, settings, onSettings, overrides, onTick } = props
   const [filter, setFilter] = useState<Filter>('changing')
   const [open, setOpen] = useState<number | null>(null)
 
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const scores = useMemo(() => score(state, format, settings), [state, format, settings])
-  const rows = useMemo(() => previewRows(state, scores, oldScores, format), [state, scores, oldScores, format])
-  const plan = importPlan(rows, overrides)
+  const allRows = useMemo(
+    () => previewRows(state, scores, oldScores, format, (id) => titleName(entries.get(id), id, titleLanguage)),
+    [state, scores, oldScores, format, entries, titleLanguage],
+  )
+  const plan = importPlan(allRows, overrides)
+  // Score rows hold settled titles only (#25); unsettled ones (Scores, after a settings change) are never ticked.
+  const rows = settledRows(allRows)
   const changing = rows.filter((r) => r.changed).length
   const label = (level: number) => formatLevel(format, level)
-  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
 
-  // Score rows: only levels that have titles, highest first.
-  const byLevel = new Map<number, PreviewRow[]>()
+  // Score rows: only levels that have titles, highest first. On Scores, `rows` is already sorted by name in a level.
+  const byLevel = new Map<number, SettledRow[]>()
   for (const row of rows) byLevel.set(row.level, [...(byLevel.get(row.level) ?? []), row])
   const scoreRows = [...byLevel.entries()].sort((a, b) => b[0] - a[0])
 
@@ -60,7 +68,7 @@ export function PreviewScreen(props: {
     onSettings(next)
   }
 
-  const cover = (row: PreviewRow) => {
+  const cover = (row: SettledRow) => {
     const entry = entries.get(row.id)
     const ticked = isTicked(row, overrides)
     return (
@@ -146,16 +154,24 @@ export function PreviewScreen(props: {
             </button>
           ))}
         </div>
-        {props.onSortGoal && <SortGoalSeg goal={goalOf(state)} onGoal={props.onSortGoal} />}
+        {props.onSwitchGoal && <SortGoalSeg goal={goalOf(state)} onGoal={props.onSwitchGoal} />}
         {hasHumanStep(format) && state.sortGoal === 'scores' && (
-          // Scores always uses whole points (ADR 0007): the Step is shown, locked (#25; #27 finishes this control).
-          <div className="seg" title="Score Step: Scores always uses whole points">
-            {(['whole', 'human', 'fine'] as const).map((s) => (
-              <button key={s} className={s === 'whole' ? 'on' : ''} disabled>
-                {stepLabel(format, s)}
+          // Scores always uses whole points (ADR 0007): the Step is locked on Whole, and the caption gives the way out (#25).
+          <>
+            <div className="seg lock" title="Score Step: Scores always uses whole points">
+              {(['whole', 'human', 'fine'] as const).map((s) => (
+                <button key={s} className={s === 'whole' ? 'on' : ''} disabled>
+                  {s === 'whole' ? 'Whole' : stepLabel(format, s)}
+                </button>
+              ))}
+            </div>
+            <span className="small">
+              Need {stepLabel(format, 'human')}?{' '}
+              <button className="link small" disabled={!props.onSwitchGoal} onClick={() => props.onSwitchGoal?.('full-ranking')}>
+                Switch to Full Ranking
               </button>
-            ))}
-          </div>
+            </span>
+          </>
         )}
         {hasHumanStep(format) && state.sortGoal !== 'scores' && (
           <div className="seg" title="Score Step">
