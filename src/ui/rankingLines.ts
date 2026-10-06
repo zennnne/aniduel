@@ -1,4 +1,5 @@
 import type { BandIndex, RankingState } from '../ranking/engine.ts'
+import { compareNames } from '../ranking/preview.ts'
 import { formatLevel, levelGroups } from '../ranking/scoring.ts'
 
 /** One line of a Band's Ranking as shown on the Band choice, Complete and sidebar. */
@@ -6,6 +7,7 @@ export type RankingLine = {
   key: number
   /** Full Ranking: the place in the whole Ranking. Scores: the score level (#25). */
   mark: string
+  /** Full Ranking: a Tier, in the order its titles joined it. Scores: the level's titles, sorted by name. */
   ids: readonly number[]
   /** Why several titles share the line, or null for one title. */
   note: string | null
@@ -13,17 +15,16 @@ export type RankingLine = {
 
 /**
  * A Band's Ranking as lines. Full Ranking: one line per Tier, numbered by its place in the whole Ranking. Scores
- * (ADR 0007): one line per score level, best first, since titles on a level have no order (plain level order until
- * #27 groups them by name).
+ * (ADR 0007): one line per score level, best first, its titles sorted by `name`, since they have no order (#25).
  */
-export function rankingLines(state: RankingState, band: BandIndex): RankingLine[] {
+export function rankingLines(state: RankingState, band: BandIndex, name: (id: number) => string): RankingLine[] {
   const groups = levelGroups(state, band)
   if (groups && state.scoring) {
     const format = state.scoring.format
     return groups.map(({ level, ids }) => ({
       key: level,
       mark: formatLevel(format, level),
-      ids,
+      ids: [...ids].sort((x, y) => compareNames(name(x), name(y))),
       note: ids.length > 1 ? 'same score · no order' : null,
     }))
   }
