@@ -17,13 +17,16 @@ export function CompleteScreen(props: {
 }) {
   const { state, entries, titleLanguage, onUndo, onScore } = props
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
-  const bands = BANDS.map((band) => ({ band, lines: rankingLines(state, band) })).filter(({ lines }) => lines.length > 0)
+  const bands = BANDS.map((band) => ({ band, lines: rankingLines(state, band, name) })).filter(({ lines }) => lines.length > 0)
+  // Scores (#25): each line is a score level, its titles sorted by name and joined by " · ", since they have no order.
+  const scores = Boolean(state.standing)
   return (
     <div className="ranked">
-      <div className="h1">Every Band is ranked</div>
+      <div className="h1">{scores ? 'Every score is settled' : 'Every Band is ranked'}</div>
       <div className="sub">
         {state.progress.ranked.done} titles in your Ranking
         {state.forgotten.length > 0 && ` · ${state.forgotten.length} Forgotten`}
+        {scores && ' · titles on the same score have no order among themselves'}
       </div>
       {bands.map(({ band, lines }) => (
         <section key={band} className="res">
@@ -32,7 +35,7 @@ export function CompleteScreen(props: {
             <div key={line.key} className="ln">
               <b>{line.mark}</b>
               <span>
-                {line.ids.map(name).join(state.standing ? ', ' : ' = ')}
+                {line.ids.map(name).join(scores ? ' · ' : ' = ')}
                 {line.note && <span className="tie"> {line.note}</span>}
               </span>
             </div>

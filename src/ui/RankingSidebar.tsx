@@ -82,7 +82,7 @@ export function RankingSidebar(props: {
       {duel && !state.bandChoice && (
         <>
           <div className="small row hide-m">
-            <Kao band={duel.band} size={10} /> Ranking so far
+            <Kao band={duel.band} size={10} /> Ranking so far{duel.bounds ? '' : ' · by score'}
           </div>
           <div className="rank hide-m">
             {duel.bounds
@@ -95,9 +95,15 @@ export function RankingSidebar(props: {
                     </div>
                   )
                 })
-              : rankingLines(state, duel.band).map((line) => (
-                  <div key={line.key} className="out">
-                    {line.mark} · {line.ids.map(name).join(', ')}
+              : rankingLines(state, duel.band, name).map((line) => (
+                  // Scores, "Plain" (#25): the level, then its titles as chips sorted by name; nothing highlighted.
+                  <div key={line.key} className="lvl">
+                    <b>{line.mark}</b>
+                    <span className="lvchips">
+                      {line.ids.map((id) => (
+                        <span key={id}>{name(id)}</span>
+                      ))}
+                    </span>
                   </div>
                 ))}
           </div>
