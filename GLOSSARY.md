@@ -12,6 +12,10 @@ _Avoid_: Queue, selection
 The first pass over the Pool, where the user puts each title into a Band with a single tap, before any Duels.
 _Avoid_: Pre-sort, quick sort, triage
 
+**Rough Sort from Scores**:
+An optional start where the app does the Rough Sort for the user, putting every title that already has an AniList score into a Band according to how far that score sits from the user's own average. Titles without a score still go through Rough Sort by hand. Duels follow as usual.
+_Avoid_: Auto sort, skip, quick start
+
 **Band**:
 A coarse group a title is placed in during Rough Sort. There are always five Bands. Bands are fixed boundaries in the Ranking, so Duels only happen between titles in the same Band (or Sub-band), but a Band is not a score range.
 _Avoid_: Bucket, tier, group
@@ -67,6 +71,10 @@ _Avoid_: Mode, fast mode, quick mode
 **Preview**:
 The screen that shows every title's old and new score before an Import, where the user ticks which titles to write and fixes the Ranking.
 _Avoid_: Review, summary
+
+**Board**:
+The screen that shows every title that has a Band, grouped into the five Bands, where the user can move any single title to another Band. It is open only before the first Duel: during Rough Sort, and once more as a last check after it. It shows Bands only, not the Ranking inside them.
+_Avoid_: History, tier list
 
 **Import**:
 Writing the chosen new scores from the Ranking back to the user's AniList list.
