@@ -3,7 +3,7 @@
 // Duels only happen inside a Band (or Sub-band), so the estimate is summed per Band.
 import type { ScoreFormat } from '../anilist/types.ts'
 import { progressOf, type BandIndex, type RankingState, type SortGoal } from './engine.ts'
-import { levelAt, type SavedScoring, type ScoringSettings } from './scoring.ts'
+import { levelAt, score, type SavedScoring, type ScoringSettings } from './scoring.ts'
 
 export const BAND_COUNT = 5
 
@@ -121,4 +121,22 @@ export function duelsLeftIn(state: RankingState, band: BandIndex): number {
     for (let k = 1; k <= total - done; k++) sum += Math.log2(done + k)
   }
   return Math.round(sum * ratio)
+}
+
+/**
+ * Refine Duels per bit of doubt about an unsettled title's level, measured with an oracle (#29): about 1.0 on
+ * 40-title Bands, 1.4 on 40-title Bands after a bigger change; most unsettled titles sit between two levels.
+ */
+const REFINE_DUELS_PER_BIT = 1
+
+/**
+ * Expected Refine Duels (#29) before every title is settled again under the Ranking's own settings: about
+ * log2(levels it can still get) per unsettled title. 0 on Full Ranking, or when every title is settled.
+ */
+export function refineDuels(state: RankingState): number {
+  const scale = scaleOf(state)
+  if (!scale) return 0
+  let bits = 0
+  for (const title of score(state, scale.format, scale.settings).unsettled.values()) bits += Math.log2(title.levels.length)
+  return Math.round(bits * REFINE_DUELS_PER_BIT)
 }

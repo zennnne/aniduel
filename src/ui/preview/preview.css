@@ -148,6 +148,48 @@
   color: var(--tx-strong);
   cursor: default;
 }
+/* Unsettled titles after a settings change on Scores (#25, #29): an orange card above Changing / All. */
+.unscard {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: color-mix(in srgb, var(--warn) 18%, var(--fg));
+  border: 1px solid var(--warn);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.unscard .unsicon {
+  font-size: 18px;
+}
+.unscovers {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+/* "8 or 7": the levels an unsettled title can still get */
+.tlcard .rbadge {
+  position: absolute;
+  top: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 900;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--warn);
+  color: #2b2d42;
+  white-space: nowrap;
+}
+.tlpop .uns-why {
+  color: #b7791f;
+}
+.tlpop .uns-off {
+  opacity: 0.45;
+}
 .tlrow.coll {
   min-height: 0;
 }
