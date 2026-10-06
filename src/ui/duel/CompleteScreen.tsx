@@ -4,6 +4,7 @@ import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import './duel.css'
 import { titleName } from '../meta.ts'
+import { rankingLines } from '../rankingLines.ts'
 
 /** Shown once every Band is ranked: the whole Ranking, Bands → Tiers → titles, and the way on to Preview. */
 export function CompleteScreen(props: {
@@ -16,8 +17,7 @@ export function CompleteScreen(props: {
 }) {
   const { state, entries, titleLanguage, onUndo, onScore } = props
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
-  // Place of each Band's first Tier in the whole Ranking (a Tier is one place).
-  const firstPlace = BANDS.map((band) => state.bands.slice(0, band).reduce((sum, b) => sum + b.tiers.length, 1))
+  const bands = BANDS.map((band) => ({ band, lines: rankingLines(state, band) })).filter(({ lines }) => lines.length > 0)
   return (
     <div className="ranked">
       <div className="h1">Every Band is ranked</div>
@@ -25,15 +25,15 @@ export function CompleteScreen(props: {
         {state.progress.ranked.done} titles in your Ranking
         {state.forgotten.length > 0 && ` · ${state.forgotten.length} Forgotten`}
       </div>
-      {BANDS.filter((band) => state.bands[band].tiers.length > 0).map((band) => (
+      {bands.map(({ band, lines }) => (
         <section key={band} className="res">
           <Kao band={band} size={14} />
-          {state.bands[band].tiers.map((tier, i) => (
-            <div key={tier[0]} className="ln">
-              <b>{firstPlace[band] + i}</b>
+          {lines.map((line) => (
+            <div key={line.key} className="ln">
+              <b>{line.mark}</b>
               <span>
-                {tier.map(name).join(' = ')}
-                {tier.length > 1 && <span className="tie"> Tier · same score</span>}
+                {line.ids.map(name).join(state.standing ? ', ' : ' = ')}
+                {line.note && <span className="tie"> {line.note}</span>}
               </span>
             </div>
           ))}

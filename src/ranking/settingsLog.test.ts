@@ -54,10 +54,10 @@ describe('a new log', () => {
   it("starts with its Sort Goal and the Score Format's default scoring settings", () => {
     const log = startLog({ ...header, ids: [1, 2], scoreFormat: 'POINT_10_DECIMAL' })
     const state = replay(log)
-    expect(state.sortGoal).toBe('full-ranking')
+    expect(state.sortGoal).toBe('scores')
     expect(state.scoring).toEqual({
       format: 'POINT_10_DECIMAL',
-      settings: { distribution: 'linear', step: 'human', best: 10, worst: 3 },
+      settings: { distribution: 'linear', step: 'whole', best: 10, worst: 3 },
     })
     expect(state.prompt).toEqual({ kind: 'rough-sort', id: 1 })
     expect(state.canUndo).toBe(false)

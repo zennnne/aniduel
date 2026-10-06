@@ -6,8 +6,12 @@ import type { BandIndex, LogEvent, RankingState } from './engine.ts'
 
 export type Distribution = 'linear' | 'bell'
 
-/** Every level of the Score Format ('fine'), or only every 0.5 / every 5 points ('human'). */
-export type ScoreStep = 'fine' | 'human'
+/**
+ * Every level of the Score Format ('fine'), only every 0.5 / every 5 points ('human'), or only whole points, every
+ * 1 / every 10 ('whole', the Scores Sort Goal's step, ADR 0007). Formats without decimals have only one step.
+ */
+export type ScoreStep = 'fine' | 'human' | 'whole'
+const SCORE_STEPS: readonly ScoreStep[] = ['fine', 'human', 'whole']
 
 /** `best` and `worst` are levels of the Score Format on the Score Step (e.g. 7.5 on 10 point decimal, 4 on 5 stars). */
 export type ScoringSettings = { distribution: Distribution; step: ScoreStep; best: number; worst: number }
@@ -56,13 +60,13 @@ function rawValue(position: number, n: number, settings: ScoringSettings): numbe
 
 /**
  * How a Score Format's levels are laid out: `perUnit` levels per whole point, from `min` to `max`.
- * `humanPerUnit` is the coarser 'human' Score Step, for formats that have one.
+ * `humanPerUnit` and `wholePerUnit` are the coarser 'human' and 'whole' Score Steps, for formats that have them.
  */
-type Scale = { perUnit: number; humanPerUnit?: number; min: number; max: number; raw: (level: number) => number }
+type Scale = { perUnit: number; humanPerUnit?: number; wholePerUnit?: number; min: number; max: number; raw: (level: number) => number }
 
 const SCALES: Record<ScoreFormat, Scale> = {
-  POINT_100: { perUnit: 1, humanPerUnit: 0.2, min: 1, max: 100, raw: (n) => n },
-  POINT_10_DECIMAL: { perUnit: 10, humanPerUnit: 2, min: 0.1, max: 10, raw: (n) => Math.round(n * 10) },
+  POINT_100: { perUnit: 1, humanPerUnit: 0.2, wholePerUnit: 0.1, min: 1, max: 100, raw: (n) => n },
+  POINT_10_DECIMAL: { perUnit: 10, humanPerUnit: 2, wholePerUnit: 1, min: 0.1, max: 10, raw: (n) => Math.round(n * 10) },
   POINT_10: { perUnit: 1, min: 1, max: 10, raw: (n) => n * 10 },
   // The raw AniList itself stores when the user sets that many stars / that smiley (spike #3).
   POINT_5: { perUnit: 1, min: 1, max: 5, raw: (n) => n * 20 - 10 },
@@ -71,9 +75,9 @@ const SCALES: Record<ScoreFormat, Scale> = {
 
 /** Levels per whole point and the lowest level at this Score Step (0 is never a level: it means "no score"). */
 function stepOf(format: ScoreFormat, step: ScoreStep): { perUnit: number; min: number } {
-  const { perUnit, humanPerUnit, min } = SCALES[format]
-  if (step === 'fine' || !humanPerUnit) return { perUnit, min }
-  return { perUnit: humanPerUnit, min: 1 / humanPerUnit }
+  const { perUnit, humanPerUnit, wholePerUnit, min } = SCALES[format]
+  const coarser = step === 'human' ? humanPerUnit : step === 'whole' ? wholePerUnit : undefined
+  return coarser ? { perUnit: coarser, min: 1 / coarser } : { perUnit, min }
 }
 
 /** Whether this Score Format lets the user choose a Score Step (10 point decimal and 100 point). */
@@ -148,8 +152,9 @@ const DEFAULTS: Record<ScoreFormat, { best: number; worst: number }> = {
   POINT_3: { best: 3, worst: 1 },
 }
 
-export function defaultSettings(format: ScoreFormat): ScoringSettings {
-  return { distribution: 'linear', step: 'human', ...DEFAULTS[format] }
+/** The default settings on a Score Step: 'human' for Full Ranking, 'whole' for Scores (best and worst snapped to it). */
+export function defaultSettings(format: ScoreFormat, step: ScoreStep = 'human'): ScoringSettings {
+  return withStep({ distribution: 'linear', step: 'human', ...DEFAULTS[format] }, format, step)
 }
 
 /** Best and worst moved to the nearest levels on the Score Step, worst still below best. */
@@ -173,7 +178,7 @@ export function withStep(settings: ScoringSettings, format: ScoreFormat, step: S
 /**
  * Best and worst carried over to a new Score Format (the user changed it on AniList, ADR 0003): each goes
  * through its raw score and is read the way AniList would show it. Worst never becomes 0 and stays below best.
- * The Score Step stays 'fine' or 'human', whatever gap that means in the new Score Format.
+ * The Score Step stays 'fine', 'human' or 'whole', whatever gap that means in the new Score Format.
  */
 export function convertSettings(settings: ScoringSettings, from: ScoreFormat, to: ScoreFormat): ScoringSettings {
   const convert = (level: number) => levelOfRaw(to, scoreRawOf(from, level))
@@ -191,7 +196,7 @@ export function parseSavedScoring(value: unknown): SavedScoring | null {
   // Settings saved before the Score Step existed were 'fine', so the scores they gave don't change.
   const { distribution, step = 'fine', best, worst } = (v?.settings ?? {}) as Partial<ScoringSettings>
   if (distribution !== 'linear' && distribution !== 'bell') return null
-  if (step !== 'fine' && step !== 'human') return null
+  if (!SCORE_STEPS.includes(step)) return null
   const valid = levels(format, step)
   if (typeof best !== 'number' || typeof worst !== 'number' || !valid.includes(best) || !valid.includes(worst) || worst >= best) {
     return null
@@ -224,20 +229,64 @@ export function scoringFor(
   return { settings, converted, event: converted ? { type: 'scoring-set', format, settings } : null }
 }
 
+/**
+ * The level a (Tier average) position among n titles gets. Never increases with the position, so a title whose
+ * possible positions all give one level is settled (ADR 0007): the engine and `score` both decide that here.
+ */
+export function levelAt(format: ScoreFormat, settings: ScoringSettings, position: number, n: number): number {
+  return toLevel(format, rawValue(position, n, settings), settings.step)
+}
+
+/**
+ * Every title's level. Full Ranking: by its Tier's average position among the titles with a place. Scores
+ * (`ranking.standing`, ADR 0007): only settled titles get a level, the one every position still open to them gives,
+ * among every title in a Band; unsettled titles get none.
+ */
 export function score(ranking: RankingState, format: ScoreFormat, settings: ScoringSettings): Scores {
-  const tiers = ranking.bands.flatMap((b, band) => b.tiers.map((members) => ({ band: band as BandIndex, members })))
-  const n = tiers.reduce((sum, t) => sum + t.members.length, 0)
   const titles = new Map<number, TitleScore>()
   const bands: (LevelRange | null)[] = ranking.bands.map(() => null)
+  const add = (id: number, band: BandIndex, level: number) => {
+    titles.set(id, { band, level, scoreRaw: scoreRawOf(format, level) })
+    const range = bands[band]
+    bands[band] = range ? { min: Math.min(range.min, level), max: Math.max(range.max, level) } : { min: level, max: level }
+  }
+  const standing = ranking.standing
+  if (standing) {
+    for (const [id, { band, min, max }] of standing.titles) {
+      const level = levelAt(format, settings, min, standing.size)
+      if (level === levelAt(format, settings, max, standing.size)) add(id, band, level)
+    }
+    return { titles, bands }
+  }
+  const tiers = ranking.bands.flatMap((b, band) => b.tiers.map((members) => ({ band: band as BandIndex, members })))
+  const n = tiers.reduce((sum, t) => sum + t.members.length, 0)
   let position = 0
   for (const tier of tiers) {
-    const average = position + (tier.members.length - 1) / 2
-    const level = toLevel(format, rawValue(average, n, settings), settings.step)
-    const scoreRaw = scoreRawOf(format, level)
-    for (const id of tier.members) titles.set(id, { band: tier.band, level, scoreRaw })
+    const level = levelAt(format, settings, position + (tier.members.length - 1) / 2, n)
+    for (const id of tier.members) add(id, tier.band, level)
     position += tier.members.length
-    const range = bands[tier.band]
-    bands[tier.band] = range ? { min: Math.min(range.min, level), max: Math.max(range.max, level) } : { min: level, max: level }
   }
   return { titles, bands }
+}
+
+/** A score level and the titles on it. */
+export type LevelGroup = { level: number; ids: readonly number[] }
+
+/**
+ * On Scores (ADR 0007): a Band's settled titles grouped by level, best first, under the log's own scoring settings.
+ * Titles in a group have no order among themselves; they are listed in Ranking order (Tiers, then titles without
+ * a place), and the UI sorts them by name. Null on Full Ranking, where every title has its own place.
+ */
+export function levelGroups(ranking: RankingState, band: BandIndex): LevelGroup[] | null {
+  if (!ranking.standing || !ranking.scoring) return null
+  const { titles } = score(ranking, ranking.scoring.format, ranking.scoring.settings)
+  const byLevel = new Map<number, number[]>()
+  for (const id of [...ranking.bands[band].tiers.flat(), ...ranking.bands[band].unplaced]) {
+    const level = titles.get(id)?.level
+    if (level === undefined) continue
+    const group = byLevel.get(level)
+    if (group) group.push(id)
+    else byLevel.set(level, [id])
+  }
+  return [...byLevel].sort((x, y) => y[0] - x[0]).map(([level, ids]) => ({ level, ids }))
 }

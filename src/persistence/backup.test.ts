@@ -72,7 +72,8 @@ describe('Backup and Restore', () => {
 
   it('settings changed on Preview travel in the Duel log: a reload and a Restore elsewhere give the same scores', () => {
     // Linear 9..4 over three titles: 9, 6.5 (rounds to 7), 4. The defaults would give 10, 6.5 → 7, 3.
-    const chosen = { distribution: 'linear' as const, step: 'fine' as const, best: 9, worst: 4 }
+    // A new log is on Scores, which always uses the whole Score Step (on 10 point, its only one).
+    const chosen = { distribution: 'linear' as const, step: 'whole' as const, best: 9, worst: 4 }
     let log = startLog({ ...anime, seed: 42, ids: [1, 2, 3], scoreFormat: 'POINT_10' })
     for (const id of [1, 2, 3]) log = appendEvent(log, { type: 'band-assigned', id, band: id === 3 ? 4 : 0 })
     log = appendEvent(log, { type: 'duel-answered', a: 2, b: 1, result: 'b' })

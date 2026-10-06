@@ -142,7 +142,17 @@ export function PreviewScreen(props: {
             </button>
           ))}
         </div>
-        {hasHumanStep(format) && (
+        {hasHumanStep(format) && state.sortGoal === 'scores' && (
+          // Scores always uses whole points (ADR 0007): the Step is shown, locked (#25; #27 finishes this control).
+          <div className="seg" title="Score Step: Scores always uses whole points">
+            {(['whole', 'human', 'fine'] as const).map((s) => (
+              <button key={s} className={s === 'whole' ? 'on' : ''} disabled>
+                {stepLabel(format, s)}
+              </button>
+            ))}
+          </div>
+        )}
+        {hasHumanStep(format) && state.sortGoal !== 'scores' && (
           <div className="seg" title="Score Step">
             {(['fine', 'human'] as const).map((s) => (
               <button key={s} className={settings.step === s ? 'on' : ''} onClick={() => onSettings(withStep(settings, format, s))}>
