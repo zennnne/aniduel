@@ -1,10 +1,11 @@
 import { useEffect, useEffectEvent, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
 import { BANDS, SUB_BANDS, type BandIndex, type BoardTitle, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
-import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
+import { BAND_UI, SUB_BAND_UI, subBandForKey } from '../bands.ts'
 import { Dialog } from '../Dialog.tsx'
 import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
+import { SubBandButtons } from '../SubBandChoice.tsx'
 import { titleName } from '../meta.ts'
 import './board.css'
 
@@ -42,6 +43,15 @@ function highlight(name: string, query: string): ReactNode {
       <mark>{name.slice(at, at + query.length)}</mark>
       {name.slice(at + query.length)}
     </>
+  )
+}
+
+/** A title's small cover, or a placeholder in its cover colour. Never natively draggable: the Board drags itself. */
+function Cover({ entry }: { entry: ListEntry | undefined }) {
+  return entry?.coverUrl ? (
+    <img className="cv" src={entry.coverUrl} alt="" draggable={false} />
+  ) : (
+    <div className="cv ph" style={{ ['--c' as string]: entry?.coverColor ?? undefined }} />
   )
 }
 
@@ -94,15 +104,20 @@ export function BoardScreen(props: {
   const cardOf = (id: number) => columns.flatMap((c) => c.all).find((c) => c.id === id)
   const bandOf = (id: number) => columns.find((c) => c.all.some((t) => t.id === id))?.band
 
-  /** Same Band and same Sub-band (or no Sub-band named): nothing happens. A split Band without a Sub-band asks. */
+  /**
+   * A drop on a split Band without a Sub-band (a mobile rail block, or a desktop column outside the zones) asks
+   * which Sub-band, its own Band included, so a title can move to another Sub-band of it (#32). The same Band and
+   * Sub-band, or the same unsplit Band, does nothing.
+   */
   function drop(id: number, band: BandIndex, sub: SubBandIndex | undefined) {
     const card = cardOf(id)
     if (!card) return
-    if (bandOf(id) === band && (sub === undefined || sub === card.sub)) return
-    if (state.bands[band].subBands && sub === undefined) {
+    const split = Boolean(state.bands[band].subBands)
+    if (split && sub === undefined) {
       setSubPick({ id, band })
       return
     }
+    if (bandOf(id) === band && (!split || sub === card.sub)) return
     onMove(id, band, sub)
   }
 
@@ -230,7 +245,7 @@ export function BoardScreen(props: {
     return () => window.removeEventListener('keydown', listener)
   }, [])
 
-  const count = (c: (typeof columns)[number]) => (q ? `${c.shown.length}/${c.all.length}` : String(c.all.length))
+  const columnCount = (c: (typeof columns)[number]) => (q ? `${c.shown.length}/${c.all.length}` : String(c.all.length))
   const card = (c: Card, split: boolean) => {
     const mark = split && c.sub !== undefined ? SUB_BAND_UI[c.sub] : null
     return (
@@ -241,11 +256,7 @@ export function BoardScreen(props: {
         onPointerDown={(e) => onCardDown(e, c.id)}
         title={c.name}
       >
-        {c.entry?.coverUrl ? (
-          <img className="cv" src={c.entry.coverUrl} alt="" draggable={false} />
-        ) : (
-          <div className="cv ph" style={{ ['--c' as string]: c.entry?.coverColor ?? undefined }} />
-        )}
+        <Cover entry={c.entry} />
         <div className="nm">{highlight(c.name, q)}</div>
         {mark && <span className="sb">{mark.label}</span>}
       </div>
@@ -267,7 +278,7 @@ export function BoardScreen(props: {
         {BAND_UI[c.band].label}
         {c.split && <span className="small fine"> · 3 Sub-bands</span>}
       </span>
-      <span className="n">{count(c)}</span>
+      <span className="n">{columnCount(c)}</span>
     </div>
   )
 
@@ -346,11 +357,11 @@ export function BoardScreen(props: {
                 data-drop={c.band}
                 style={{ ['--c' as string]: BAND_UI[c.band].colour }}
                 onClick={() => setShownBand(c.band)}
-                aria-label={`${BAND_UI[c.band].label}: ${count(c)}`}
+                aria-label={`${BAND_UI[c.band].label}: ${columnCount(c)}`}
                 aria-pressed={c.band === shownBand}
               >
                 <Kao band={c.band} size={8} />
-                <span>{count(c)}</span>
+                <span>{columnCount(c)}</span>
               </button>
             ))}
           </div>
@@ -358,16 +369,13 @@ export function BoardScreen(props: {
       )}
       {dragged && (
         <div className="bdghost" ref={ghost} style={{ left: drag?.x, top: drag?.y }}>
-          {dragged.entry?.coverUrl ? (
-            <img className="cv" src={dragged.entry.coverUrl} alt="" />
-          ) : (
-            <div className="cv ph" style={{ ['--c' as string]: dragged.entry?.coverColor ?? undefined }} />
-          )}
+          <Cover entry={dragged.entry} />
         </div>
       )}
       {subPick && picking && (
         <SubBandPicker
           band={subPick.band}
+          current={bandOf(subPick.id) === subPick.band ? picking.sub : undefined}
           name={picking.name}
           onPick={(sub) => {
             setSubPick(null)
@@ -380,17 +388,25 @@ export function BoardScreen(props: {
   )
 }
 
-/** "Loved has 3 Sub-bands. Where does “X” go?": Best / Middle / Lowest (Q / W / E), Esc cancels. */
-function SubBandPicker(props: { band: BandIndex; name: string; onPick: (sub: SubBandIndex) => void; onCancel: () => void }) {
-  const { band, name, onPick, onCancel } = props
+/**
+ * "Loved has 3 Sub-bands. Where does “X” go?": the Move sheet's Sub-band choice (Q / W / E), Esc cancels. The
+ * Sub-band the title is in now (`current`, when it is already in this Band) is disabled.
+ */
+function SubBandPicker(props: {
+  band: BandIndex
+  current: SubBandIndex | undefined
+  name: string
+  onPick: (sub: SubBandIndex) => void
+  onCancel: () => void
+}) {
+  const { band, current, name, onPick, onCancel } = props
   // Capture phase: the Dialog keeps key presses to itself, so listen before they reach it.
   const onKey = useEffectEvent((e: KeyboardEvent) => {
-    if (e.ctrlKey || e.metaKey || e.altKey) return
-    const sub = SUB_BANDS.find((s) => SUB_BAND_UI[s].key === e.key.toUpperCase())
+    const sub = subBandForKey(e)
     if (sub === undefined) return
     e.preventDefault()
     e.stopPropagation()
-    onPick(sub)
+    if (sub !== current) onPick(sub)
   })
   useEffect(() => {
     const listener = (e: KeyboardEvent) => onKey(e)
@@ -400,12 +416,7 @@ function SubBandPicker(props: { band: BandIndex; name: string; onPick: (sub: Sub
   return (
     <Dialog title={`${BAND_UI[band].label} has 3 Sub-bands. Where does “${name}” go?`} onCancel={onCancel} actions={null}>
       <div className="bdsubs" role="group" aria-label="Sub-band">
-        {SUB_BANDS.map((sub) => (
-          <button key={sub} style={{ background: SUB_BAND_UI[sub].colour }} onClick={() => onPick(sub)} autoFocus={sub === 0}>
-            {SUB_BAND_UI[sub].label}
-            <span className="kbd">{SUB_BAND_UI[sub].key}</span>
-          </button>
-        ))}
+        <SubBandButtons band={band} current={current} keys autoFocus onPick={onPick} />
       </div>
       <div className="small fine">Esc to cancel</div>
     </Dialog>

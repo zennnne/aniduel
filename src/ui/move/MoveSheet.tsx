@@ -1,8 +1,9 @@
 import { useEffect, useRef, type KeyboardEvent } from 'react'
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
-import { BANDS, SUB_BANDS, type BandIndex, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
-import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
+import { BANDS, type BandIndex, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
+import { BAND_UI, subBandForKey } from '../bands.ts'
 import { Kao, SubPill } from '../Kao.tsx'
+import { SubBandButtons } from '../SubBandChoice.tsx'
 import './move.css'
 import { titleName } from '../meta.ts'
 
@@ -58,7 +59,7 @@ export function MoveSheet(props: {
       choose(band)
       return
     }
-    const sub = SUB_BANDS.find((s) => SUB_BAND_UI[s].key === e.key.toUpperCase())
+    const sub = subBandForKey(e)
     if (sub !== undefined && stripedBand !== undefined) {
       e.preventDefault()
       choose(stripedBand, sub)
@@ -97,19 +98,12 @@ export function MoveSheet(props: {
               <div key={band} className="bandbtn stripe">
                 <Kao band={band} size={13} />
                 <div className="stripes">
-                  {SUB_BANDS.map((sub) => (
-                    <button
-                      key={sub}
-                      className={isHere(band, sub) ? 'cur' : ''}
-                      style={{ background: SUB_BAND_UI[sub].colour }}
-                      disabled={isHere(band, sub)}
-                      title={isHere(band, sub) ? 'Already here' : `${BAND_UI[band].label} › ${SUB_BAND_UI[sub].label}`}
-                      onClick={() => choose(band, sub)}
-                    >
-                      {SUB_BAND_UI[sub].label}
-                      {band === stripedBand && <span className="kbd">{SUB_BAND_UI[sub].key}</span>}
-                    </button>
-                  ))}
+                  <SubBandButtons
+                    band={band}
+                    current={here?.band === band ? here.sub : undefined}
+                    keys={band === stripedBand}
+                    onPick={(sub) => choose(band, sub)}
+                  />
                 </div>
               </div>
             ) : (

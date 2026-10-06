@@ -225,9 +225,15 @@
   color: var(--band-ink);
   font-weight: 800;
 }
-.bdsubs button:hover,
+.bdsubs button:hover:not(:disabled),
 .bdsubs button:focus-visible {
   outline: 2px solid var(--blue);
+}
+/* The Sub-band the title is in now (a drop on its own split Band). */
+.bdsubs button.cur {
+  opacity: 0.45;
+  outline: 2px dashed #4a3b5288;
+  cursor: default;
 }
 
 /* Mobile: one column plus a rail of five Band blocks down the right edge. */
