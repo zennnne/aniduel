@@ -196,7 +196,7 @@ describe('a golden sync log', () => {
       bandChoice: null,
       canUndo: true,
     }
-    expect(replay(golden)).toEqual(expected)
-    expect(replay(structuredClone(golden))).toEqual(expected)
+    expect(replay(golden)).toEqual({ ...expected, board: expect.anything() }) // the Board is display only (#33)
+    expect(replay(structuredClone(golden))).toEqual({ ...expected, board: expect.anything() })
   })
 })

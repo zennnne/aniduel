@@ -241,8 +241,8 @@ describe('a golden log with Duels', () => {
       bandChoice: null,
       canUndo: true,
     }
-    expect(replay(golden)).toEqual(expected)
-    expect(replay(golden)).toEqual(expected)
+    expect(replay(golden)).toEqual({ ...expected, board: expect.anything() }) // the Board is display only (#33)
+    expect(replay(golden)).toEqual({ ...expected, board: expect.anything() }) // the Board is display only (#33)
   })
 })
 

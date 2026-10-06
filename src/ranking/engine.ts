@@ -167,6 +167,21 @@ export type RankingState = {
   bandChoice: { finished: BandIndex | null; next: BandIndex } | null
   /** Whether an Undo appended now would cancel anything. */
   canUndo: boolean
+  board: BoardView
+}
+
+/** One title on the Board: `at` is the position of the event that last put it in its Band; `sub` only in a split Band. */
+export type BoardTitle = { id: number; at: number; sub?: SubBandIndex }
+
+/** The Board (#31): every title that has a Band, by Band. Display only, it never changes what the log replays to. */
+export type BoardView = {
+  /** Open while no Duel answer is in effect: during Rough Sort and right after it. */
+  open: boolean
+  /**
+   * Index = BandIndex, Loved first. Titles most recently put in the Band first. Titles put there by the same event
+   * share `at` and are listed by id here; the UI orders those by display name.
+   */
+  bands: readonly { titles: readonly BoardTitle[] }[]
 }
 
 /** The log can't be replayed: unknown version, or an event that doesn't fit the state it lands on. */
@@ -235,6 +250,10 @@ type Machine = {
   detour: { id: number; band: BandIndex; sub?: SubBandIndex; resume: Resume } | null
   /** Unforgotten titles waiting in Rough Sort (no usable last Sub-band): the detour starts once they are sorted. */
   returning: Map<number, Resume>
+  /** The position (among the events that still count) of the event being applied now. */
+  step: number
+  /** For the Board: the position of the event that last put each title in its Band. */
+  placedAt: Map<number, number>
 }
 
 type Place = { band: BandIndex; sub?: SubBandIndex }
@@ -351,6 +370,7 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       takeOut(machine, event.id)
       const place = placeAt(event.band, event.sub)
       machine.lastPlace.set(event.id, place)
+      machine.placedAt.set(event.id, machine.step)
       const resume = machine.returning.get(event.id)
       if (!resume) {
         segment.queue.push({ id: event.id, above: null, below: null })
@@ -405,6 +425,7 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
     case 'band-moved':
       if (!placeOf(machine, event.id)) throw new ReplayError(`Title ${event.id} can't be moved: it is not in a Band`)
       sendToFront(machine, event.id, placeAt(event.band, event.sub))
+      machine.placedAt.set(event.id, machine.step)
       return
     case 'rerank-requested': {
       const place = placeOf(machine, event.id)
@@ -416,6 +437,7 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       const index = machine.forgotten.indexOf(event.id)
       if (index < 0) throw new ReplayError(`Title ${event.id} can't be brought back: it is not Forgotten`)
       machine.forgotten.splice(index, 1)
+      machine.placedAt.set(event.id, machine.step)
       const last = machine.lastPlace.get(event.id)
       // Its last Sub-band only counts if the Band is still split the same way (a Band split since needs a second tap).
       if (last && placeStillFits(machine, last)) {
@@ -658,9 +680,12 @@ export function replay(log: DuelLog): RankingState {
     lastPlace: new Map(),
     detour: null,
     returning: new Map(),
+    step: 0,
+    placedAt: new Map(),
   }
   const { effective, canUndo } = resolveUndo(log.events)
-  for (const event of effective) {
+  for (const [step, event] of effective.entries()) {
+    machine.step = step
     apply(machine, seed, event)
     machine.segments.forEach(settle)
     refocus(machine)
@@ -693,5 +718,18 @@ export function replay(log: DuelLog): RankingState {
     },
     bandChoice,
     canUndo,
+    board: {
+      open: !effective.some((event) => event.type === 'duel-answered'),
+      bands: machine.bands.map((segments) => ({ titles: boardTitles(machine, segments) })),
+    },
   }
+}
+
+/** A Band's titles in Board order: latest `at` first, then by id. */
+function boardTitles(machine: Machine, segments: readonly Segment[]): BoardTitle[] {
+  const titles = segments.flatMap((segment, s) => {
+    const ids = [...segment.tiers.flatMap((tier) => tier.members), ...segment.queue.map((insertion) => insertion.id)]
+    return ids.map((id) => withSub({ id, at: machine.placedAt.get(id) ?? 0 }, subOfSegment(segments, s)))
+  })
+  return titles.sort((x, y) => y.at - x.at || x.id - y.id)
 }
