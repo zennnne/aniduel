@@ -34,6 +34,7 @@ import type { ScoringSettings } from '../ranking/scoring.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
+import { BoardScreen } from './board/BoardScreen.tsx'
 import { SplitScreen } from './split/SplitScreen.tsx'
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
@@ -55,9 +56,12 @@ import { StartScreen } from './start/StartScreen.tsx'
 import { useTheme } from './theme.ts'
 import { useDuelLog } from './useDuelLog.ts'
 
-/** 'bands' = the Band choice, opened by going Back from a Duel or from the menu. */
-type Screen = 'start' | 'ranking' | 'bands' | 'preview' | 'import'
-const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'preview', 'import']
+/**
+ * 'bands' = the Band choice, opened by going Back from a Duel or from the menu. 'board' = the Board, opened from
+ * Rough Sort while it is open (#33); otherwise the Ranking screen shows.
+ */
+type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import'
+const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import']
 
 type DialogName = 'logout' | 'restore' | 'start-over'
 
@@ -552,7 +556,7 @@ export function App() {
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
-    (screen === 'ranking' || screen === 'bands' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
+    (screen === 'ranking' || screen === 'bands' || screen === 'board' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
   const importView = imports.view
   const inImport = screen === 'import' && importView
   // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows.
@@ -589,7 +593,28 @@ export function App() {
       )
     }
     switch (prompt.kind) {
-      case 'rough-sort':
+      case 'rough-sort': {
+        if (screen === 'board' && state.board.open) {
+          const { done, total } = state.progress.roughSort
+          const placed = state.board.bands.reduce((sum, band) => sum + band.titles.length, 0)
+          return (
+            <BoardScreen
+              state={state}
+              entries={entries}
+              titleLanguage={titleLanguage}
+              heading="Board"
+              hint={`${count(placed, 'title')} ${placed === 1 ? 'has' : 'have'} a Band. Drag a title to another Band.`}
+              mainLabel={
+                <>
+                  ← Back to Rough Sort<span className="hide-m"> · {total - done} left</span>
+                </>
+              }
+              onMain={() => goTo('ranking')}
+              onMove={moveTitle}
+              onUndo={shared.onUndo}
+            />
+          )
+        }
         return (
           <RoughSortScreen
             {...shared}
@@ -597,8 +622,10 @@ export function App() {
             id={prompt.id}
             onBand={(band, sub) => answer(withSub({ type: 'band-assigned', id: prompt.id, band }, sub))}
             onForget={() => answer({ type: 'forgotten', id: prompt.id })}
+            onBoard={state.board.open ? () => goTo('board') : undefined}
           />
         )
+      }
       case 'duel':
         if (state.bandChoice || screen === 'bands') {
           return (
