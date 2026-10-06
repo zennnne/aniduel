@@ -19,8 +19,9 @@ export type PreviewRow = {
 }
 
 /**
- * One row per title with a place in the Ranking that is still in the Pool, in Ranking order. Forgotten titles
- * have no place, and titles outside the Pool (no entry in `oldScores`) are left out, so neither is ever written.
+ * One row per title with a score that is still in the Pool, in Ranking order. Forgotten titles have no place, and
+ * titles outside the Pool (no entry in `oldScores`) are left out, so neither is ever written. On Scores (ADR 0007)
+ * that is every settled title, ordered by level, best first (unsettled titles have no score yet).
  */
 export function previewRows(
   ranking: RankingState,
@@ -30,7 +31,8 @@ export function previewRows(
 ): PreviewRow[] {
   const rows: PreviewRow[] = []
   for (const band of BANDS) {
-    for (const id of ranking.bands[band].tiers.flat()) {
+    const { tiers, unplaced } = ranking.bands[band]
+    for (const id of ranking.standing ? [...tiers.flat(), ...unplaced] : tiers.flat()) {
       const scored = scores.titles.get(id)
       const oldScore100 = oldScores.get(id)
       if (!scored || oldScore100 === undefined) continue
@@ -39,7 +41,8 @@ export function previewRows(
       rows.push({ id, band, level: scored.level, scoreRaw: scored.scoreRaw, oldScore100, oldLevel, changed: oldLevel !== scored.level })
     }
   }
-  return rows
+  // Sorting is stable: inside a level, titles keep their Ranking order (#27 groups them and sorts them by name).
+  return ranking.standing ? rows.sort((x, y) => y.level - x.level) : rows
 }
 
 /** The user's ticks that differ from the default, by title id. */

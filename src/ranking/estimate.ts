@@ -1,7 +1,17 @@
-// Duel estimates from binary insertion: placing k titles needs about log2(k!) Duels.
+// Duel estimates. Full Ranking (binary insertion): placing k titles needs about log2(k!) Duels. Scores (ADR 0007):
+// titles that end on one level need no order among themselves, which saves part of log2(g!) per level of g titles.
 // Duels only happen inside a Band (or Sub-band), so the estimate is summed per Band.
+import type { ScoreFormat } from '../anilist/types.ts'
+import { progressOf, type BandIndex, type RankingState, type SortGoal } from './engine.ts'
+import { levelAt, type SavedScoring, type ScoringSettings } from './scoring.ts'
 
 export const BAND_COUNT = 5
+
+/**
+ * The share of log2(g!) per level of g titles that Scores saves in practice. The information bound would be 1; the
+ * level-targeted multi-selection measures about 0.37 (one 150-title Band) to 0.46 (five equal Bands) on 200 titles.
+ */
+const SCORES_SAVING = 0.42
 
 function log2Factorial(k: number): number {
   let sum = 0
@@ -9,9 +19,31 @@ function log2Factorial(k: number): number {
   return sum
 }
 
-/** Expected Duels for the given Band (or Sub-band) sizes, rounded. */
-export function duelsForBandSizes(sizes: readonly number[]): number {
-  return Math.round(sizes.reduce((total, k) => total + log2Factorial(k), 0))
+/** What a Scores estimate needs: the scoring settings that turn positions into levels. */
+export type ScoresScale = { format: ScoreFormat; settings: ScoringSettings }
+
+/**
+ * Expected Duels for the given Band (or Sub-band) sizes, top to bottom, rounded. With a `scale` the Ranking is on
+ * Scores: each Band saves part of log2(g!) for every level its positions share (g titles), so a Band whose titles
+ * all get different levels costs what it costs on Full Ranking.
+ */
+export function duelsForBandSizes(sizes: readonly number[], scale?: ScoresScale): number {
+  const n = sizes.reduce((sum, k) => sum + k, 0)
+  let total = 0
+  let offset = 0
+  for (const k of sizes) {
+    total += log2Factorial(k)
+    if (scale) {
+      const shared = new Map<number, number>()
+      for (let p = offset; p < offset + k; p++) {
+        const level = levelAt(scale.format, scale.settings, p, n)
+        shared.set(level, (shared.get(level) ?? 0) + 1)
+      }
+      for (const g of shared.values()) total -= SCORES_SAVING * log2Factorial(g)
+    }
+    offset += k
+  }
+  return Math.round(total)
 }
 
 /** Splits `n` titles into five equal Bands; a remainder goes to the first Bands. */
@@ -24,18 +56,25 @@ export function equalBandSizes(n: number): number[] {
 type Part = { readonly tiers: readonly (readonly unknown[])[]; readonly unplaced: readonly unknown[] }
 type BandPart = Part & { readonly subBands?: readonly Part[] }
 
+/** The Scores scale of a Ranking on Scores (its log's own settings), or undefined on Full Ranking. */
+export function scaleOf(state: { readonly sortGoal?: SortGoal; readonly scoring?: SavedScoring }): ScoresScale | undefined {
+  return state.sortGoal === 'scores' && state.scoring ? state.scoring : undefined
+}
+
 /**
  * Expected Duels for the whole Ranking from the real Band sizes (#1 US8), or null while Rough Sort isn't done
- * (then the estimate assumes equal Bands). A split Band counts Sub-band by Sub-band.
+ * (then the estimate assumes equal Bands). A split Band counts Sub-band by Sub-band. Follows the Sort Goal.
  */
 export function duelsFromBands(state: {
   readonly progress: { readonly roughSort: { readonly done: number; readonly total: number } }
   readonly bands: readonly BandPart[]
+  readonly sortGoal?: SortGoal
+  readonly scoring?: SavedScoring
 }): number | null {
   const { done, total } = state.progress.roughSort
   if (done < total) return null
   const size = (part: Part) => part.tiers.reduce((n, tier) => n + tier.length, 0) + part.unplaced.length
-  return duelsForBandSizes(state.bands.flatMap((band) => (band.subBands ?? [band]).map(size)))
+  return duelsForBandSizes(state.bands.flatMap((band) => (band.subBands ?? [band]).map(size)), scaleOf(state))
 }
 
 /**
@@ -48,4 +87,24 @@ export function duelsLeft(band: BandPart): number {
     for (let k = 1; k <= part.unplaced.length; k++) sum += Math.log2(part.tiers.length + k)
   }
   return Math.round(sum)
+}
+
+/**
+ * Expected Duels left in a Band of a Ranking, following its Sort Goal. On Scores, its unsettled titles are counted
+ * the way `duelsLeft` counts unplaced ones, scaled by what Scores saves on the whole Ranking's Band sizes.
+ */
+export function duelsLeftIn(state: RankingState, band: BandIndex): number {
+  const scale = scaleOf(state)
+  if (!scale) return duelsLeft(state.bands[band])
+  const size = (part: Part) => part.tiers.reduce((n, tier) => n + tier.length, 0) + part.unplaced.length
+  const sizes = state.bands.flatMap((b) => (b.subBands ?? [b]).map(size))
+  const full = duelsForBandSizes(sizes)
+  const ratio = full > 0 ? duelsForBandSizes(sizes, scale) / full : 1
+  let sum = 0
+  const b = state.bands[band]
+  for (const part of b.subBands ?? [b]) {
+    const { done, total } = progressOf(state, part)
+    for (let k = 1; k <= total - done; k++) sum += Math.log2(done + k)
+  }
+  return Math.round(sum * ratio)
 }

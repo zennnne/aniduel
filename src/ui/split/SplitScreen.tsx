@@ -3,6 +3,7 @@ import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
 import {
   BANDS,
   SUB_BANDS,
+  progressOf,
   type BandIndex,
   type BandState,
   type LogEvent,
@@ -284,7 +285,13 @@ export function SplitScreen(props: {
   if (isDone) {
     const after = bandWorstCase(b)
     // Choosing a split Band starts at its first Sub-band with titles to place.
-    const first = SUB_BANDS.find((sub) => (b.subBands?.[sub].unplaced.length ?? 0) > 0) ?? null
+    const first =
+      SUB_BANDS.find((sub) => {
+        const part = b.subBands?.[sub]
+        if (!part) return false
+        const { done, total } = progressOf(state, part)
+        return done < total
+      }) ?? null
     return (
       <div className="sppage">
         <div className="h1 row">

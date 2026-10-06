@@ -9,6 +9,7 @@ import {
   roughSortOrder,
 } from './pool.ts'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
+import { defaultSettings } from '../ranking/scoring.ts'
 
 const aot = { romaji: 'Shingeki no Kyojin', english: 'Attack on Titan', native: '進撃の巨人' }
 const romajiOnly = { romaji: 'Mushishi', english: null, native: null }
@@ -59,6 +60,11 @@ describe('estimateDuels', () => {
 
   it('spreads a remainder over the first Bands', () => {
     expect(estimateDuels(7)).toBe(2) // Bands of 2, 2, 1, 1, 1
+  })
+
+  it('is lower on Scores, where titles on one level need no order (ADR 0007)', () => {
+    const scale = { format: 'POINT_10_DECIMAL' as const, settings: defaultSettings('POINT_10_DECIMAL', 'whole') }
+    expect(estimateDuels(200, scale)).toBeLessThan(estimateDuels(200) * 0.8)
   })
 })
 

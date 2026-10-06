@@ -258,3 +258,48 @@ describe('Score Step', () => {
     expect(parseSavedScoring({ format: 'POINT_10_DECIMAL', settings: { distribution: 'bell', step: 'coarse', best: 9, worst: 3 } })).toBeNull()
   })
 })
+
+describe('Whole Score Step (the Scores Sort Goal, ADR 0007)', () => {
+  const whole = (best: number, worst: number) => ({ distribution: 'linear' as const, step: 'whole' as const, best, worst })
+  const formats = ['POINT_100', 'POINT_10_DECIMAL', 'POINT_10', 'POINT_5', 'POINT_3'] as const
+
+  it('gives scores every 1 on 10 point decimal and every 10 on 100 point', () => {
+    expect(levelsOf(ranking([[[1], [2], [3], [4], [5]]]), 'POINT_10_DECIMAL', whole(10, 3))).toEqual([10, 8, 7, 5, 3])
+    expect(levelsOf(ranking([[[1], [2], [3], [4], [5]]]), 'POINT_100', whole(90, 30))).toEqual([90, 80, 60, 50, 30])
+  })
+
+  it('lists whole levels on 10 point decimal and 100 point, and the only levels elsewhere', () => {
+    expect(levels('POINT_10_DECIMAL', 'whole')).toEqual([10, 9, 8, 7, 6, 5, 4, 3, 2, 1])
+    expect(levels('POINT_100', 'whole')).toEqual([100, 90, 80, 70, 60, 50, 40, 30, 20, 10])
+    for (const format of ['POINT_10', 'POINT_5', 'POINT_3'] as const) expect(levels(format, 'whole')).toEqual(levels(format))
+  })
+
+  it('is labelled 1 and 10', () => {
+    expect([stepLabel('POINT_10_DECIMAL', 'whole'), stepLabel('POINT_100', 'whole'), stepLabel('POINT_5', 'whole')]).toEqual(['1', '10', '1'])
+  })
+
+  it('moves best and worst to the nearest whole levels, worst still below best', () => {
+    const fine = { distribution: 'linear' as const, step: 'fine' as const }
+    expect(withStep({ ...fine, best: 9.7, worst: 3.2 }, 'POINT_10_DECIMAL', 'whole')).toEqual(whole(10, 3))
+    expect(withStep({ ...fine, best: 9.4, worst: 9.3 }, 'POINT_10_DECIMAL', 'whole')).toEqual(whole(9, 8))
+    expect(withStep({ ...fine, best: 0.4, worst: 0.1 }, 'POINT_10_DECIMAL', 'whole')).toEqual(whole(2, 1))
+    expect(withStep({ ...fine, best: 94, worst: 34 }, 'POINT_100', 'whole')).toEqual(whole(90, 30))
+    expect(withStep({ ...fine, best: 3, worst: 1 }, 'POINT_3', 'whole')).toEqual(whole(3, 1))
+  })
+
+  it('has defaults for every Score Format', () => {
+    expect(formats.map((format) => defaultSettings(format, 'whole'))).toEqual([
+      whole(100, 30), whole(10, 3), whole(10, 3), whole(5, 1), whole(3, 1),
+    ])
+  })
+
+  it('can be saved and read back, but not off its levels', () => {
+    expect(parseSavedScoring({ format: 'POINT_100', settings: whole(90, 30) })).toEqual({ format: 'POINT_100', settings: whole(90, 30) })
+    expect(parseSavedScoring({ format: 'POINT_100', settings: whole(95, 30) })).toBeNull()
+  })
+
+  it('stays whole when the Score Format changes', () => {
+    expect(convertSettings(whole(9, 3), 'POINT_10_DECIMAL', 'POINT_100')).toEqual(whole(90, 30))
+    expect(convertSettings(whole(90, 30), 'POINT_100', 'POINT_5')).toEqual(whole(5, 2))
+  })
+})

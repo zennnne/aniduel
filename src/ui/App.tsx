@@ -31,7 +31,7 @@ import {
 } from '../ranking/engine.ts'
 import { duelsFromBands } from '../ranking/estimate.ts'
 import { planFromScores } from '../ranking/fromScores.ts'
-import { scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
+import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
@@ -120,7 +120,12 @@ export function App() {
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
   const list = lists[mediaType]
-  const pool = useMemo(() => (list ? buildPool(list, statuses) : null), [list, statuses])
+  // A new Ranking starts on Scores with the Score Format's defaults (ADR 0007): its estimate is for that.
+  const newScale = viewer ? viewer.scoreFormat : null
+  const pool = useMemo(
+    () => (list ? buildPool(list, statuses, newScale ? { format: newScale, settings: defaultSettings(newScale, 'whole') } : undefined) : null),
+    [list, statuses, newScale],
+  )
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
   const titleLanguage = viewer?.titleLanguage
@@ -420,7 +425,7 @@ export function App() {
   function chooseBand(band: BandIndex) {
     const current = duelLog.latest()
     const state = current ? replay(current) : null
-    if (!state || state.bands[band].unplaced.length === 0) return
+    if (!state || state.progress.bands[band].done === state.progress.bands[band].total) return
     const alreadyThere = state.prompt.kind === 'duel' && !state.bandChoice && state.prompt.band === band
     if (!alreadyThere) answer({ type: 'band-selected', band })
     if (screen === 'ranking') window.history.replaceState({ screen: 'bands' }, '')

@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import type { ListEntry, MediaType, TitleLanguage } from '../../anilist/types.ts'
-import type { BandIndex, Prompt, RankingState, SubBandIndex } from '../../ranking/engine.ts'
+import { progressOf, type BandIndex, type Prompt, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
 import { BAND_UI } from '../bands.ts'
 import { EXT_ICON, MOVE_ICON, SAME_ICON, UNDO_ICON } from '../icons.tsx'
 import { Kao, SubPill } from '../Kao.tsx'
@@ -11,8 +11,8 @@ import './duel.css'
 
 type DuelPrompt = Extract<Prompt, { kind: 'duel' }>
 
-/** Duels left for this insertion at most: binary search over the remaining lo..hi slots. */
-function spotsLeft(bounds: DuelPrompt['bounds']): number {
+/** Duels left for this insertion at most: binary search over the remaining lo..hi slots (Full Ranking only). */
+function spotsLeft(bounds: NonNullable<DuelPrompt['bounds']>): number {
   return Math.ceil(Math.log2(bounds.hi - bounds.lo + 1))
 }
 
@@ -97,12 +97,7 @@ export function DuelScreen(props: {
   const [moving, setMoving] = useState<number | null>(null)
   // Inside a split Band the pill counts the current Sub-band only.
   const part = prompt.sub !== undefined ? state.bands[prompt.band].subBands?.[prompt.sub] : undefined
-  const progress = part
-    ? (() => {
-        const placed = part.tiers.reduce((n, tier) => n + tier.length, 0)
-        return { done: placed, total: placed + part.unplaced.length }
-      })()
-    : state.progress.bands[prompt.band]
+  const progress = part ? progressOf(state, part) : state.progress.bands[prompt.band]
   const overall = state.progress.ranked
   // Every answer, Undo or move replays into a new state, so the clock restarts with each Duel shown.
   // No nudge while F / M or the Move sheet says the user has already chosen to do something else.
@@ -162,7 +157,8 @@ export function DuelScreen(props: {
       moving={moving === id}
     />
   )
-  const spots = spotsLeft(prompt.bounds)
+  // Scores has no insertion bounds, so no "spots left" (#25).
+  const spots = prompt.bounds ? spotsLeft(prompt.bounds) : null
 
   return (
     <div className="duel">
@@ -179,7 +175,8 @@ export function DuelScreen(props: {
               <SubPill sub={prompt.sub} size={10} />
             </>
           )}{' '}
-          · {progress.done}/{progress.total} · {count(spots, 'spot')} left
+          · {progress.done}/{progress.total}
+          {spots !== null && <> · {count(spots, 'spot')} left</>}
           {forgetting && (
             <>
               {' '}
