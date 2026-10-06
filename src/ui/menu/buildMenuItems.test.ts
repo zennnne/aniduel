@@ -25,6 +25,7 @@ const actions: MenuActions = {
   startOver: noop,
   toggleTheme: noop,
   logout: noop,
+  switchSortGoal: noop,
 }
 
 const ids = (log: DuelLog) =>
@@ -43,5 +44,39 @@ describe('the Board in the menu', () => {
     const answered = logOf([1, 2], assign(1, 0), assign(2, 0), duel)
     expect(ids(answered)).not.toContain('board')
     expect(ids({ ...answered, events: [...answered.events, { type: 'undo' }] })).toContain('board')
+  })
+})
+
+// #28: the Sort Goal switch, in This Ranking.
+describe('the Sort Goal switch in the menu', () => {
+  const items = (log: DuelLog | null, switchSortGoal: MenuActions['switchSortGoal'] = noop) =>
+    buildMenuItems(
+      { mediaType: 'ANIME', statuses: ['COMPLETED'], hasLog: Boolean(log), hasProgress: Boolean(log), ranking: log && replay(log), choosingBand: false, splitOffers: [] },
+      { ...actions, switchSortGoal },
+    )
+  const big = Array.from({ length: 200 }, (_, i) => i + 1)
+
+  it('offers Full Ranking on Scores, with about how many more Duels it takes', () => {
+    const chosen: string[] = []
+    const scores = startLog({ ...header, ids: big, scoreFormat: 'POINT_10_DECIMAL' })
+    const item = items(scores, (goal) => chosen.push(goal)).find((i) => i.id === 'sort-goal')!
+    expect(item.group).toBe('This Ranking')
+    expect(item.title).toBe('Switch to Full Ranking')
+    expect(item.description).toMatch(/^Every title gets its own place · about \+\d+ Duels$/)
+    item.run()
+    expect(chosen).toEqual(['full-ranking'])
+  })
+
+  it('offers Scores on Full Ranking, also on an older Ranking without any Sort Goal', () => {
+    const chosen: string[] = []
+    const item = items(logOf([1, 2]), (goal) => chosen.push(goal)).find((i) => i.id === 'sort-goal')!
+    expect(item.title).toBe('Switch to Scores')
+    expect(item.description).toBe('Stop once every score is settled · fewer Duels')
+    item.run()
+    expect(chosen).toEqual(['scores'])
+  })
+
+  it('is not offered without a Ranking', () => {
+    expect(items(null).map((i) => i.id)).not.toContain('sort-goal')
   })
 })

@@ -103,7 +103,8 @@ describe('Scores, answered by a consistent oracle', () => {
       expect(scores.state.standing?.settled.size).toBe(n)
       expect(scores.duels).toBeLessThanOrEqual(full.duels)
     }
-  })
+    // A few seconds alone; past the 5 s default when the whole suite runs on a busy machine.
+  }, 60_000)
 
   it('uses at least 20% fewer Duels than Full Ranking on 200 titles at the whole step with equal Bands', () => {
     const random = rng(12)

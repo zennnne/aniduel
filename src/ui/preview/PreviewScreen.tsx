@@ -2,9 +2,11 @@ import { useMemo, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
 import { BANDS, type RankingState, type SortGoal } from '../../ranking/engine.ts'
 import { importPlan, isTicked, previewRows, settledRows, type PendingWrite, type SettledRow, type TickOverrides } from '../../ranking/preview.ts'
+import { goalOf } from '../../ranking/sortGoal.ts'
 import { formatLevel, hasHumanStep, levelOfRaw, levels, score, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
+import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
 import './preview.css'
 import { count, titleName } from '../meta.ts'
@@ -33,8 +35,8 @@ export function PreviewScreen(props: {
   onMove?: (id: number) => void
   onBringBack?: (id: number) => void
   /**
-   * Asks to switch the Sort Goal (from the "Need 0.5? Switch to Full Ranking" caption under Scores). To Full Ranking
-   * it should open the switch dialog (#25, wired by #28). The link is disabled while it is not passed.
+   * Asks to switch the Sort Goal, from the Sort Goal `seg` and the "Need 0.5? Switch to Full Ranking" caption under
+   * Scores. To Full Ranking it opens the switch dialog (#25, #28). Without it there is no `seg` and the link is disabled.
    */
   onSwitchGoal?: (goal: SortGoal) => void
 }) {
@@ -152,6 +154,7 @@ export function PreviewScreen(props: {
             </button>
           ))}
         </div>
+        {props.onSwitchGoal && <SortGoalSeg goal={goalOf(state)} onGoal={props.onSwitchGoal} />}
         {hasHumanStep(format) && state.sortGoal === 'scores' && (
           // Scores always uses whole points (ADR 0007): the Step is locked on Whole, and the caption gives the way out (#25).
           <>
