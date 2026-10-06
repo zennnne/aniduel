@@ -10,7 +10,7 @@ export const LOG_FORMAT_VERSION = 1
  * replay differently (ADR 0005). Adding an event kind or changing replay means bumping this and, for a new kind,
  * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006).
  */
-export const ENGINE_VERSION = 5
+export const ENGINE_VERSION = 6
 const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VERSION }, (_, i) => i + 1)
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
@@ -70,6 +70,12 @@ export type LogEvent =
    * queue if it never had one, or if its Band was split since (so the second tap asks for the Sub-band).
    */
   | { type: 'unforgotten'; id: number }
+  /**
+   * Rough Sort from Scores (ADR 0008): the Band of every title the app placed from its old AniList score, as one
+   * user event. `bands[b]` lists, by id, the titles that go to the back of Band b's insertion queue, in that order.
+   * Each must be waiting in Rough Sort; titles it doesn't list stay there. Replay never reads AniList scores.
+   */
+  | { type: 'bands-from-scores'; bands: [number[], number[], number[], number[], number[]] }
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
@@ -86,7 +92,7 @@ type UndoRole = 'user' | 'barrier' | 'navigation'
 /**
  * One row per event kind: the engine version it came with (a log whose header is older refuses it), its name in
  * that error, and its Undo role. Engine version 2 came with `band-split`, 3 with `band-selected`, 4 with
- * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`).
+ * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`), 6 with `bands-from-scores`.
  */
 const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; name: string; undoRole: UndoRole } } = {
   'titles-added': { since: 1, name: 'Titles added', undoRole: 'barrier' },
@@ -99,6 +105,7 @@ const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; nam
   'band-moved': { since: 5, name: 'Band moved', undoRole: 'user' },
   'rerank-requested': { since: 5, name: 'Re-rank requested', undoRole: 'user' },
   unforgotten: { since: 5, name: 'Unforgotten', undoRole: 'user' },
+  'bands-from-scores': { since: 6, name: 'Bands from scores', undoRole: 'user' },
 }
 
 export type Prompt =
@@ -448,6 +455,9 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       machine.returning.set(event.id, machine.detour?.resume ?? { focus: machine.focus, finished: machine.finished })
       return
     }
+    case 'bands-from-scores':
+      bandsFromScores(machine, event)
+      return
   }
 }
 
@@ -593,6 +603,27 @@ function splitBand(machine: Machine, event: Extract<LogEvent, { type: 'band-spli
     for (const tier of part.tiers) for (const id of tier.members) machine.lastPlace.set(id, place)
     for (const insertion of part.queue) machine.lastPlace.set(insertion.id, place)
   })
+}
+
+/** Rough Sort from Scores (ADR 0008): every listed title leaves the Rough Sort queue for the back of its Band's queue. */
+function bandsFromScores(machine: Machine, event: Extract<LogEvent, { type: 'bands-from-scores' }>): void {
+  if (!Array.isArray(event.bands) || event.bands.length !== BANDS.length) {
+    throw new ReplayError('Bands from scores must list titles for each of the five Bands')
+  }
+  const listed = new Set<number>()
+  for (const band of BANDS) {
+    const segment = destination(machine, band, undefined)
+    for (const id of event.bands[band]) {
+      if (listed.has(id) || !machine.roughSortQueue.includes(id)) {
+        throw new ReplayError(`Bands from scores lists title ${id}, but it is not waiting in Rough Sort`)
+      }
+      listed.add(id)
+      takeOut(machine, id)
+      segment.queue.push({ id, above: null, below: null })
+      machine.lastPlace.set(id, placeAt(band, undefined))
+      machine.returning.delete(id)
+    }
+  }
 }
 
 /** `hash(seed, min, max)` for left/right placement (display only). 32-bit FNV-1a over the three words, then a final mix. */
