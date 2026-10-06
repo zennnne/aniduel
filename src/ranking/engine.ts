@@ -1,6 +1,7 @@
 // Ranking Engine (ADR 0001, ADR 0005): pure, no I/O. The Duel log is the source of truth;
 // every derived thing (next prompt, the Ranking, progress) is rebuilt by replaying it.
-import type { MediaType } from '../anilist/types.ts'
+import type { MediaType, ScoreFormat } from '../anilist/types.ts'
+import { defaultSettings, parseSavedScoring, type SavedScoring, type ScoringSettings } from './scoring.ts'
 
 export const LOG_FORMAT_VERSION = 1
 /**
@@ -10,7 +11,7 @@ export const LOG_FORMAT_VERSION = 1
  * replay differently (ADR 0005). Adding an event kind or changing replay means bumping this and, for a new kind,
  * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006).
  */
-export const ENGINE_VERSION = 6
+export const ENGINE_VERSION = 7
 const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VERSION }, (_, i) => i + 1)
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
@@ -32,6 +33,10 @@ export type LogHeader = {
 }
 
 export type DuelResult = 'a' | 'b' | 'tie'
+
+/** Sort Goal (ADR 0007): stop a title's Duels once its score level is settled, or give every title its own place. */
+export type SortGoal = 'scores' | 'full-ranking'
+const SORT_GOALS: readonly SortGoal[] = ['scores', 'full-ranking']
 
 export type LogEvent =
   /** Titles joining the Pool (the first Pool load, or a sync): they go to the back of the Rough Sort queue. */
@@ -78,6 +83,17 @@ export type LogEvent =
    * Each must be waiting in Rough Sort; titles it doesn't list stay there. Replay never reads AniList scores.
    */
   | { type: 'bands-from-scores'; bands: PerBand<number[]> }
+  /**
+   * The Sort Goal from here on (ADR 0007). A log without one is Full Ranking. A setting, not a user event: Undo
+   * skips it (never cancels it, never stops at it, never cancels it along with a later Undo).
+   */
+  | { type: 'sort-goal-set'; goal: SortGoal }
+  /**
+   * The scoring settings from here on, with the Score Format they are on (ADR 0007): changed on Preview, or
+   * converted after the Score Format changed on AniList (ADR 0003). A log without one uses the scoring settings
+   * saved outside it. Undo skips it, like `sort-goal-set`.
+   */
+  | { type: 'scoring-set'; format: ScoreFormat; settings: ScoringSettings }
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
@@ -87,14 +103,16 @@ type RecordedEvent = Exclude<LogEvent, { type: 'undo' }>
 
 /**
  * How Undo treats an event (ADR 0005): user events can be cancelled; system (sync) events are a barrier that Undo
- * never reaches past; navigation (`band-selected`) is skipped over, neither a step nor a barrier.
+ * never reaches past; navigation (`band-selected`) is skipped over, neither a step nor a barrier, but goes with
+ * a cancelled event before it; settings (ADR 0007) are skipped over and never cancelled at all.
  */
-type UndoRole = 'user' | 'barrier' | 'navigation'
+type UndoRole = 'user' | 'barrier' | 'navigation' | 'setting'
 
 /**
  * One row per event kind: the engine version it came with (a log whose header is older refuses it), its name in
  * that error, and its Undo role. Engine version 2 came with `band-split`, 3 with `band-selected`, 4 with
- * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`), 6 with `bands-from-scores`.
+ * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`), 6 with `bands-from-scores`,
+ * 7 with the Sort Goal and scoring settings (`sort-goal-set`, `scoring-set`, ADR 0007).
  */
 const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; name: string; undoRole: UndoRole } } = {
   'titles-added': { since: 1, name: 'Titles added', undoRole: 'barrier' },
@@ -108,6 +126,8 @@ const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; nam
   'rerank-requested': { since: 5, name: 'Re-rank requested', undoRole: 'user' },
   unforgotten: { since: 5, name: 'Unforgotten', undoRole: 'user' },
   'bands-from-scores': { since: 6, name: 'Bands from scores', undoRole: 'user' },
+  'sort-goal-set': { since: 7, name: 'Sort Goal set', undoRole: 'setting' },
+  'scoring-set': { since: 7, name: 'Scoring settings set', undoRole: 'setting' },
 }
 
 export type Prompt =
@@ -177,6 +197,16 @@ export type RankingState = {
   /** Whether an Undo appended now would cancel anything. */
   canUndo: boolean
   board: BoardView
+  /**
+   * The latest `sort-goal-set`. Left out when the log has none (an older log, ADR 0007): that means Full Ranking.
+   * (Left out rather than defaulted, so a state compares equal to one replayed before these events existed.)
+   */
+  sortGoal?: SortGoal
+  /**
+   * The latest `scoring-set`. Left out when the log has none: then the scoring settings saved outside the log apply
+   * (older logs, ADR 0007). Its Score Format may differ from AniList's now: see `scoringFor`.
+   */
+  scoring?: SavedScoring
 }
 
 /** One title on the Board: `at` is the position of the event that last put it in its Band; `sub` only in a split Band. */
@@ -201,12 +231,28 @@ export class ReplayError extends Error {
   }
 }
 
-/** A new log for a first Pool load: the header plus one `titles-added` event in Rough Sort order. */
-export function startLog(options: { seed: number; userId: number; mediaType: MediaType; ids: readonly number[] }): DuelLog {
-  const { seed, userId, mediaType, ids } = options
+/**
+ * A new log for a first Pool load: the header plus one `titles-added` event in Rough Sort order. Given the user's
+ * Score Format, the log starts with its Sort Goal and that format's default scoring settings (ADR 0007), so it never
+ * depends on settings saved outside it. The Sort Goal is still Full Ranking until the Scores engine exists.
+ */
+export function startLog(options: {
+  seed: number
+  userId: number
+  mediaType: MediaType
+  ids: readonly number[]
+  scoreFormat?: ScoreFormat
+}): DuelLog {
+  const { seed, userId, mediaType, ids, scoreFormat } = options
+  const settings: LogEvent[] = scoreFormat
+    ? [
+        { type: 'sort-goal-set', goal: 'full-ranking' },
+        { type: 'scoring-set', format: scoreFormat, settings: defaultSettings(scoreFormat) },
+      ]
+    : []
   return {
     header: { format: LOG_FORMAT_VERSION, engine: ENGINE_VERSION, seed, userId, mediaType },
-    events: [{ type: 'titles-added', ids: [...ids] }],
+    events: [...settings, { type: 'titles-added', ids: [...ids] }],
   }
 }
 
@@ -265,6 +311,8 @@ type Machine = {
   placedAt: Map<number, number>
   /** Whether any title has had its Band chosen by hand (assigned in Rough Sort, or moved): no Rough Sort from Scores after that. */
   placedByHand: boolean
+  sortGoal: SortGoal | null
+  scoring: SavedScoring | null
 }
 
 type Place = { band: BandIndex; sub?: SubBandIndex }
@@ -335,7 +383,7 @@ function resolveUndo(events: readonly LogEvent[]): { effective: RecordedEvent[];
       undoable = []
       navigation = []
     } else if (role === 'navigation') navigation.push(i)
-    else undoable.push(i)
+    else if (role === 'user') undoable.push(i)
   })
   const effective = events.filter(
     (event, i): event is RecordedEvent => event.type !== 'undo' && !cancelled.has(i),
@@ -451,6 +499,18 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
     case 'bands-from-scores':
       bandsFromScores(machine, event)
       return
+    case 'sort-goal-set':
+      if (!SORT_GOALS.includes(event.goal)) throw new ReplayError(`There is no Sort Goal ${String(event.goal)}`)
+      machine.sortGoal = event.goal
+      return
+    case 'scoring-set': {
+      const scoring = parseSavedScoring({ format: event.format, settings: event.settings })
+      if (!scoring || scoring.settings.step !== event.settings?.step) {
+        throw new ReplayError(`Scoring settings ${JSON.stringify(event.settings)} don't fit Score Format ${String(event.format)}`)
+      }
+      machine.scoring = scoring
+      return
+    }
   }
 }
 
@@ -732,6 +792,8 @@ export function replay(log: DuelLog): RankingState {
     step: 0,
     placedAt: new Map(),
     placedByHand: false,
+    sortGoal: null,
+    scoring: null,
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (let step = 0; step < effective.length; step++) {
@@ -769,6 +831,8 @@ export function replay(log: DuelLog): RankingState {
     bandChoice,
     canUndo,
     board: new LazyBoard(!effective.some((event) => event.type === 'duel-answered'), machine.bands, machine.placedAt),
+    ...(machine.sortGoal && { sortGoal: machine.sortGoal }),
+    ...(machine.scoring && { scoring: machine.scoring }),
   }
 }
 

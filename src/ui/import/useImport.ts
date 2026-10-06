@@ -7,15 +7,15 @@ import {
   deleteImportState,
   deleteTickOverrides,
   loadImportState,
-  loadScoringFor,
+  loadScoringSettings,
   loadTickOverrides,
   saveImportState,
   saveTickOverrides,
   type RankingKey,
 } from '../../persistence/progress.ts'
-import { replay, type DuelLog, type RankingState } from '../../ranking/engine.ts'
+import { replay, type DuelLog, type LogEvent, type RankingState } from '../../ranking/engine.ts'
 import { importPlan, previewRows, type PendingWrite, type TickOverrides } from '../../ranking/preview.ts'
-import { score, type ScoringSettings } from '../../ranking/scoring.ts'
+import { score, scoringFor, type ScoringSettings } from '../../ranking/scoring.ts'
 import { SCORE_FORMAT_LABEL } from '../preview/scoreFormat.ts'
 import type { Notice } from '../Shell.tsx'
 import type { ImportStage } from './ImportScreen.tsx'
@@ -32,6 +32,8 @@ export type ImportDeps = {
   /** The open Ranking's user and Media Type; null before login. */
   key: RankingKey | null
   latestLog: () => DuelLog | null
+  /** Appends to the open Ranking's Duel log and saves it (a Score Format conversion, ADR 0007). */
+  append: (...events: LogEvent[]) => unknown
   /** Old AniList score (100-point) of every Pool title, or null while the list is loading. */
   oldScores: ReadonlyMap<number, number> | null
   setScoring: (settings: ScoringSettings) => void
@@ -170,10 +172,14 @@ export function useImport(deps: ImportDeps) {
     if (!gateway || !viewer) return
     gateway.viewer().then((fresh) => {
       deps.setViewer(fresh)
-      const log = deps.latestLog()
+      let log = deps.latestLog()
       if (!log || !deps.key) return
       const key = { userId: fresh.id, mediaType: deps.key.mediaType }
-      const { settings } = loadScoringFor(deps.storage, key, fresh.scoreFormat)
+      const { settings, event } = scoringFor(replay(log), loadScoringSettings(deps.storage, key), fresh.scoreFormat)
+      if (event) {
+        deps.append(event)
+        log = deps.latestLog() ?? log
+      }
       deps.setScoring(settings)
       const state = replay(log)
       const decision = resumeImport(savedState, {

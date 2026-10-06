@@ -1,7 +1,8 @@
 // Scoring (pure, same seam as the Ranking Engine): turns a Ranking into scores at the levels of the user's
 // Score Format (ADR 0003). Bands decide order only; the Distribution decides scores (ADR 0002).
 import type { ScoreFormat } from '../anilist/types.ts'
-import { BANDS, type BandIndex, type RankingState } from './engine.ts'
+// Types only: the engine imports this module (scoring settings are Duel log events, ADR 0007).
+import type { BandIndex, LogEvent, RankingState } from './engine.ts'
 
 export type Distribution = 'linear' | 'bell'
 
@@ -208,11 +209,26 @@ export function settingsFor(saved: SavedScoring | null, format: ScoreFormat): { 
   return { settings: convertSettings(saved.settings, saved.format, format), converted: true }
 }
 
+/**
+ * The scoring settings a Ranking uses with the Score Format AniList reports now (run `Viewer` first): its log's
+ * own (ADR 0007), or for an older log without any, the settings saved outside it. If they were made for another
+ * Score Format they are converted (ADR 0003): `converted` is true, tell the user, and append `event` so the
+ * conversion travels with the log.
+ */
+export function scoringFor(
+  ranking: Pick<RankingState, 'scoring'>,
+  saved: SavedScoring | null,
+  format: ScoreFormat,
+): { settings: ScoringSettings; converted: boolean; event: Extract<LogEvent, { type: 'scoring-set' }> | null } {
+  const { settings, converted } = settingsFor(ranking.scoring ?? saved, format)
+  return { settings, converted, event: converted ? { type: 'scoring-set', format, settings } : null }
+}
+
 export function score(ranking: RankingState, format: ScoreFormat, settings: ScoringSettings): Scores {
-  const tiers = BANDS.flatMap((band) => ranking.bands[band].tiers.map((members) => ({ band, members })))
+  const tiers = ranking.bands.flatMap((b, band) => b.tiers.map((members) => ({ band: band as BandIndex, members })))
   const n = tiers.reduce((sum, t) => sum + t.members.length, 0)
   const titles = new Map<number, TitleScore>()
-  const bands: (LevelRange | null)[] = BANDS.map(() => null)
+  const bands: (LevelRange | null)[] = ranking.bands.map(() => null)
   let position = 0
   for (const tier of tiers) {
     const average = position + (tier.members.length - 1) / 2

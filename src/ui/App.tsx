@@ -11,10 +11,9 @@ import {
   loadDuelLog,
   loadLastMediaType,
   loadPoolSettings,
-  loadScoringFor,
+  loadScoringSettings,
   saveLastMediaType,
   savePoolSettings,
-  saveScoringSettings,
   type RankingKey,
 } from '../persistence/progress.ts'
 import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '../pool/pool.ts'
@@ -32,7 +31,7 @@ import {
 } from '../ranking/engine.ts'
 import { duelsFromBands } from '../ranking/estimate.ts'
 import { planFromScores } from '../ranking/fromScores.ts'
-import type { ScoringSettings } from '../ranking/scoring.ts'
+import { scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
@@ -142,6 +141,7 @@ export function App() {
     setViewer,
     key: rankingKey,
     latestLog: duelLog.latest,
+    append: duelLog.append,
     oldScores: pool ? oldScores : null,
     setScoring,
     setNotice,
@@ -432,7 +432,8 @@ export function App() {
     if (!viewer) return
     if (!duelLog.latest()) {
       if (!startOrder) return
-      const log = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder })
+      // The new log carries its own Sort Goal and default scoring settings (ADR 0007).
+      const log = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder, scoreFormat: viewer.scoreFormat })
       const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
       duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
     } else {
@@ -445,7 +446,8 @@ export function App() {
 
   /**
    * Runs `Viewer` again first (spec Auth, ADR 0003): if the Score Format changed since best / worst were
-   * chosen, they are converted to the new format and a blue banner says so.
+   * chosen, they are converted to the new format, the conversion is appended to the Duel log (ADR 0007), and a
+   * blue banner says so.
    */
   function openPreview() {
     if (!gateway || !viewer || openingPreview) return
@@ -455,7 +457,10 @@ export function App() {
         setOpeningPreview(false)
         setViewer(fresh)
         const key = { userId: fresh.id, mediaType }
-        const { settings, converted } = loadScoringFor(localStorage, key, fresh.scoreFormat)
+        const current = duelLog.latest()
+        if (!current) return
+        const { settings, converted, event } = scoringFor(replay(current), loadScoringSettings(localStorage, key), fresh.scoreFormat)
+        if (event) duelLog.append(event)
         if (converted) {
           imports.dropForFormatChange(key)
           setNotice({
@@ -473,9 +478,10 @@ export function App() {
     )
   }
 
+  /** Settings changed on Preview go into the Duel log (ADR 0007), so a reload or a Backup gives the same scores. */
   function changeScoring(settings: ScoringSettings) {
-    if (!viewer || !rankingKey) return
-    saveScoringSettings(localStorage, rankingKey, { format: viewer.scoreFormat, settings })
+    if (!viewer || !duelLog.latest()) return
+    duelLog.append({ type: 'scoring-set', format: viewer.scoreFormat, settings })
     setScoring(settings)
   }
 
