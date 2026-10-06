@@ -77,6 +77,20 @@ describe('the order of titles in a Band on the Board', () => {
     ])
   })
 
+  it('gives every title placed by Rough Sort from Scores one shared position, listed by id for the UI to order by name', () => {
+    const fromScores: LogEvent = { type: 'bands-from-scores', bands: [[5, 2], [], [4, 1], [], []] }
+    const log = logOf([1, 2, 3, 4, 5], fromScores, assign(3, 0))
+    expect(replay(log).board.bands[0].titles).toEqual([
+      { id: 3, at: 2 },
+      { id: 2, at: 1 },
+      { id: 5, at: 1 },
+    ])
+    expect(replay(log).board.bands[2].titles).toEqual([
+      { id: 1, at: 1 },
+      { id: 4, at: 1 },
+    ])
+  })
+
   it('keeps every title its own position when its Band is split (a split puts no title in a Band)', () => {
     const split: LogEvent = { type: 'band-split', band: 0, cuts: [0, 1], unplaced: [[3], [], [2]] }
     const log = plus(logOf([1, 2, 3], assign(1, 0), assign(2, 0), assign(3, 0)), split)

@@ -621,6 +621,7 @@ function bandsFromScores(machine: Machine, event: Extract<LogEvent, { type: 'ban
       takeOut(machine, id)
       segment.queue.push({ id, above: null, below: null })
       machine.lastPlace.set(id, placeAt(band, undefined))
+      machine.placedAt.set(id, machine.step)
       machine.returning.delete(id)
     }
   }
