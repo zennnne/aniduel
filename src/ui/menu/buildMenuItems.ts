@@ -1,5 +1,7 @@
 import type { ListStatus, MediaType } from '../../anilist/types.ts'
-import type { BandIndex, RankingState } from '../../ranking/engine.ts'
+import type { BandIndex, RankingState, SortGoal } from '../../ranking/engine.ts'
+import { fullRankingExtra } from '../../ranking/estimate.ts'
+import { goalOf } from '../../ranking/sortGoal.ts'
 import { BAND_UI } from '../bands.ts'
 import { MEDIA_LABEL } from '../meta.ts'
 import { statusLabel } from '../start/statusLabel.ts'
@@ -32,6 +34,8 @@ export type MenuActions = {
   startOver: () => void
   toggleTheme: () => void
   logout: () => void
+  /** Switch the open Ranking to this Sort Goal (#28): Full Ranking asks first, Scores switches at once. */
+  switchSortGoal: (goal: SortGoal) => void
 }
 
 /** The one list behind the account menu and the Ctrl+K palette, for a logged-in user. */
@@ -56,6 +60,20 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       run: actions.changeStatuses,
     },
   ]
+  // Any Ranking can switch, older ones (on Full Ranking, without a Sort Goal) too, but nobody is told (#23).
+  if (context.hasLog && ranking) {
+    const toFull = goalOf(ranking) === 'scores'
+    items.push({
+      id: 'sort-goal',
+      group: 'This Ranking',
+      icon: '◎',
+      title: `Switch to ${toFull ? 'Full Ranking' : 'Scores'}`,
+      description: toFull
+        ? `Every title gets its own place · about +${fullRankingExtra(ranking)} Duels`
+        : 'Stop once every score is settled · fewer Duels',
+      run: () => actions.switchSortGoal(toFull ? 'full-ranking' : 'scores'),
+    })
+  }
   if (context.hasLog) {
     items.push({
       id: 'backup',

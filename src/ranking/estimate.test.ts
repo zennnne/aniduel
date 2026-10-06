@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { replay, startLog, type BandIndex, type DuelLog, type LogEvent } from './engine.ts'
-import { duelsForBandSizes, duelsFromBands, duelsLeft, duelsLeftIn } from './estimate.ts'
+import { duelsForBandSizes, duelsFromBands, duelsLeft, duelsLeftIn, fullRankingExtra } from './estimate.ts'
 import { defaultSettings } from './scoring.ts'
 
 function logOf(ids: number[], ...events: LogEvent[]): DuelLog {
@@ -78,5 +78,30 @@ describe('Duel estimate on Scores', () => {
     if (prompt.kind !== 'duel') throw new Error('expected a Duel')
     log = { ...log, events: [...log.events, { type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'a' }] }
     expect(duelsLeftIn(replay(log), 0)).toBe(0)
+  })
+})
+
+// #28: "+~N Duels" before switching Scores to Full Ranking, the difference between the two estimates.
+describe('Duels Full Ranking adds', () => {
+  const ids = Array.from({ length: 10 }, (_, i) => i + 1)
+  const scoresLog = () => startLog({ seed: 1, userId: 7, mediaType: 'ANIME', ids, scoreFormat: 'POINT_3' })
+
+  it('is what Scores saves on the real Band sizes once Rough Sort is done', () => {
+    // Ten titles in one Band on 3 smileys, 3..1: levels 3,3,3 · 2,2,2,2 · 1,1,1. Full Ranking log2(10!) ≈ 21.8 → 22;
+    // Scores saves 0.42 · (log2 3! + log2 4! + log2 3!) ≈ 4.1 → 18. So about 4 more.
+    const log = scoresLog()
+    const state = replay({ ...log, events: [...log.events, ...ids.map((id) => assign(id, 0))] })
+    expect(fullRankingExtra(state)).toBe(4)
+  })
+
+  it('assumes equal Bands while Rough Sort is not done', () => {
+    const big = Array.from({ length: 200 }, (_, i) => i + 1)
+    const state = replay(startLog({ seed: 1, userId: 7, mediaType: 'ANIME', ids: big, scoreFormat: 'POINT_10_DECIMAL' }))
+    // Measured on #26: about 36% of ~800 Duels.
+    expect(fullRankingExtra(state)).toBeGreaterThan(150)
+  })
+
+  it('is 0 on Full Ranking', () => {
+    expect(fullRankingExtra(replay(logOf(ids)))).toBe(0)
   })
 })

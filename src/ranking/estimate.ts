@@ -78,6 +78,20 @@ export function duelsFromBands(state: {
 }
 
 /**
+ * About how many more Duels the Ranking takes on Full Ranking than on Scores (#28, the "+~N Duels" shown before
+ * switching): the Full Ranking estimate minus the Scores one, over the real Band sizes once Rough Sort is done,
+ * equal Bands before. 0 on Full Ranking.
+ */
+export function fullRankingExtra(state: RankingState): number {
+  const scale = scaleOf(state)
+  if (!scale) return 0
+  const { done, total } = state.progress.roughSort
+  const size = (part: Part) => part.tiers.reduce((n, tier) => n + tier.length, 0) + part.unplaced.length
+  const sizes = done < total ? equalBandSizes(total) : state.bands.flatMap((band) => (band.subBands ?? [band]).map(size))
+  return Math.max(0, duelsForBandSizes(sizes) - duelsForBandSizes(sizes, scale))
+}
+
+/**
  * Expected Duels left in a Band, rounded: each unplaced title lands in one of (Tiers + 1) places, about log2 of
  * that many Duels, and the Band grows by one Tier per title. A split Band counts Sub-band by Sub-band.
  */

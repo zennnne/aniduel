@@ -187,6 +187,63 @@
   margin-top: 2px;
 }
 
+/* Sort Goal (#25, #28): seg, a one-line caption that follows it, and an ⓘ for the long version. */
+.goalrow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.goalrow .seg {
+  flex-shrink: 0;
+}
+.gexp {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.iwrap {
+  position: relative;
+  display: inline-flex;
+}
+.info-i {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--fg2);
+  color: var(--tx-strong);
+  font-weight: 900;
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.info-i.on {
+  background: var(--blue);
+  color: var(--on-accent);
+}
+.ipop {
+  position: absolute;
+  top: 26px;
+  right: -8px;
+  width: 280px;
+  max-width: calc(100vw - 32px);
+  background: var(--nav);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  z-index: 30;
+  box-shadow: 0 6px 24px #0006;
+}
+.ipop .x {
+  float: right;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1;
+  margin: -2px -2px 4px 8px;
+}
+
 @media (max-width: 720px) {
   .st-hero {
     grid-template-columns: 1fr;
