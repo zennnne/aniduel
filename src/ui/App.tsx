@@ -32,6 +32,7 @@ import {
 } from '../ranking/engine.ts'
 import { duelsFromBands, fullRankingExtra } from '../ranking/estimate.ts'
 import { planFromScores } from '../ranking/fromScores.ts'
+import { previewOpen } from '../ranking/preview.ts'
 import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
 import { goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
@@ -80,6 +81,14 @@ function loginRedirect() {
   window.location.assign(authorizeUrl(aniListClientId({ dev: import.meta.env.DEV })))
 }
 
+/**
+ * Whether a fix started from Preview (Re-rank, Move, Bring back) needs no more Duels: the Ranking is finished, or
+ * only Refine Duels of other titles are left (on Scores the fixed title is worked on first, until it is settled).
+ */
+function fixDone(state: RankingState, id: number): boolean {
+  return previewOpen(state.prompt) && (state.prompt.kind !== 'duel' || state.prompt.a !== id)
+}
+
 function newSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]
 }
@@ -115,6 +124,8 @@ export function App() {
   const [openingPreview, setOpeningPreview] = useState(false)
   // A fix started from Preview (#11): its Duels run on the Ranking screen, then Preview opens again.
   const [previewFix, setPreviewFix] = useState<{ id: number; verb: string } | null>(null)
+  // "Go to Duels →" on Preview's unsettled card (#29): once every score is settled again, Preview opens again.
+  const [refining, setRefining] = useState(false)
   // The title whose Move sheet is open over Preview.
   const [previewMoving, setPreviewMoving] = useState<number | null>(null)
   // The Sort Goal a new Ranking starts on, chosen on Start (#28). A saved Ranking's goal lives in its log.
@@ -214,6 +225,7 @@ export function App() {
     setScoring(null)
     imports.open(key)
     setPreviewFix(null)
+    setRefining(false)
     setPreviewMoving(null)
     setStatuses(loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES)
     try {
@@ -361,7 +373,8 @@ export function App() {
 
   /**
    * Appends one answer, checks it replays, and saves the log before showing the result. Returns the new state, or
-   * null if the answer was dropped. Once a fix started from Preview is placed (or undone), Preview opens again.
+   * null if the answer was dropped. Once a fix started from Preview is placed (or undone), Preview opens again; so
+   * it does once the Refine Duels started from Preview are all answered.
    */
   function answer(event: LogEvent): RankingState | null {
     let state: RankingState | null
@@ -371,9 +384,14 @@ export function App() {
       return null // an answer for a prompt that is no longer showing (e.g. a double key press)
     }
     if (!state) return null
-    if (previewFix && state.prompt.kind === 'all-complete') {
+    if (previewFix && fixDone(state, previewFix.id)) {
       setPreviewFix(null)
       if (screen !== 'preview') goTo('preview')
+    }
+    if (refining && state.prompt.kind === 'all-complete') {
+      setRefining(false)
+      if (screen !== 'preview') goTo('preview')
+      showToast('Every score is settled again')
     }
     return state
   }
@@ -408,7 +426,7 @@ export function App() {
    */
   function fixFromPreview(id: number, verb: string, state: RankingState | null) {
     if (!state) return
-    if (state.prompt.kind === 'all-complete') {
+    if (fixDone(state, id)) {
       // A move keeps its own toast (with Undo).
       if (verb !== 'Moving') {
         showToast(
@@ -421,6 +439,14 @@ export function App() {
     }
     setPreviewFix({ id, verb })
     goTo('ranking')
+  }
+
+  /** "Go to Duels →" on Preview (#29): the Refine Duels, from the top Band that has some. */
+  function refineFromPreview() {
+    if (!ranking || ranking.prompt.kind !== 'duel') return
+    setRefining(true)
+    if (ranking.bandChoice) chooseBand(ranking.bandChoice.next)
+    else goTo('ranking')
   }
 
   /**
@@ -660,8 +686,9 @@ export function App() {
     (screen === 'ranking' || screen === 'bands' || screen === 'board' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
   const importView = imports.view
   const inImport = screen === 'import' && importView
-  // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows.
-  const inPreview = screen === 'preview' && ranking?.prompt.kind === 'all-complete' && scoring && pool
+  // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows. On Scores,
+  // Refine Duels left by a settings change keep Preview open: its settled titles can still be imported (#29).
+  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && scoring && pool
 
   /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
@@ -769,7 +796,7 @@ export function App() {
             onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
             onForget={(id) => answer({ type: 'forgotten', id })}
             onMove={moveTitle}
-            note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : undefined}
+            note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : prompt.refine ? 'Refine' : undefined}
           />
         )
       case 'all-complete':
@@ -828,6 +855,7 @@ export function App() {
           settings={scoring}
           onSettings={changeScoring}
           onSwitchGoal={requestSortGoal}
+          onRefine={refineFromPreview}
           overrides={imports.ticks}
           onTick={imports.tick}
           onImport={importView?.stage === 'running' ? undefined : (plan) => imports.plan(plan, scoring)}

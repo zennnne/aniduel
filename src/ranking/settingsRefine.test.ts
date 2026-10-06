@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { ScoreFormat } from '../anilist/types.ts'
 import { BANDS, appendEvent, replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from './engine.ts'
 import { refineDuels } from './estimate.ts'
+import { previewOpen } from './preview.ts'
 import { defaultSettings, levels, score, withStep, type ScoringSettings } from './scoring.ts'
 
 /** Small seeded PRNG (mulberry32), so every case is reproducible. */
@@ -153,5 +154,32 @@ describe('the Refine Duel estimate', () => {
     const c = randomCase(rng(32), 20, 1_000_000)
     const settings = defaultSettings('POINT_10', 'whole')
     expect(refineDuels(replay(newLog(c, 1, 'full-ranking', 'POINT_10', settings)))).toBe(0)
+  })
+})
+
+describe('Preview', () => {
+  it('stays open for Refine Duels after a settings change, not for ordinary Duels or a switch to Full Ranking', () => {
+    const random = rng(33)
+    const format = 'POINT_10_DECIMAL'
+    const before = defaultSettings(format, 'whole')
+    const c = randomCase(random, 60, 1_000_000, [12, 12, 12, 12, 12])
+    let ordinary = 0
+    const done = play(c, newLog(c, 2, 'scores', format, before), (state) => {
+      expect(previewOpen(state.prompt)).toBe(false)
+      ordinary++
+    })
+    expect(ordinary).toBeGreaterThan(0)
+    expect(previewOpen(done.state.prompt)).toBe(true)
+    const set = appendEvent(done.log, { type: 'scoring-set', format, settings: { ...before, worst: before.worst + 1 } })
+    expect(replay(set).prompt.kind).toBe('duel')
+    expect(previewOpen(replay(set).prompt)).toBe(true)
+    // Full Ranking orders titles inside a level: those are Duels to answer before Preview.
+    const full = appendEvent(appendEvent(done.log, { type: 'sort-goal-set', goal: 'full-ranking' }), {
+      type: 'scoring-set',
+      format,
+      settings: withStep(before, format, 'human'),
+    })
+    expect(replay(full).prompt.kind).toBe('duel')
+    expect(previewOpen(replay(full).prompt)).toBe(false)
   })
 })

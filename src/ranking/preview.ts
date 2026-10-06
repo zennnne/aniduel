@@ -1,8 +1,16 @@
 // Preview (pure): old vs new score for every ranked Pool title, which titles are ticked for Import,
 // and the Import plan the Import Runner writes.
 import type { ScoreFormat } from '../anilist/types.ts'
-import { BANDS, type BandIndex, type RankingState } from './engine.ts'
+import { BANDS, type BandIndex, type Prompt, type RankingState } from './engine.ts'
 import { levelOfRaw, type Scores } from './scoring.ts'
+
+/**
+ * Whether Preview can be open on this prompt: every title has its level, or only Refine Duels are left (#29). Those
+ * come from a settings change on Scores and leave some titles unsettled; every settled title can still be imported.
+ */
+export function previewOpen(prompt: Prompt): boolean {
+  return prompt.kind === 'all-complete' || (prompt.kind === 'duel' && prompt.refine === true)
+}
 
 type RowBase = {
   id: number
