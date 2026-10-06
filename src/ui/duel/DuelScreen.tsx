@@ -6,6 +6,7 @@ import { EXT_ICON, MOVE_ICON, SAME_ICON, UNDO_ICON } from '../icons.tsx'
 import { Kao, SubPill } from '../Kao.tsx'
 import { count, metaLine, titleName } from '../meta.ts'
 import { MoveSheet } from '../move/MoveSheet.tsx'
+import { useHesitation } from './hesitation.ts'
 import './duel.css'
 
 type DuelPrompt = Extract<Prompt, { kind: 'duel' }>
@@ -69,6 +70,7 @@ function Card(props: {
 /**
  * Duel = split-bleed (issue #4): two full-height cards, an "about the same" seam button in the middle,
  * Don't remember and AniList on each card's corner, Undo at the bottom.
+ * After 20 s of visible hesitation the seam ripples three times and keeps a halo, nudging towards Same.
  * Keys: ← / → pick, ↓ about the same, F then ← / → Don't remember, M then ← / → Move Band, Backspace undo.
  */
 export function DuelScreen(props: {
@@ -102,6 +104,9 @@ export function DuelScreen(props: {
       })()
     : state.progress.bands[prompt.band]
   const overall = state.progress.ranked
+  // Every answer, Undo or move replays into a new state, so the clock restarts with each Duel shown.
+  // No nudge while F / M or the Move sheet says the user has already chosen to do something else.
+  const nudge = useHesitation(state) && !forgetting && !movePending && moving === null
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     if (e.ctrlKey || e.metaKey || e.altKey) return
@@ -192,7 +197,7 @@ export function DuelScreen(props: {
       <div className="pair">
         {card(prompt.left, 'l')}
         {card(prompt.right, 'r')}
-        <button className="seam" onClick={onTie} aria-label="About the same">
+        <button className={nudge ? 'seam nudge' : 'seam'} onClick={onTie} aria-label="About the same">
           {SAME_ICON}
           <span>Same</span>
           <span className="kbd">↓</span>

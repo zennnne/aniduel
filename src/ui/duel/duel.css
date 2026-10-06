@@ -76,6 +76,37 @@
   font-size: 13px;
   gap: 2px;
 }
+/* Hesitation nudge: two rings ripple out of the seam three times, then a halo stays until the answer. */
+.seam.nudge {
+  box-shadow:
+    0 0 0 6px var(--nav),
+    0 0 0 9px var(--blue),
+    0 0 28px 10px #3db4f288;
+}
+.seam.nudge::before,
+.seam.nudge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--blue);
+  opacity: 0;
+  pointer-events: none;
+  animation: seam-ripple 0.9s ease-out 3;
+}
+.seam.nudge::after {
+  animation-delay: 0.3s;
+}
+@keyframes seam-ripple {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(2.1);
+    opacity: 0;
+  }
+}
 .corner {
   position: absolute !important;
   bottom: 14px;
