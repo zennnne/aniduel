@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE · Sort Goal UI (#25)</title>
+<style>
+/* ===== copied from src/ui/theme.css (trimmed) ===== */
+:root{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc;--danger:#e05555;--warn:#f2b13d;--on-accent:#fff;--shadow:#0002;
+--band-loved:#ffb3c8;--band-liked:#ffe08a;--band-okay:#bfe8c9;--band-meh:#c9d4ff;--band-hated:#cfc9d6;--band-ink:#4a3b52;--good:#3fae5a;--bad:#f27d7d;--on-overlay:#fff;--overlay:#0007;--overlay-strong:#000a}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:Overpass,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;background:var(--bg);color:var(--tx)}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.row{display:flex;gap:8px;align-items:center}.grow{flex:1;min-width:0}.small{font-size:12px}.strong{color:var(--tx-strong)}.fine{opacity:.7}
+.link{color:var(--blue);text-decoration:underline}
+.go{background:var(--blue);color:#fff;font-weight:800;padding:13px 22px;border-radius:12px;display:inline-flex;gap:10px;align-items:center;justify-content:center;align-self:flex-start}
+.go:disabled{opacity:.4;cursor:not-allowed}.go.sm{padding:7px 12px;font-size:12px;border-radius:8px}
+.go.ghost{background:var(--fg2);color:var(--tx-strong)}
+.kao{white-space:nowrap;padding:2px 7px;border-radius:999px;color:var(--band-ink);font-weight:700;display:inline-block;line-height:1.4}
+#app{height:100%}
+.shell{height:100%;display:grid;grid-template-columns:260px 1fr;background:var(--bg)}
+.shell.nos{grid-template-columns:1fr}
+.side{background:var(--nav);color:var(--navtx);padding:16px;display:flex;flex-direction:column;gap:14px;position:relative;min-height:0}
+.main{display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
+.banner{display:flex;gap:12px;align-items:center;padding:8px 16px;font-size:13px;background:var(--blue);color:#fff}
+.banner button{background:#fff3;border-radius:999px;padding:4px 12px;font-weight:700}
+.dscrim{position:fixed;inset:0;background:#0009;z-index:60;display:flex;align-items:center;justify-content:center}
+.dlg{background:var(--fg);border-radius:16px;padding:22px;width:min(460px,92vw);display:flex;flex-direction:column;gap:10px}
+.dlg .h2{font-size:20px;font-weight:800;color:var(--tx-strong)}
+.col{display:flex;flex-direction:column;gap:14px}
+.kbd{display:inline-flex;align-items:center;justify-content:center;font:700 11px ui-monospace,monospace;min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:#0006;color:#fff}
+.bar{height:6px;border-radius:3px;background:#ffffff22;overflow:hidden}.bar>i{display:block;height:100%;background:var(--blue)}
+.cv{object-fit:cover;display:block;background:var(--c,var(--blue))}
+.ph{background:linear-gradient(160deg,var(--c,var(--blue)),var(--nav))}
+.t{font-size:24px;font-weight:800;color:#fff;max-width:90%;line-height:1.15}.m{color:#fffc}
+.pill{display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 10px;border-radius:999px;background:#0008;color:#fff;backdrop-filter:blur(6px);white-space:nowrap}
+.topline{position:absolute;top:0;left:0;right:0;height:4px;z-index:6;background:#0006}.topline i{display:block;height:100%;background:var(--blue)}
+.float-info{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6}
+.logo{font-weight:900;color:#fff;font-size:18px}.logo b{color:var(--blue)}
+.bandrow{display:grid;grid-template-columns:92px 1fr 40px;gap:8px;align-items:center;font-size:12px;padding:5px 6px;border-radius:8px}
+.bandrow.total{border-top:1px solid #ffffff1a}
+.bandrow.cur{background:#ffffff14;color:#fff}
+.rank{display:flex;flex-direction:column;gap:2px;font-size:12px;overflow:auto;flex:1;min-height:0}
+.rank div{padding:4px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}
+.rank .inb{background:#3db4f222;color:#fff}.rank .piv{background:var(--blue);color:var(--nav);font-weight:700}.rank .out{opacity:.35}
+.rank .lvh{font-weight:800;color:#fff;opacity:.9;padding:6px 6px 2px;font-size:11px}
+.acct{display:flex;gap:10px;align-items:center;width:100%;padding:10px;border-radius:10px;background:#ffffff0d;color:#fff;font-size:13px;line-height:1.2;text-align:left}
+.ava{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--blue),#c063ff);display:inline-flex;flex-shrink:0}
+/* menu */
+.acct-wrap{position:relative}
+.mpop{position:absolute;bottom:58px;left:0;width:300px;background:var(--fg);border-radius:14px;padding:10px;box-shadow:0 10px 40px #000a;z-index:40;display:flex;flex-direction:column;gap:2px}
+.mg{font-size:10px;text-transform:uppercase;letter-spacing:.06em;opacity:.6;padding:10px 12px 4px;color:var(--tx)}
+.mitem{display:flex;gap:12px;align-items:center;padding:9px 12px;border-radius:8px;text-align:left;color:var(--tx-strong);font-size:13px;width:100%}
+.mitem .small{color:var(--tx);font-size:11px;line-height:1.35}
+.mitem:hover,.mitem.hl{background:var(--fg2)}
+.mitem.hl{box-shadow:inset 0 0 0 2px var(--blue)}
+.mic{width:24px;height:24px;border-radius:6px;background:var(--fg2);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px}
+/* start */
+.st{flex:1;min-height:0;overflow:auto;position:relative;display:grid;grid-template-columns:1.1fr 1fr}
+.st .l{position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:40px}
+.st .l::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 20%,var(--bg) 95%)}
+.collage{position:absolute;inset:-60px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px;transform:rotate(-8deg);opacity:.55;align-content:start}
+.collage div{aspect-ratio:2/3;border-radius:6px}
+.hero{position:relative;z-index:1;color:var(--tx-strong);display:flex;flex-direction:column;gap:12px}.hero .big{font-size:40px;font-weight:900;line-height:1.05}
+.st .r{display:flex;align-items:center;justify-content:center;padding:30px}
+.panel{background:var(--fg);border-radius:18px;padding:26px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 40px var(--shadow);width:100%;max-width:440px}
+.panel .h2{font-size:22px;font-weight:800;color:var(--tx-strong)}
+.userbar{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--tx-strong)}.userbar .link{margin-left:auto}
+.seg{display:inline-flex;background:var(--fg2);border-radius:10px;padding:3px;align-self:flex-start}
+.seg button{padding:7px 18px;border-radius:8px;font-weight:700}
+.seg button.on{background:var(--blue);color:#fff}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.lab2{font-size:12px;opacity:.7;margin-bottom:-6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:7px 12px;border-radius:999px;background:var(--fg2);font-size:13px}.chip.on{background:var(--blue);color:#fff;font-weight:700}
+.est{font-size:15px;color:var(--tx-strong)}.est .small{display:block;color:var(--tx);margin-top:2px}
+.offer{border:1px solid var(--fg2);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.offer.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+.swrow{display:flex;gap:12px;align-items:center;text-align:left;width:100%}
+.swrow .grow{display:flex;flex-direction:column;gap:2px}
+.switch{width:38px;height:22px;border-radius:999px;background:var(--fg2);position:relative;flex-shrink:0}
+.switch i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0004;transition:left .15s}
+.offer.on .switch{background:var(--blue)}.offer.on .switch i{left:19px}
+/* duel */
+.duel{flex:1;min-height:0;position:relative;display:flex;flex-direction:column;overflow:hidden;background:var(--nav)}
+.pair{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;position:relative}
+.card{position:relative;overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;cursor:pointer}
+.card>*:not(.bg){position:relative;z-index:1}
+.card .bg{position:absolute;inset:-20px;filter:blur(14px) brightness(.45);z-index:0}
+.card .cv{height:60%;aspect-ratio:2/3;border-radius:8px;box-shadow:0 10px 40px #000a}
+.card:hover{box-shadow:inset 0 0 0 4px var(--blue)}
+.seam{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;width:84px;height:84px;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;box-shadow:0 0 0 6px var(--nav);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px}
+.float-undo{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);z-index:6}
+/* preview */
+.pv{flex:1;min-height:0;overflow:auto;position:relative;padding:22px 28px 30px}
+.pv .h1{font-size:28px;font-weight:900;color:var(--tx-strong)}
+.pv-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.pv-set{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:14px}
+.pv-set label{display:flex;gap:6px;align-items:center;font-weight:700;color:var(--tx-strong);font-size:13px}
+.lsel{font:inherit;padding:5px 8px;border-radius:8px;border:none;background:var(--fg2);color:var(--tx-strong);font-weight:800}
+.tl{display:flex;flex-direction:column;gap:4px;margin-top:10px}
+.tlrow{display:grid;grid-template-columns:64px 1fr;background:var(--fg);border-radius:10px;min-height:86px}
+.tlk{display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--tx-strong);background:var(--fg2);border-radius:10px 0 0 10px;text-align:center}
+.tlc{display:flex;flex-wrap:wrap;gap:6px;padding:6px}
+.tlcard{position:relative;width:52px;border-radius:5px;outline:3px solid transparent}
+.tlcard.b0{outline-color:#ffb3c8aa}.tlcard.b1{outline-color:#ffe08aaa}.tlcard.b2{outline-color:#bfe8c9aa}.tlcard.b3{outline-color:#c9d4ffaa}.tlcard.b4{outline-color:#cfc9d6aa}
+.tlcard .cv{width:52px;height:74px;border-radius:5px}
+.tlcard .ob{position:absolute;bottom:2px;left:2px;font-size:9px;padding:0 3px;border-radius:3px;background:#000b;color:#fff}
+.tlcard .nm{position:absolute;top:2px;left:2px;right:2px;font-size:8px;line-height:1.1;color:#fff;text-shadow:0 1px 2px #000;overflow:hidden;max-height:28px}
+.rng{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;font-size:12px}.rng b{color:var(--tx-strong)}
+/* ===== unsettled looks (vary by design) ===== */
+.tlcard.uns-dim .cv{filter:grayscale(1) brightness(.55)}
+.tlcard .q{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:22px;height:22px;border-radius:50%;background:var(--warn);color:#2b2d42;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:13px}
+.tlcard.uns-dash{outline:2px dashed var(--warn) !important;outline-offset:1px}
+.tlcard.uns-dash .cv{opacity:.55}
+.tlrow.unsrow{background:repeating-linear-gradient(135deg,var(--fg) 0 10px,var(--fg2) 10px 20px)}
+.tlrow.unsrow .tlk{background:var(--warn);color:#2b2d42;font-size:13px;padding:4px}
+.tlrow.bnd{min-height:0;grid-template-columns:64px 1fr;background:none;border:2px dashed var(--warn);margin:-1px 0}
+.tlrow.bnd .tlk{background:none;font-size:12px;color:var(--warn)}
+.footbar{position:sticky;bottom:-30px;margin:14px -28px -30px;padding:12px 28px;background:var(--fg);box-shadow:0 -6px 20px var(--shadow);display:flex;align-items:center;gap:12px;z-index:5}
+.tray{background:var(--fg);border:2px solid var(--warn);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.tray .tlc{padding:0}
+.goalcard{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.gc{border:2px solid var(--fg2);border-radius:12px;padding:10px;text-align:left;display:flex;flex-direction:column;gap:3px;color:var(--tx)}
+.gc b{color:var(--tx-strong)}.gc.on{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 8%,var(--fg))}
+.goalbadge{display:flex;align-items:center;gap:8px;font-size:12px;background:#ffffff0d;border-radius:8px;padding:6px 8px;color:#fff}
+.goalbadge button{margin-left:auto;font-size:11px;background:#ffffff1a;border-radius:6px;padding:2px 8px}
+details.opts{font-size:13px}details.opts summary{cursor:pointer;color:var(--tx-strong);font-weight:700}
+.refline i{background:var(--warn)!important}
+.split-go{display:inline-flex;border-radius:12px;overflow:hidden}
+.split-go .go{border-radius:0}
+.split-go .go+.go{background:var(--warn);color:#2b2d42}
+/* ===== prototype picker ===== */
+#picker{position:fixed;right:16px;bottom:16px;z-index:100;width:340px;background:#111827;color:#e5e7eb;border-radius:14px;box-shadow:0 10px 40px #000a;font-size:12px;user-select:none}
+#picker .ph2{cursor:move;padding:8px 12px;background:#1f2937;border-radius:14px 14px 0 0;display:flex;align-items:center;gap:8px;font-weight:800}
+#picker .nav{display:flex;align-items:center;gap:8px;padding:8px 12px}
+#picker .nav button{background:#374151;color:#fff;border-radius:8px;width:30px;height:28px;font-weight:900}
+#picker .nm2{flex:1;font-weight:800;font-size:14px;color:#fff}
+#picker .ds{padding:0 12px 8px;line-height:1.4;color:#cbd5e1}
+#picker .st2{padding:8px 12px 10px;border-top:1px solid #374151;display:flex;flex-direction:column;gap:6px}
+#picker .grp{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+#picker .grp span{width:64px;color:#9ca3af}
+#picker .grp button{background:#374151;color:#e5e7eb;border-radius:6px;padding:3px 8px}
+#picker .grp button.on{background:var(--blue);color:#fff;font-weight:800}
+#picker .grp.q button{font-weight:800}
+/* round 2 additions */
+.toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--nav);color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;z-index:70;box-shadow:0 6px 24px #0006}
+.goalrow{display:flex;gap:12px;align-items:center}
+.goalrow .seg{flex-shrink:0}
+.gexp{font-size:12px;line-height:1.4;color:var(--tx)}
+.gexp b{color:var(--tx-strong)}
+.cmp{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:12px;line-height:1.35}
+.cmp .on{color:var(--tx-strong);font-weight:700}
+.mini{display:grid;grid-template-columns:1fr 1fr;gap:8px;background:var(--fg2);border-radius:12px;padding:10px;font-size:11px}
+.mini .mh{font-weight:800;color:var(--tx-strong);font-size:12px;margin-bottom:4px}
+.mini .ln{display:flex;gap:4px;align-items:center;margin:2px 0}
+.mini .lv{width:18px;font-weight:900;color:var(--tx-strong)}
+.mini .ch{background:var(--fg);border-radius:4px;padding:1px 5px}
+.mini .on2{outline:2px solid var(--blue);border-radius:8px;padding:4px}
+.seg.sub button{display:flex;flex-direction:column;align-items:flex-start;line-height:1.2;padding:7px 14px}
+.seg.sub button small{font-weight:400;font-size:11px;opacity:.85}
+.info-i{width:18px;height:18px;border-radius:50%;background:var(--fg2);color:var(--tx-strong);font-weight:900;font-size:11px;display:inline-flex;align-items:center;justify-content:center;position:relative}
+.info-i .tipbox{display:none;position:absolute;top:24px;left:-120px;width:280px;background:var(--nav);color:#fff;padding:10px;border-radius:10px;font-weight:400;font-size:12px;line-height:1.4;z-index:30;text-align:left}
+.info-i:hover .tipbox{display:block}
+.pv-set2{display:flex;gap:12px;align-items:center;background:var(--fg);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.lock{opacity:.55}
+.tlcard.dim .cv{filter:grayscale(1) brightness(.55)}
+.rbadge{position:absolute;top:30px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:900;padding:0 4px;border-radius:4px;background:var(--warn);color:#2b2d42;white-space:nowrap}
+.tlpop{position:absolute;top:80px;left:0;z-index:20;width:230px;background:var(--fg);border-radius:10px;padding:10px;box-shadow:0 10px 30px #0008;display:flex;flex-direction:column;gap:6px;color:var(--tx-strong);font-size:12px}
+.tlpop .mini-b{font-size:11px;padding:4px 8px;border-radius:6px;background:var(--fg2)}
+.refbar{position:absolute;top:52px;left:50%;transform:translateX(-50%);z-index:6}
+.side .tgt{background:color-mix(in srgb,var(--warn) 30%,transparent);color:#fff}
+.rank .lvl{display:grid;grid-template-columns:22px 1fr;gap:6px;align-items:start;padding:3px 6px !important;white-space:normal !important}
+.rank .lvl b{color:#fff}
+.rank .lvchips{display:flex;flex-wrap:wrap;gap:3px}
+.rank .lvchips span{background:#ffffff14;border-radius:4px;padding:1px 5px;font-size:11px}
+.rank .lvchips span.cur{background:var(--blue);color:var(--nav);font-weight:700}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="picker">
+  <div class="ph2" id="phd">⠿ PROTOTYPE · Sort Goal (#25) · Round <span id="rnd"></span></div>
+  <div class="st2" id="qs" style="border-top:none;padding-bottom:0"></div>
+  <div class="nav"><button id="prev">←</button><div class="nm2" id="dname"></div><button id="next">→</button></div>
+  <div class="ds" id="ddesc"></div>
+  <div class="st2" id="states"></div>
+</div>
+<style>
+/* round 3 additions */
+.ipop{position:absolute;z-index:30;width:300px;background:var(--nav);color:#fff;padding:12px;border-radius:12px;font-size:12px;line-height:1.45;box-shadow:0 10px 30px #0006}
+.ipop b{color:#fff}.ipop .x{position:absolute;top:6px;right:8px;color:#fff9}
+.iwrap{position:relative;display:inline-flex}
+.info-i{cursor:pointer}
+.info-i.on{background:var(--blue);color:#fff}
+.inl{background:var(--fg2);border-radius:10px;padding:10px;font-size:12px;line-height:1.45}
+.inl b{color:var(--tx-strong)}
+.lockwrap{position:relative;display:inline-flex}
+.lockwrap .tipb{display:none;position:absolute;top:110%;left:0;width:240px;background:var(--nav);color:#fff;font-size:12px;padding:8px 10px;border-radius:8px;z-index:20}
+.lockwrap:hover .tipb{display:block}
+.stepchip{display:inline-flex;gap:6px;align-items:center;background:var(--fg2);border-radius:10px;padding:7px 12px;font-weight:700;color:var(--tx-strong);font-size:13px}
+.unscard{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:color-mix(in srgb,var(--warn) 18%,var(--fg));border:1px solid var(--warn);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.unslist{flex-basis:100%;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 12px;font-size:12px;margin-top:4px}
+.unslist div{display:flex;gap:6px;align-items:center;color:var(--tx-strong)}
+.unslist .rb{background:var(--warn);color:#2b2d42;border-radius:4px;padding:0 4px;font-weight:800;font-size:10px}
+.tlk .plus{font-size:10px;font-weight:800;color:#b7791f;margin-top:2px}
+.tlcard.ghl{outline:2px dashed var(--warn)!important}
+.tlcard.ghl .cv{filter:grayscale(1) brightness(.55)}
+.rank .lvchips span.pv{background:var(--blue);color:var(--nav);font-weight:700}
+.rank .lvl.play{background:#3db4f21f;border-radius:6px}
+.rank .lvl.off{opacity:.4}
+.rank .nyp{border-top:1px dashed #ffffff33;margin-top:4px;padding-top:6px !important}
+.ranked{flex:1;overflow:auto;padding:46px 40px 30px;display:flex;flex-direction:column;gap:14px;max-width:760px}
+.ranked .h1{font-size:28px;font-weight:800;color:var(--tx-strong)}
+.ranked .res{background:var(--fg);border-radius:16px;padding:16px}
+.ranked .ln{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:6px 0;border-bottom:1px solid var(--fg2)}
+.ranked .ln b{color:var(--tx-strong)}
+.ranked .tie{font-size:11px;color:var(--blue)}
+.ranked .chipln{display:flex;flex-wrap:wrap;gap:4px}
+.ranked .chipln span{background:var(--fg2);border-radius:6px;padding:2px 7px;font-size:12px;color:var(--tx-strong)}
+.lvbars{display:flex;flex-direction:column;gap:4px;background:var(--fg);border-radius:16px;padding:16px}
+.lvbars .lb{display:grid;grid-template-columns:30px 1fr 30px;gap:8px;align-items:center;font-size:12px}
+.lvbars .lb b{color:var(--tx-strong);font-size:15px}
+.lvbars .tr{height:14px;border-radius:7px;background:var(--fg2);overflow:hidden;display:flex}
+.lvbars .tr i{display:block;height:100%}
+</style>
+<script>
+const ROUND = 3
+/* Decided so far:
+   R1 Q1 = B "Goal is a setting" (segmented control) + an explanation of the difference beside it.
+   R1 Q2 = C: confirm Dialog only for Scores → Full Ranking (+~N Duels); → Scores is immediate + toast.
+   R2 Q3 = 5: Start seg + one short line beside it + ⓘ for the long version.
+   R2 Q4 = 1: Preview bar: Best · Worst · Linear/Bell · [Scores|Full Ranking] · Step seg locked on Whole on Scores.
+   R2 Q5 = 4: slim "?" row at the top of the score rows: count · ~N Refine Duels · show · Go to Duels.
+   R3: Q7 = desktop hover tooltip (1) + tap popover on touch (2) ~ design 3; Q8 = 3; Q9 = 4; Q10 = 5; Q11 open.
+   R2 Q6 = 2: Duel pill gets "Refine · " (existing note slot); "spots left" dropped on Scores; sidebar = one line per level, names as chips. */
+/* ---------- mock data ---------- */
+const BANDS=[{l:'Loved',k:'(♡˙︶˙♡)',c:'var(--band-loved)'},{l:'Liked',k:'(˶ᵔ ᵕ ᵔ˶)',c:'var(--band-liked)'},{l:'Okay',k:'( ・_・)',c:'var(--band-okay)'},{l:'Meh',k:'(´・ω・`)',c:'var(--band-meh)'},{l:'Hated',k:'(×﹏×)',c:'var(--band-hated)'}]
+const kao=(b,s=10)=>`<span class="kao" style="background:${BANDS[b].c};font-size:${s}px">${BANDS[b].k}</span>`
+const NAMES=['Frieren','Mushishi','Monster','Steins;Gate','Odd Taxi','Ping Pong','Haikyuu!!','Bocchi the Rock!','Made in Abyss','Mob Psycho 100','Vinland Saga','Dungeon Meshi','Spy x Family','Chainsaw Man','Oshi no Ko','Blue Lock','Dr. Stone','Horimiya','Toradora!','Clannad','Re:Zero','Overlord','Konosuba','Gintama','Barakamon','Erased','Another','Akame ga Kill!','Sword Art Online','Mirai Nikki','Pupa','Ex-Arm','Glasslip','Mars of Destruction','Hand Shakers','Big Order']
+const COLS=['#3db4f2','#c063ff','#e85d75','#43c59e','#f2b13d','#6a7bff','#ff8a5b','#2bb3a3']
+const T=NAMES.map((n,i)=>{const band=i<6?0:i<14?1:i<24?2:i<30?3:4
+ const whole=Math.max(3,10-Math.floor(i/4.5)); const half=Math.max(3,10-Math.floor(i/2.4)*0.5)
+ return {id:i,n,band,whole,half,c:COLS[i%COLS.length],old:i%5===0?null:Math.max(1,Math.min(10,whole+((i*7)%3)-1))}})
+const UNS=new Set([4,5,10,11,12,22,23])
+const unsRange=t=>`${t.whole} or ${t.whole-1}`
+const EST={scores:640,full:920}, EXTRA=EST.full-EST.scores, REF=18
+/* ---------- questions of this round ---------- */
+const QS=[
+{id:'q7',label:'Q7 ⓘ',screen:'start',designs:[
+ {name:'Hover tooltip',desc:'As in round 2: the long version shows while the pointer is over ⓘ. Nothing on touch screens.'},
+ {name:'Tap popover',desc:'Click / tap ⓘ opens a popover under it with a × ; click anywhere else closes it. Same on desktop and phone.'},
+ {name:'Hover + tap',desc:'Desktop: opens on hover. Touch: opens on tap, closes on the next tap. Same popover as 2.'},
+ {name:'Inline unfold',desc:'Tapping ⓘ unfolds the long version as a grey box right under the seg, pushing the estimate down. Tap again to fold.'},
+ {name:'Opens a Dialog',desc:'ⓘ opens the existing Dialog with the full explanation and the mini example (round 2 Q3 #3): Scores groups vs Full Ranking places.'},
+]},
+{id:'q8',label:'Q8 Locked Step',screen:'preview',designs:[
+ {name:'Locked + caption, no action',desc:'Round 2 as is: Whole on, 0.5 / 0.1 greyed and not clickable; caption "Scores always use whole points".'},
+ {name:'Greyed steps open the switch',desc:'0.5 / 0.1 look greyed but stay clickable: a click opens the Full Ranking dialog (+~N Duels), which then lands on that step.'},
+ {name:'Caption carries the way out',desc:'0.5 / 0.1 not clickable; the caption says "Need 0.5? Switch to Full Ranking" with the link opening the dialog.'},
+ {name:'Tooltip only',desc:'Locked seg, no caption; hovering it explains why and how to get 0.5.'},
+ {name:'Single chip instead of a seg',desc:'On Scores the seg is replaced by one chip "Step: whole points" + the same ⓘ as Start. On Full Ranking the 0.1 / 0.5 seg returns.'},
+]},
+{id:'q9',label:'Q9 "?" row',screen:'preview',designs:[
+ {name:'show → covers in the row',desc:'Round 2 as is: "show" unfolds the covers (with their "8 or 7" badge) inside the slim row.'},
+ {name:'show → name list',desc:'"show" unfolds a compact list: name + "8 or 7" badge, several columns. No covers.'},
+ {name:'show → highlight in place',desc:'"show" doesn\'t list anything in the row: the unsettled covers appear dimmed + dashed inside their likely score rows instead. Hide removes them again.'},
+ {name:'Warning card above the filter',desc:'The row becomes an orange card above Changing / All (outside the score rows). "show" unfolds the covers in the card.'},
+ {name:'Row + "+2?" per level',desc:'Slim row stays; each score row\'s key also says how many unsettled titles might still land there ("+2?").'},
+]},
+{id:'q10',label:'Q10 Sidebar',screen:'duel',designs:[
+ {name:'Opponent chip highlighted',desc:'The title already placed (the opponent, like today\'s pivot) is a blue chip; the levels still possible for the new title are tinted.'},
+ {name:'Possible levels only',desc:'No chip highlight. Levels the new title can still land on are tinted; the others fade, like today\'s "out" rows.'},
+ {name:'+ "not placed yet" line',desc:'Like 1, plus a last line listing titles in this Band that have no level yet (count + names).'},
+ {name:'Far levels collapsed',desc:'Levels outside the possible range collapse to "10 · 3 titles"; only the possible ones show their chips.'},
+ {name:'Plain',desc:'Just level + chips, no highlight at all. Calmest.'},
+]},
+{id:'q11',label:'Q11 Complete',screen:'complete',designs:[
+ {name:'Per Band, level + chips',desc:'Same screen as today, but under Scores each Band lists its levels ("8") with names as chips (sorted by name) instead of numbered places. Title: "Every score is settled".'},
+ {name:'Skip it on Scores',desc:'No Complete screen under Scores: the last Duel goes straight to Preview, which already shows the levels (with a toast "Every score is settled").'},
+ {name:'All Bands merged by level',desc:'One list by level across Bands, chips with their Band colour outline; the Bands only show as colour.'},
+ {name:'Per Band, lines + "no order" hint',desc:'Per Band, one line per level with names joined by " · " and a blue "same score · no order" tag, mirroring today\'s Tier line.'},
+ {name:'Level bars summary',desc:'A small bar chart: how many titles per level, coloured by Band. Names only on Preview. Then "Score my Ranking →".'},
+]},
+]
+/* ---------- state ---------- */
+const LS=JSON.parse(localStorage.sg3||'{}')
+const S=Object.assign({q:0,v:{q7:2,q8:2,q9:3,q10:4,q11:0},screen:'start',goal:'scores',uns:'7',refine:'no'},LS,{menu:false,dlg:false,toast:'',pop:null,ipop:false,idlg:false,showU:false})
+const save=()=>{const {menu,dlg,toast,pop,ipop,idlg,showU,...rest}=S;localStorage.sg3=JSON.stringify(rest)}
+const V=id=>S.v[id]
+const unsOn=()=>S.uns==='7'
+/* Q2 = C */
+function requestGoal(g){ if(g===S.goal)return
+ if(g==='full'){S.menu=false;S.dlg=true;render();return}
+ S.goal='scores';S.menu=false;showToast('Switched to Scores · Duels stop once every score is settled');save();render()}
+function showToast(m){S.toast=m;clearTimeout(showToast.t);showToast.t=setTimeout(()=>{S.toast='';render()},2600)}
+/* ---------- pieces ---------- */
+const isU=t=>S.screen==='preview'&&unsOn()&&S.goal==='scores'&&UNS.has(t.id)
+const cover=(t,cls='',extra='')=>`<div class="tlcard b${t.band} ${cls}" title="${t.n}" onclick="event.stopPropagation();S.pop=S.pop===${t.id}?null:${t.id};render()"><div class="cv ph" style="--c:${t.c}"></div><span class="nm">${t.n}</span>${extra}<span class="ob">${t.old==null?'new':t.old+'→'}</span>${S.pop===t.id?popover(t):''}</div>`
+function popover(t){const u=isU(t),lv=S.goal==='scores'?t.whole:t.half.toFixed(1)
+ return `<div class="tlpop" onclick="event.stopPropagation()"><b>${t.n}</b><span>${kao(t.band,9)} · AniList ${t.old??'no score'} → <b>${u?unsRange(t)+'?':lv}</b></span>${u?`<span class="small" style="color:#b7791f">Not settled yet: a few Refine Duels decide between ${unsRange(t)}. Can't be imported until then.</span><label class="row small" style="opacity:.45"><input type="checkbox" disabled> Import this</label>`:`<label class="row small"><input type="checkbox" checked> Import this</label>`}<div class="row"><button class="mini-b">Re-rank</button><button class="mini-b">Move</button></div></div>`}
+const badge=t=>`<span class="rbadge">${unsRange(t)}</span>`
+function sidebar(){
+ const duel=S.screen==='duel', v=V('q10')
+ const bandRows=BANDS.map((b,i)=>{const tot=T.filter(t=>t.band===i).length;const done=i<2?tot:i===2?(S.screen==='complete'?tot:6):S.screen==='complete'?tot:0
+  return `<div class="bandrow ${duel&&i===2?'cur':''}">${kao(i)}<div class="bar"><i style="width:${done/tot*100}%"></i></div><span>${done}/${tot}</span></div>`}).join('')
+ let rank=''
+ if(duel){
+  const band=T.filter(t=>t.band===2), placed=band.slice(0,6), nyp=band.slice(7) // band[6] = the new title in this Duel
+  if(S.goal==='scores'){
+   const by={};placed.forEach(t=>(by[t.whole]??=[]).push(t))
+   const ks=Object.keys(by).map(Number).sort((a,b)=>b-a)
+   const play=l=>l===8||l===7, opp=T[16].id
+   const nm=arr=>[...arr].sort((a,b)=>a.n.localeCompare(b.n))
+   rank=ks.map(l=>{
+    const tint=(v===0||v===1||v===2||v===3)&&play(l), fade=(v===1)&&!play(l)
+    if(v===3&&!play(l)) return `<div class="lvl off"><b>${l}</b><span class="small">${by[l].length} titles</span></div>`
+    return `<div class="lvl ${tint?'play':''} ${fade?'off':''}"><b>${l}</b><span class="lvchips">${nm(by[l]).map(t=>`<span class="${(v===0||v===2||v===3)&&t.id===opp?'pv':''}">${t.n}</span>`).join('')}</span></div>`}).join('')
+   if(v===2) rank+=`<div class="lvl nyp"><b>·</b><span class="lvchips"><span style="opacity:.7">not placed yet (${nyp.length}):</span>${nyp.map(t=>`<span>${t.n}</span>`).join('')}</span></div>`
+  } else rank=placed.map((t,i)=>`<div class="${i===3?'piv':i>1&&i<5?'inb':'out'}">${i+1}. ${t.n}</div>`).join('')
+  rank=`<div class="small row">${kao(2)} Ranking so far${S.goal==='scores'?' · by score':''}</div><div class="rank">${rank}</div>`
+ }
+ return `<div class="logo">Ani<b>Duel!</b></div><div class="small">zen · Anime · ${T.length} titles</div>
+ <div class="col" style="gap:4px">${bandRows}<div class="bandrow total"><span>Total</span><div class="bar"><i style="width:${S.screen==='complete'?100:45}%"></i></div><span>${S.screen==='complete'?36:16}/36</span></div></div>
+ ${rank}${duel?'':'<span class="grow"></span>'}
+ <div class="acct-wrap">${S.menu?menu():''}<button class="acct" onclick="S.menu=!S.menu;render()"><span class="ava"></span><span class="grow">zen<br><span class="small">Anime · 36 titles</span></span>▴</button></div>`
+}
+function menu(){
+ const toFull=S.goal==='scores'
+ const it=(ic,ti,de,on)=>`<button class="mitem ${on?'hl':''}" ${on?`onclick="requestGoal('${toFull?'full':'scores'}')"`:''}><span class="mic">${ic}</span><span class="col" style="gap:2px"><span>${ti}</span><span class="small">${de}</span></span></button>`
+ return `<div class="mpop"><div class="mg">This Ranking</div>${it('⇆','Switch to Manga','Each Media Type keeps its own Ranking')}${it('☰','Change list statuses','Completed · titles join or leave the Ranking')}${it('🎯',`Switch to ${toFull?'Full Ranking':'Scores'}`,toFull?`Every title gets its own place · about +${EXTRA} Duels`:'Stop once every score is settled · fewer Duels',true)}${it('↓','Save Backup file','Download your Duel log and settings')}${it('↑','Restore from Backup','Load a Backup file from another browser')}<div class="mg">Account</div>${it('⎋','Log out','Removes your AniList token from this browser')}</div>`
+}
+function dialog(){ // only Scores → Full Ranking (Q2 = C)
+ return `<div class="dscrim" onclick="S.dlg=false;render()"><div class="dlg" onclick="event.stopPropagation()"><div class="h2">Switch to Full Ranking?</div><p>Every title gets its own place, so titles on the same score get ordered too, and you can pick 0.5 or 0.1 steps.</p><p>That takes about <b>+${EXTRA} Duels</b>. Every answer you already gave still counts.</p><p class="small">You can switch back to Scores at any time.</p><div class="row" style="justify-content:flex-end;gap:10px;margin-top:6px"><button class="link" onclick="S.dlg=false;render()">Cancel</button><button class="go" onclick="S.goal='full';S.dlg=false;save();render()">Switch</button></div></div></div>`
+}
+/* ---------- the long explanation behind ⓘ ---------- */
+const LONG=`<b>Scores</b> (default): Duels stop once every title's score is settled. Whole points (8, not 8.5). Titles on the same score have no order among themselves.<br><br><b>Full Ranking</b>: every title gets its own place, even on the same score, and you can pick 0.5 or 0.1 steps. About ${EXTRA} more Duels.<br><br>Same Bands, same kind of Duels. Switch any time from the menu; no answer is lost.`
+const MINI=`<div class="mini"><div><div class="mh">Scores · ~${EST.scores} Duels</div><div class="ln"><span class="lv">9</span><span class="ch">Frieren</span><span class="ch">Mushishi</span></div><div class="ln"><span class="lv">8</span><span class="ch">Monster</span><span class="ch">Odd Taxi</span><span class="ch">…</span></div><div class="small">same score = no order</div></div><div><div class="mh">Full Ranking · ~${EST.full} Duels</div><div class="ln"><span class="lv">9.5</span>1. Frieren</div><div class="ln"><span class="lv">9</span>2. Mushishi</div><div class="ln"><span class="lv">8.5</span>3. Monster …</div><div class="small">every title its own place</div></div></div>`
+function infoI(){const v=V('q7')
+ const pop=`<div class="ipop" style="top:26px;left:-150px" onclick="event.stopPropagation()"><button class="x" onclick="S.ipop=false;render()">×</button>${LONG}</div>`
+ if(v===0) return `<span class="info-i">i<span class="tipbox">${LONG}</span></span>`
+ if(v===1) return `<span class="iwrap"><button class="info-i ${S.ipop?'on':''}" onclick="event.stopPropagation();S.ipop=!S.ipop;render()">i</button>${S.ipop?pop:''}</span>`
+ if(v===2) return `<span class="iwrap" onmouseenter="if(!S.ipop){S.ipop=true;render()}" onmouseleave="S.ipop=false;render()"><button class="info-i ${S.ipop?'on':''}" onclick="event.stopPropagation();S.ipop=!S.ipop;render()">i</button>${S.ipop?pop.replace('<button class="x" onclick="S.ipop=false;render()">×</button>',''):''}</span>`
+ if(v===3) return `<button class="info-i ${S.ipop?'on':''}" onclick="S.ipop=!S.ipop;render()">i</button>`
+ return `<button class="info-i" onclick="S.idlg=true;render()">i</button>`
+}
+function idialog(){return `<div class="dscrim" onclick="S.idlg=false;render()"><div class="dlg" onclick="event.stopPropagation()"><div class="h2">Scores or Full Ranking?</div><p class="small" style="line-height:1.5">${LONG}</p>${MINI}<div class="row" style="justify-content:flex-end;margin-top:6px"><button class="go sm" onclick="S.idlg=false;render()">Got it</button></div></div></div>`}
+function goalSeg(onclick){const g=S.goal
+ return `<div class="seg" role="radiogroup" aria-label="Sort Goal"><button class="${g==='scores'?'on':''}" onclick="${onclick('scores')}">Scores</button><button class="${g==='full'?'on':''}" onclick="${onclick('full')}">Full Ranking</button></div>`}
+/* ---------- Start (Q3 = 5) ---------- */
+function start(){
+ const g=S.goal,n=EST[g]
+ const est=`<div class="est"><b>36</b> titles · about <b>${n}</b> Duels<span class="small">(~${Math.round(n*3/60)} min at 3 s each, spread over as many sittings as you like)</span></div>`
+ const goal=`<div class="lab2">Sort Goal</div><div class="goalrow">${goalSeg(v=>`S.goal='${v}';save();render()`)}<div class="gexp">${g==='scores'?'Stops once every score is settled.':'Every title gets its own place.'}</div>${infoI()}</div>${V('q7')===3&&S.ipop?`<div class="inl">${LONG}</div>`:''}`
+ return `<div class="shell nos"><div class="main"><div class="st" onclick="if(S.ipop&&${V('q7')}===1){S.ipop=false;render()}"><div class="l"><div class="collage">${Array.from({length:36},(_,i)=>`<div class="ph" style="--c:${COLS[i%8]}"></div>`).join('')}</div><div class="hero"><span class="kao" style="background:var(--band-loved);font-size:20px;align-self:flex-start">(♡˙︶˙♡)</span><div class="big">Which one did you<br>like more?</div><div>Answer that a few hundred times.<br>Get scores that actually mean something.</div></div></div>
+ <div class="r"><div class="panel"><div class="userbar"><span class="ava" style="width:26px;height:26px"></span><span>zen</span><button class="small link">Log out</button></div><div class="h2">What do you want to rank?</div><div class="seg"><button class="on">Anime</button><button>Manga</button></div><div class="lab2">List statuses</div><div class="chips"><span class="chip on">✓ Completed 36</span><span class="chip">Watching 4</span><span class="chip">Dropped 2</span></div>
+ ${goal}${est}
+ <div class="offer"><button class="swrow"><span class="switch"><i></i></span><span class="grow"><b class="strong">Use my AniList scores for Rough Sort</b><span class="small">29 of 36 titles have a score</span></span></button></div>
+ <button class="go">Start Rough Sort →</button><div class="small fine">Read-only until you confirm an Import. Your progress stays in this browser.</div></div></div></div></div></div>`
+}
+/* ---------- Duel (Q6 = 2) ---------- */
+function duelScreen(){
+ const ref=S.refine==='yes',sc=S.goal==='scores'
+ const a=T[16],b=T[20]
+ const card=t=>`<div class="card"><div class="bg ph" style="--c:${t.c}"></div><div class="cv ph" style="--c:${t.c}"></div><div class="t">${t.n}</div><div class="m">TV · 2022 · 24 eps</div></div>`
+ return `<div class="duel"><div class="topline"><i style="width:${ref?90:45}%"></i></div><div class="float-info"><span class="pill">${ref&&sc?'Refine · ':''}${kao(2)} Okay · 6/10${sc?'':' · 2 spots left'}</span></div><div class="pair">${card(a)}${card(b)}<button class="seam">≈<span>Same</span><span class="kbd">↓</span></button></div><div class="float-undo"><span class="pill">↶ Undo <span class="kbd">⌫</span></span></div></div>`
+}
+/* ---------- Complete (Q11) ---------- */
+function complete(){
+ const v=V('q11'),g=S.goal
+ const nm=arr=>[...arr].sort((a,b)=>a.n.localeCompare(b.n))
+ const btns=`<div class="row"><button class="go" onclick="S.screen='preview';render()">Score my Ranking →</button><button class="go sm">↶ Undo last answer</button></div>`
+ if(g==='full'){ // today's screen
+  let p=1
+  return `<div class="ranked"><div class="h1">Every Band is ranked</div><div class="small">36 titles in your Ranking</div>${BANDS.map((b,i)=>`<section class="res">${kao(i,14)}${T.filter(t=>t.band===i).map(t=>`<div class="ln"><b>${p++}</b><span>${t.n}</span></div>`).join('')}</section>`).join('')}${btns}</div>`}
+ if(v===1) return `<div class="ranked"><div class="h1" style="opacity:.4">(no Complete screen on Scores)</div><p>The last Duel answer goes straight to Preview with a toast: <b>"Every score is settled"</b>.</p><button class="go" onclick="S.screen='preview';showToast('Every score is settled');render()">Simulate the last answer →</button></div>`
+ const head=`<div class="h1">Every score is settled</div><div class="small">36 titles · titles on the same score have no order among themselves</div>`
+ const byBand=i=>{const by={};T.filter(t=>t.band===i).forEach(t=>(by[t.whole]??=[]).push(t));return Object.keys(by).map(Number).sort((a,b)=>b-a).map(l=>[l,nm(by[l])])}
+ if(v===0) return `<div class="ranked">${head}${BANDS.map((b,i)=>`<section class="res">${kao(i,14)}${byBand(i).map(([l,ts])=>`<div class="ln"><b>${l}</b><span class="chipln">${ts.map(t=>`<span>${t.n}</span>`).join('')}</span></div>`).join('')}</section>`).join('')}${btns}</div>`
+ if(v===3) return `<div class="ranked">${head}${BANDS.map((b,i)=>`<section class="res">${kao(i,14)}${byBand(i).map(([l,ts])=>`<div class="ln"><b>${l}</b><span>${ts.map(t=>t.n).join(' · ')}${ts.length>1?' <span class="tie">same score · no order</span>':''}</span></div>`).join('')}</section>`).join('')}${btns}</div>`
+ const all={};T.forEach(t=>(all[t.whole]??=[]).push(t))
+ const ks=Object.keys(all).map(Number).sort((a,b)=>b-a)
+ if(v===2) return `<div class="ranked">${head}<section class="res">${ks.map(l=>`<div class="ln"><b>${l}</b><span class="chipln">${nm(all[l]).map(t=>`<span style="box-shadow:inset 0 0 0 2px ${BANDS[t.band].c}">${t.n}</span>`).join('')}</span></div>`).join('')}</section>${btns}</div>`
+ const max=Math.max(...ks.map(l=>all[l].length))
+ return `<div class="ranked">${head}<div class="lvbars">${ks.map(l=>`<div class="lb"><b>${l}</b><div class="tr" style="width:${all[l].length/max*100}%">${all[l].map(t=>`<i style="flex:1;background:${BANDS[t.band].c}"></i>`).join('')}</div><span>${all[l].length}</span></div>`).join('')}</div><div class="small">Names and old → new scores are on the next screen.</div>${btns}</div>`
+}
+/* ---------- Preview (Q4 = 1, Q5 = 4) ---------- */
+function preview(){
+ const g=S.goal,u=unsOn()&&g==='scores',v8=V('q8'),v9=V('q9')
+ const lvl=t=>g==='scores'?t.whole:t.half
+ const uns=T.filter(isU),settled=T.filter(t=>!isU(t)),nU=uns.length
+ const goBtn=`<button class="go sm" onclick="S.screen='duel';S.refine='yes';save();render()">Go to Duels →</button>`
+ const req=x=>`requestGoal('${x}')`
+ const stepFull=`<div class="seg" title="Score Step"><button>0.1</button><button class="on">0.5</button></div>`
+ let step=stepFull
+ if(g==='scores'){
+  if(v8===0) step=`<div class="seg lock"><button class="on" disabled>Whole</button><button disabled>0.5</button><button disabled>0.1</button></div><span class="small">Scores always use whole points</span>`
+  if(v8===1) step=`<div class="seg"><button class="on">Whole</button><button style="opacity:.45" onclick="${req('full')}" title="Switch to Full Ranking for 0.5">0.5</button><button style="opacity:.45" onclick="${req('full')}" title="Switch to Full Ranking for 0.1">0.1</button></div><span class="small">Scores always use whole points</span>`
+  if(v8===2) step=`<div class="seg lock"><button class="on" disabled>Whole</button><button disabled>0.5</button><button disabled>0.1</button></div><span class="small">Need 0.5? <button class="link small" onclick="${req('full')}">Switch to Full Ranking</button></span>`
+  if(v8===3) step=`<span class="lockwrap"><div class="seg lock"><button class="on" disabled>Whole</button><button disabled>0.5</button><button disabled>0.1</button></div><span class="tipb">Scores always use whole points, which is why it needs fewer Duels. Switch to Full Ranking for 0.5 or 0.1.</span></span>`
+  if(v8===4) step=`<span class="stepchip">Step: whole points</span><span class="lockwrap"><span class="info-i">i</span><span class="tipb">Scores always use whole points, which is why it needs fewer Duels. Switch to Full Ranking for 0.5 or 0.1.</span></span>`
+ }
+ const bar=`<label>Best <select class="lsel"><option>10</option></select></label><label>Worst <select class="lsel"><option>3</option></select></label><div class="seg"><button class="on">Linear</button><button>Bell</button></div>${goalSeg(req)}${step}<span class="small">Score Format: 10 Point Decimal</span>`
+ /* rows */
+ const sortIn=arr=>g==='scores'?[...arr].sort((a,b)=>a.n.localeCompare(b.n)):arr
+ const inPlace=u&&v9===2&&S.showU
+ const pool=inPlace?T:settled
+ const by={};pool.forEach(t=>{(by[lvl(t)]??=[]).push(t)})
+ const keys=Object.keys(by).map(Number).sort((a,b)=>b-a)
+ let rows=keys.map(k=>{const plus=u&&v9===4?uns.filter(t=>t.whole===k||t.whole-1===k).length:0
+  return `<div class="tlrow"><div class="tlk">${g==='scores'?k:k.toFixed(1)}<span class="small">${by[k].filter(t=>!isU(t)).length}</span>${plus?`<span class="plus">+${plus}?</span>`:''}</div><div class="tlc">${sortIn(by[k]).map(t=>isU(t)?cover(t,'ghl',badge(t)):cover(t)).join('')}</div></div>`}).join('')
+ const toggle=`<button class="link small" onclick="S.showU=!S.showU;render()">${S.showU?'hide':'show'}</button>`
+ let reveal=''
+ if(S.showU&&(v9===0||v9===3||v9===4)) reveal=`<div style="flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">${uns.map(t=>cover(t,'',badge(t))).join('')}</div>`
+ if(S.showU&&v9===1) reveal=`<div class="unslist">${uns.map(t=>`<div>${kao(t.band,9)}<span class="grow">${t.n}</span><span class="rb">${unsRange(t)}</span></div>`).join('')}</div>`
+ const line=`<span class="small strong grow">${nU} titles not settled after your settings change · about ${REF} Refine Duels · ${toggle}</span>${goBtn}${reveal}`
+ const slim=`<div class="tlrow unsrow" style="min-height:0"><div class="tlk">?</div><div class="tlc" style="align-items:center;padding:8px 10px">${line}</div></div>`
+ const card=`<div class="unscard"><span style="font-size:18px">⚠</span>${line}</div>`
+ if(u&&v9!==3) rows=slim+rows
+ const importN=settled.length-6
+ const sub=`${T.length} ranked · 30 change at your Score Format · ${importN} ticked for Import${u?` · <b class="strong">${nU} not settled</b>`:''}`
+ const filt=`<div class="seg"><button class="on">Changing (30)</button><button>All (${T.length})</button></div>`
+ const rng=`<div class="rng">${BANDS.map((b,i)=>`<span>${kao(i)} spans <b>${['10–9','9–8','8–6','5–4','4–3'][i]}</b></span>`).join('')}</div>`
+ return `<div class="pv" onclick="if(S.pop!=null){S.pop=null;render()}"><div class="pv-head"><div><div class="h1">Preview</div><div class="small">${sub}</div></div><div class="grow"></div><button class="go">Import ${importN} scores →</button></div><div class="pv-set">${bar}</div>${u&&v9===3?card:''}${filt}<div class="tl">${rows}</div>${rng}</div>`
+}
+/* ---------- render ---------- */
+function render(){
+ const app=document.getElementById('app')
+ if(S.screen==='start') app.innerHTML=start()
+ else app.innerHTML=`<div class="shell"><aside class="side">${sidebar()}</aside><main class="main">${S.screen==='duel'?duelScreen():S.screen==='complete'?complete():preview()}</main></div>`
+ if(S.dlg)app.insertAdjacentHTML('beforeend',dialog())
+ if(S.idlg)app.insertAdjacentHTML('beforeend',idialog())
+ if(S.toast)app.insertAdjacentHTML('beforeend',`<div class="toast">${S.toast}</div>`)
+ renderPicker()
+}
+function renderPicker(){
+ document.getElementById('rnd').textContent=ROUND
+ const Q=QS[S.q],d=V(Q.id),D=Q.designs[d]
+ document.getElementById('qs').innerHTML=`<div class="grp q"><span>Question</span>${QS.map((q,i)=>`<button class="${S.q===i?'on':''}" onclick="S.q=${i};S.screen=QS[${i}].screen;S.ipop=false;save();render()">${q.label}</button>`).join('')}</div>`
+ document.getElementById('dname').textContent=`${d+1}/5  ${D.name}`;document.getElementById('ddesc').textContent=D.desc
+ const grp=(label,key,opts)=>`<div class="grp"><span>${label}</span>${opts.map(([v,l])=>`<button class="${S[key]===v?'on':''}" onclick="S['${key}']='${v}';save();render()">${l}</button>`).join('')}</div>`
+ document.getElementById('states').innerHTML=
+  grp('Screen','screen',[['start','Start'],['duel','Duel'],['complete','Complete'],['preview','Preview']])+
+  `<div class="grp"><span>Menu</span><button onclick="if(S.screen==='start')S.screen='preview';S.menu=true;render()">Open menu</button></div>`+
+  grp('Goal','goal',[['scores','Scores'],['full','Full Ranking']])+
+  grp('Preview','uns',[['0','all settled'],['7','7 unsettled']])+
+  grp('Duel','refine',[['no','ordinary'],['yes','Refine Duel']])
+}
+const go=dir=>{const id=QS[S.q].id;S.v[id]=(S.v[id]+dir+5)%5;S.screen=QS[S.q].screen;S.ipop=false;S.showU=false;save();render()}
+document.getElementById('prev').onclick=()=>go(-1);document.getElementById('next').onclick=()=>go(1)
+addEventListener('keydown',e=>{if(e.target.closest&&e.target.closest('select,input'))return;if(e.key==='ArrowLeft')go(-1);if(e.key==='ArrowRight')go(1);if(e.key==='Escape'){S.menu=false;S.dlg=false;S.idlg=false;S.ipop=false;S.pop=null;render()}})
+{const p=document.getElementById('picker'),h=document.getElementById('phd');let sx=null,sy,ox,oy
+ h.addEventListener('pointerdown',e=>{const r=p.getBoundingClientRect();sx=e.clientX;sy=e.clientY;ox=r.left;oy=r.top;h.setPointerCapture(e.pointerId)})
+ h.addEventListener('pointermove',e=>{if(sx==null)return;p.style.left=ox+e.clientX-sx+'px';p.style.top=oy+e.clientY-sy+'px';p.style.right='auto';p.style.bottom='auto'})
+ h.addEventListener('pointerup',()=>sx=null)}
+render()
+</script>
+</body>
+</html>
