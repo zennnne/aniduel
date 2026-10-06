@@ -151,6 +151,11 @@ export type Prompt =
        * (between Tier lo-1 and Tier hi), and `pivot` is the Tier it is compared with now.
        */
       bounds?: { lo: number; hi: number; pivot: number }
+      /**
+       * Scores only: a Refine Duel (GLOSSARY), asked because something moved a level boundary after every score
+       * had been settled once (a settings change, sync, Forgotten, Band move, Re-rank). Display only.
+       */
+      refine?: true
     }
   | { kind: 'all-complete' }
 
@@ -359,6 +364,8 @@ type Machine = {
   cache: { layout?: ScoresLayout | null; knowledge: Map<Segment, SegmentKnowledge> }
   /** The Segment the last Duel answer was in: under Scores only it can have a title to place. */
   answered: Segment | null
+  /** Whether every score was settled on Scores at some point: Duels on Scores after that are Refine Duels. */
+  settledOnce: boolean
 }
 
 type Place = { band: BandIndex; sub?: SubBandIndex }
@@ -914,7 +921,7 @@ function nextPrompt(machine: Machine): Prompt {
   const high = Math.max(insertion.id, b)
   const [left, right] = sideHash(machine.seed, low, high) & 1 ? [high, low] : [low, high]
   const duel = { kind: 'duel' as const, band, a: insertion.id, b, left, right }
-  if (!interval) return withSub(duel, sub)
+  if (!interval) return withSub(machine.settledOnce ? { ...duel, refine: true as const } : duel, sub)
   return withSub({ ...duel, bounds: { lo: interval.lo + offset, hi: interval.hi + offset, pivot: pivot + offset } }, sub)
 }
 
@@ -967,6 +974,7 @@ export function replay(log: DuelLog): RankingState {
     seed,
     cache: { knowledge: new Map() },
     answered: null,
+    settledOnce: false,
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (let step = 0; step < effective.length; step++) {
@@ -981,6 +989,11 @@ export function replay(log: DuelLog): RankingState {
     if (machine.answered && machine.sortGoal === 'scores') machine.cache.knowledge.delete(machine.answered)
     else machine.cache = { knowledge: new Map() }
     refocus(machine)
+    // A focused Band always has work, so only a Ranking with no focus can be all settled. An empty one doesn't count.
+    if (!machine.settledOnce && machine.roughSortQueue.length === 0 && machine.focus === null) {
+      const layout = scoresLayout(machine)
+      machine.settledOnce = layout !== null && layout.size > 0 && BANDS.every((band) => !hasWork(machine, band))
+    }
   }
   const layout = scoresLayout(machine)
   const standing = layout ? standingNow(machine, layout) : null
