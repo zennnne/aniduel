@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PROTOTYPE · Board (#32)</title>
+<style>
+:root{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc;--danger:#e05555;--warn:#f2b13d;--on-accent:#fff;
+--band-loved:#ffb3c8;--band-liked:#ffe08a;--band-okay:#bfe8c9;--band-meh:#c9d4ff;--band-hated:#cfc9d6;--band-ink:#4a3b52;
+--sub-best:hsl(345 100% 70%);--sub-middle:hsl(345 100% 80%);--sub-lowest:hsl(345 100% 90%)}
+:root[data-theme=dark]{--bg:#0b1622;--fg:#151f2e;--fg2:#1f2a3c;--tx:#9fadbd;--tx-strong:#edf1f5;--nav:#0b1622;--navtx:#9fadbd}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:Overpass,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;background:#888;color:var(--tx);user-select:none;-webkit-user-select:none}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font:inherit}
+.kao{white-space:nowrap;padding:2px 7px;border-radius:999px;color:var(--band-ink);font-weight:700;display:inline-block;line-height:1.4}
+.kbd{display:inline-flex;align-items:center;justify-content:center;font:700 11px ui-monospace,monospace;min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:#0006;color:#fff}
+.go{background:var(--blue);color:#fff;font-weight:800;padding:10px 18px;border-radius:12px;display:inline-flex;gap:8px;align-items:center;justify-content:center;white-space:nowrap}
+.ghostbtn{padding:8px 14px;border-radius:10px;background:var(--fg2);color:var(--tx-strong);font-weight:700;white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
+.ghostbtn:disabled,.pill:disabled{opacity:.4;cursor:default}
+.small{font-size:12px}.fine{opacity:.7}
+.mobile .kbd{display:none}
+
+#stage{height:100%;display:flex;align-items:center;justify-content:center}
+#frame{width:100%;height:100%;background:var(--bg);display:grid;grid-template-columns:230px 1fr;overflow:hidden;position:relative}
+.mobile #frame{width:390px;height:800px;max-height:96vh;border-radius:28px;box-shadow:0 0 0 10px #111,0 20px 60px #0008;grid-template-columns:1fr;grid-template-rows:auto 1fr}
+.side{background:var(--nav);color:var(--navtx);padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.logo{font-weight:900;font-size:20px;color:#fff}.logo b{color:var(--blue)}
+.bandrow{display:flex;gap:8px;align-items:center;font-size:12px}
+.bandrow .bar{flex:1;height:6px;border-radius:3px;background:#ffffff22;overflow:hidden}.bandrow .bar i{display:block;height:100%;background:var(--blue)}
+.mobile .side{flex-direction:row;align-items:center;padding:10px 14px}.mobile .side .hide-m{display:none}
+.side .sact{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.side .sact .go{width:100%}
+.side .sact .ghostbtn{background:#ffffff14;color:#fff;justify-content:center}
+.mobile .side .sact{flex-direction:row;margin:0 0 0 auto}.mobile .side .sact .go{width:auto;padding:7px 10px;font-size:12px}.mobile .side .sact .ghostbtn{padding:6px 8px;font-size:12px}
+#main{min-width:0;min-height:0;display:flex;flex-direction:column;position:relative;overflow:hidden}
+#app{height:100%}
+
+.cv{aspect-ratio:2/3;border-radius:6px;background:linear-gradient(160deg,hsl(var(--h) 70% 62%),hsl(calc(var(--h) + 40) 45% 25%));display:flex;align-items:flex-end;color:#fff;font-weight:900;font-size:11px;padding:4px;flex-shrink:0;text-shadow:0 1px 2px #0008;overflow:hidden}
+.cv.bare{font-size:0;padding:0}
+.nm{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2}
+[data-id]{cursor:grab}
+.lifted{opacity:.25}
+.over{outline:3px solid var(--blue)!important;outline-offset:-3px}
+#ghost{position:fixed;z-index:999;pointer-events:none;transform:translate(-50%,-60%) rotate(-4deg);width:56px;box-shadow:0 10px 30px #0009;border-radius:6px}
+#ghost .cv{width:56px}
+.search{display:flex;align-items:center;gap:8px;background:var(--fg);border:1px solid var(--fg2);border-radius:10px;padding:7px 10px;min-width:0}
+.search input{border:none;background:none;outline:none;color:var(--tx-strong);min-width:0;flex:1}
+.empty-band{font-size:12px;opacity:.6;padding:10px;font-style:italic}
+
+.pg{display:flex;flex-direction:column;height:100%;position:relative}
+.ttl{font-size:20px;font-weight:900;color:var(--tx-strong)}
+.mobile .ttl{font-size:17px}
+
+/* ===== Q4 header variants ===== */
+.hd{display:flex;gap:10px;align-items:center;padding:14px 18px;flex-wrap:wrap}
+.mobile .hd{padding:10px 12px;gap:8px}.mobile .hd .search{flex:1 1 100%;order:5}
+.mobile .hd .go{padding:8px 12px;font-size:12px}.mobile .hd .ghostbtn{padding:6px 10px;font-size:12px}
+/* H2 search hero + bottom bar */
+.h2top{padding:14px 18px 10px;display:flex;flex-direction:column;gap:8px}
+.h2top .search{padding:11px 14px;font-size:15px;border-width:2px}
+.mobile .h2top{padding:10px 12px 8px}
+.footbar{display:flex;gap:10px;align-items:center;padding:10px 18px;background:var(--fg);border-top:1px solid var(--fg2)}
+.footbar .msg{flex:1;font-size:12px}
+.mobile .footbar{padding:8px 12px}.mobile .footbar .msg{display:none}.mobile .footbar .go{flex:1}
+/* H3 breadcrumb / banner */
+.crumb{display:flex;gap:10px;align-items:center;padding:12px 18px}
+.crumb .back{color:var(--blue);font-weight:800;white-space:nowrap}
+.crumb .sep{opacity:.4}
+.lcbanner{margin:0 18px 10px;border-radius:12px;background:color-mix(in srgb,var(--blue) 14%,var(--fg));border:1px solid color-mix(in srgb,var(--blue) 40%,transparent);padding:12px 14px;display:flex;gap:12px;align-items:center}
+.lcbanner .tx{flex:1}.lcbanner b{color:var(--tx-strong)}
+.mobile .crumb{padding:10px 12px;flex-wrap:wrap}.mobile .crumb .search{flex:1 1 100%}
+.mobile .lcbanner{margin:0 12px 8px;flex-wrap:wrap;padding:10px}.mobile .lcbanner .go{flex:1}
+/* H4 floating pills */
+.fab{position:absolute;right:18px;bottom:18px;display:flex;gap:8px;z-index:15}
+.pill{display:inline-flex;gap:6px;align-items:center;font-size:13px;padding:10px 16px;border-radius:999px;background:var(--nav);color:#fff;box-shadow:0 6px 20px #0005;font-weight:700;white-space:nowrap}
+.pill.pri{background:var(--blue)}
+.mobile .fab{right:76px;bottom:12px;left:12px;justify-content:flex-end}
+
+/* ===== columns (D1) ===== */
+.cols{flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;padding:0 18px 18px;min-height:0}
+.col{background:var(--fg);border-radius:12px;display:flex;flex-direction:column;min-height:0;border-top:6px solid var(--c);position:relative}
+.ch{padding:10px;display:flex;justify-content:space-between;align-items:center;gap:6px;font-weight:800;color:var(--tx-strong)}
+.ch .n{background:var(--c);color:var(--band-ink);border-radius:999px;padding:1px 9px}
+.list{flex:1;overflow:auto;padding:0 8px 70px;display:flex;flex-direction:column;gap:6px}
+.card{display:flex;gap:8px;align-items:center;background:var(--fg2);border-radius:8px;padding:5px;font-size:12px;color:var(--tx-strong);flex-shrink:0}
+.card .cv{width:32px}
+/* M5 mobile */
+.body{flex:1;display:grid;grid-template-columns:1fr 62px;min-height:0;gap:6px;padding:0 6px 8px 12px}
+.body .card .cv{width:36px}
+.rail{display:flex;flex-direction:column;gap:6px;justify-content:center}
+.rail>div{flex:1;max-height:110px;border-radius:12px;background:var(--c);color:var(--band-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-weight:900;font-size:12px;opacity:.85;position:relative;overflow:hidden}
+.rail>div.sel{opacity:1;box-shadow:inset 0 0 0 2px var(--band-ink)}
+.rail .kao{font-size:8px!important;padding:1px 2px;background:#fff6!important}
+
+/* ===== Q7 search ===== */
+mark{background:#ffe08a;color:inherit;border-radius:3px;padding:0 1px}
+.nomatch{margin:0 18px 10px;padding:10px 14px;border-radius:12px;background:var(--fg);border:1px dashed var(--tx);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.nomatch button{color:var(--blue);font-weight:800}
+.mobile .nomatch{margin:0 12px 8px}
+.col.thin{align-items:center;justify-content:flex-start;gap:6px;padding-top:12px;color:var(--tx-strong);transition:all .2s}
+.cols{transition:grid-template-columns .2s}
+.rail>div.dim{opacity:.35}
+.tray{margin:0 18px 10px;padding:10px;border-radius:12px;background:var(--fg);box-shadow:0 0 0 2px var(--blue);display:flex;flex-direction:column;gap:8px}
+.tray .trow{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.tray .card{min-width:200px;max-width:220px}
+.mobile .tray{margin:0 12px 8px}
+.kbh{margin:0 18px 8px;font-size:12px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.kbh .kbd{background:var(--nav)}
+.card.kbsel{outline:3px solid var(--blue);outline-offset:-1px}
+.search [data-clear]{opacity:.6}
+/* ===== Q8 Rough Sort mock ===== */
+.rs{height:100%;position:relative;overflow:hidden;background:var(--nav);color:#fff}
+.rs .bg{position:absolute;inset:-20px;background:linear-gradient(160deg,hsl(var(--h) 70% 55%),hsl(calc(var(--h) + 40) 45% 20%));filter:blur(14px) brightness(.45)}
+.rs .topline{position:absolute;top:0;left:0;right:0;height:4px;background:#0006;z-index:6}.rs .topline i{display:block;height:100%;background:var(--blue)}
+.rs .float-info{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6}
+.rs .pill{font-size:12px;padding:6px 11px;background:#0008;backdrop-filter:blur(6px)}
+.rs .pill:hover:not(:disabled){background:var(--blue)}
+.rs .pill.hl{background:#3db4f233;box-shadow:inset 0 0 0 1px var(--blue)}
+.rs .pill .kbd{height:16px;min-width:16px;font-size:10px;background:#fff3}
+.rs .corner{position:absolute;top:12px;right:14px;z-index:6}
+.rsin{position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:30px;align-items:center;height:100%;padding:40px 50px}
+.rsin .left{display:flex;flex-direction:column;align-items:flex-end;gap:10px;text-align:right}
+.rsin .left .cv{height:52vh;font-size:16px;padding:10px;box-shadow:0 10px 40px #000a;border-radius:10px}
+.rsin .t{font-size:24px;font-weight:800;line-height:1.15}.rsin .m{color:#fffc}
+.ladder{display:flex;flex-direction:column;gap:10px;max-width:340px}
+.rs .bandbtn{display:flex;align-items:center;justify-content:space-between;gap:8px;border-radius:16px;background:#0007;backdrop-filter:blur(8px);padding:14px 16px;transition:transform .1s}
+.rs .bandbtn:hover{background:#ffffff26;transform:translateX(6px)}
+.rs .bandbtn .lab{font-size:12px;font-weight:700}
+.subrow{display:flex;gap:8px;flex-wrap:wrap}
+.clickrows{cursor:pointer;border-radius:8px;padding:4px;margin:-4px}.clickrows:hover{background:#ffffff14}
+.sidelink{color:var(--blue);font-weight:800;text-align:left;display:flex;gap:6px;align-items:center}
+.mobile .rsin{grid-template-columns:1fr;padding:46px 14px 14px;gap:12px;align-content:start}
+.mobile .rsin .left{align-items:center;text-align:center}.mobile .rsin .left .cv{height:22vh}
+.mobile .rsin .t{font-size:17px}
+.mobile .ladder{max-width:none;gap:6px}.mobile .rs .bandbtn{padding:10px 14px}
+/* ===== Rough Sort Board pill caption ===== */
+.boardrow{display:flex;gap:10px;align-items:center;margin-top:2px}
+.boardrow .cap{font-size:12px;color:#fffb;line-height:1.3}
+/* ===== Q9 Start ===== */
+#frame.noside{grid-template-columns:1fr}#frame.noside .side{display:none}
+.mobile #frame.noside{grid-template-rows:1fr}
+.st{height:100%;overflow:auto;position:relative;color:var(--tx)}
+.st .h2{font-size:22px;font-weight:800;color:var(--tx-strong)}
+.st .panel{background:var(--fg);border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:13px;box-shadow:0 10px 40px #0002;width:100%;max-width:450px}
+.st-hero{display:grid;grid-template-columns:1.1fr 1fr;min-height:100%}
+.st-hero .l{position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:40px}
+.st-hero .l::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 20%,var(--bg) 95%)}
+.collage-bg{position:absolute;inset:-60px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px;transform:rotate(-8deg);opacity:.55;align-content:start}
+.collage-bg .cv{width:100%}
+.hero-copy{position:relative;z-index:1;display:flex;flex-direction:column;gap:12px;color:var(--tx-strong)}
+.hero-copy .big{font-size:40px;font-weight:900;line-height:1.05}
+.st-hero .r{display:flex;align-items:center;justify-content:center;padding:30px}
+.ava{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,var(--blue),#c063ff);display:inline-block}
+.userbar{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--tx-strong)}
+.seg{display:inline-flex;background:var(--fg2);border-radius:10px;padding:3px;align-self:flex-start}
+.seg button{padding:7px 18px;border-radius:8px;font-weight:700}.seg button.on{background:var(--blue);color:#fff}
+.lab2{font-size:12px;opacity:.7;margin-bottom:-6px}
+.chips2{display:flex;gap:6px;flex-wrap:wrap}
+.chip{padding:5px 10px;border-radius:999px;background:var(--fg2);font-size:12px;color:var(--tx-strong)}
+.chip.on{background:color-mix(in srgb,var(--blue) 20%,var(--fg2))}.chip.off{opacity:.5}
+.est{color:var(--tx-strong);line-height:1.5}.est .small{display:block;color:var(--tx)}
+.link2{color:var(--blue);text-decoration:underline;align-self:flex-start;cursor:pointer}
+.go.muted{background:var(--fg2);color:var(--tx-strong)}
+.offer{border:1px solid var(--fg2);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.offer.sw.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+.swrow{display:flex;gap:12px;align-items:center;cursor:pointer}
+.switch{width:38px;height:22px;border-radius:999px;background:var(--fg2);position:relative;flex-shrink:0;transition:background .15s}
+.switch i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0004;transition:left .15s}
+.on .switch{background:var(--blue)}.on .switch i{left:19px}
+.det{display:flex;flex-direction:column;gap:10px}
+.red{color:var(--danger);font-weight:700}
+.redtag{font-size:10px;font-weight:800;color:#fff;background:var(--danger);border-radius:999px;padding:1px 7px;margin-left:4px}
+.redwarn{background:color-mix(in srgb,var(--danger) 12%,var(--fg));border:1px solid var(--danger);color:var(--danger);border-radius:10px;padding:9px 11px;font-size:12px;line-height:1.4}
+.redwarn b{color:var(--danger)}
+.choices{display:flex;flex-direction:column;gap:8px}
+.choice{display:flex;gap:10px;align-items:flex-start;text-align:left;border:1px solid var(--fg2);border-radius:12px;padding:11px}
+.choice.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue);background:color-mix(in srgb,var(--blue) 6%,var(--fg))}
+.rad{width:16px;height:16px;border-radius:50%;border:2px solid var(--tx);flex-shrink:0;margin-top:2px}
+.choice.on .rad{border:5px solid var(--blue)}
+.choices .det{padding:4px 2px}
+.bbars{display:flex;flex-direction:column;gap:4px}
+.bb{display:grid;grid-template-columns:86px 1fr 34px;gap:8px;align-items:center;font-size:12px;color:var(--tx-strong)}
+.bb .kao{justify-self:start}
+.bb b{text-align:right}
+.track{height:10px;border-radius:5px;background:var(--fg2);overflow:hidden}.track i{display:block;height:100%;border-radius:5px}
+.track.dashed{background:repeating-linear-gradient(90deg,var(--fg2) 0 6px,transparent 6px 10px)}
+.bbars.big .bb{grid-template-columns:110px 1fr 44px;font-size:15px}.bbars.big .track{height:22px;border-radius:8px}
+.stack{display:flex;height:12px;border-radius:6px;overflow:hidden;gap:2px}.stack i.un{background:repeating-linear-gradient(90deg,var(--fg2) 0 4px,transparent 4px 7px)}
+.col2{display:flex;flex-direction:column;gap:8px}.col2 .go,.col2 .ghostbtn{justify-content:center}
+.row2{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px}
+.dlg.wide{width:min(500px,94%)}
+.st-step{display:flex;align-items:center;justify-content:center;padding:30px}
+.stepin{display:grid;grid-template-columns:1.1fr 1fr;gap:40px;max-width:1000px;width:100%;align-items:center}
+.stepin .l2,.stepin .r2{display:flex;flex-direction:column;gap:14px}
+.h1s{font-size:28px;font-weight:900;color:var(--tx-strong);line-height:1.1}
+.mobile .st-hero{grid-template-columns:1fr}.mobile .st-hero .l{display:none}.mobile .st-hero .r{padding:12px}
+.mobile .st .panel{padding:16px}
+.mobile .stepin{grid-template-columns:1fr;gap:18px}.mobile .st-step{padding:16px;align-items:flex-start}
+/* ===== Q10-12 ===== */
+.legend{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--tx-strong)}
+.kchips{display:flex;gap:5px;flex-wrap:wrap}.kchips .kao b{margin-left:3px}
+.hist{display:flex;gap:6px;align-items:flex-end;justify-content:space-between;padding:4px 2px}
+.hc{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;color:var(--tx-strong)}
+.hc i{width:100%;border-radius:6px 6px 2px 2px;min-height:2px}.hc i.un{background:repeating-linear-gradient(0deg,var(--fg2) 0 4px,transparent 4px 7px)}
+.hc .kao{font-size:8px!important;padding:1px 3px}
+.bul{padding-left:18px;display:flex;flex-direction:column;gap:3px}
+.redcard{border-color:var(--danger)!important;box-shadow:0 0 0 1px var(--danger)!important}
+.redline{color:var(--danger);font-size:12px;border:1px solid var(--danger);border-radius:10px;padding:9px 11px;background:color-mix(in srgb,var(--danger) 8%,var(--fg))}
+.redline .link2{color:var(--danger);font-weight:700}
+.go.sm{padding:7px 12px;font-size:12px;border-radius:8px}.go.danger{background:var(--danger)}
+.ghostbtn.sm2{padding:6px 10px;font-size:12px}
+/* ===== Q6 Sub-band display ===== */
+.card.mk{box-shadow:inset 4px 0 0 var(--s)}
+.card .sb{margin-left:auto;font-size:10px;font-weight:800;color:var(--band-ink);background:var(--s);border-radius:999px;padding:1px 7px;white-space:nowrap}
+.sec{display:flex;flex-direction:column;gap:6px;padding-bottom:6px}
+.sech{position:sticky;top:0;z-index:2;display:flex;justify-content:space-between;background:var(--s);color:var(--band-ink);font-weight:900;font-size:12px;border-radius:8px;padding:4px 10px}
+.chips{display:flex;gap:4px;flex-wrap:wrap;padding:0 8px 8px}
+.chips button{font-size:11px;border-radius:999px;padding:2px 8px;background:color-mix(in srgb,var(--s) 45%,var(--fg));color:var(--band-ink);font-weight:700}
+.chips button.on{background:var(--s);outline:2px solid var(--band-ink)}
+.sbar{display:flex;gap:2px;margin:0 8px 8px;border-radius:8px;overflow:hidden}
+.sbar span{font-size:10px;font-weight:800;color:var(--band-ink);padding:3px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ===== Q5 Sub-band picker variants ===== */
+.scrim{position:absolute;inset:0;background:#0009;display:flex;align-items:center;justify-content:center;z-index:60}
+.dlg{background:var(--fg);border-radius:16px;padding:20px;width:min(400px,92%);display:flex;flex-direction:column;gap:12px;color:var(--tx)}
+.dlg .h2{font-size:17px;font-weight:800;color:var(--tx-strong)}
+.subs{display:flex;gap:6px}.subs button{flex:1;display:flex;justify-content:space-between;align-items:center;gap:6px;padding:12px;border-radius:12px;color:var(--band-ink);font-weight:800}
+.subs button:hover{outline:2px solid var(--blue)}
+/* P2 zones inside the split column, shown while dragging */
+.subzones{display:none;position:absolute;inset:44px 6px 6px;flex-direction:column;gap:6px;z-index:5}
+body.dragging .subzones{display:flex}
+.subzones>div{flex:1;border-radius:10px;background:color-mix(in srgb,var(--s) 85%,transparent);color:var(--band-ink);font-weight:900;display:flex;align-items:center;justify-content:center;gap:8px;font-size:14px;border:2px dashed #0002}
+.rail .subzones{inset:2px;gap:2px}.rail .subzones>div{font-size:9px;border-radius:6px;border:none}
+/* P3 popover */
+.pop{position:absolute;z-index:60;background:var(--fg);border-radius:14px;box-shadow:0 10px 40px #0007;padding:10px;display:flex;flex-direction:column;gap:8px;width:250px}
+.pop .subs{flex-direction:column}.pop .subs button{padding:9px 12px}
+.popscrim{position:absolute;inset:0;z-index:59}
+/* P4 inline pending card */
+.pending{background:var(--fg);border:2px solid var(--blue);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:6px;flex-shrink:0;box-shadow:0 4px 14px #0003}
+.pending .top{display:flex;gap:8px;align-items:center;font-size:12px;color:var(--tx-strong);font-weight:700}
+.pending .top .cv{width:28px}
+.pending .subs{flex-direction:column;gap:4px}.pending .subs button{padding:6px 8px;font-size:12px}
+.pending .x{font-size:11px;opacity:.7;text-align:center}
+/* P5 bottom sheet */
+.sheetscrim{position:absolute;inset:0;background:#0007;z-index:60;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--fg);border-radius:18px 18px 0 0;padding:16px 18px 20px;width:min(560px,100%);display:flex;flex-direction:column;gap:12px}
+.sheet .hd2{display:flex;gap:12px;align-items:center;color:var(--tx-strong);font-weight:800}
+.sheet .hd2 .cv{width:40px}
+.sheet .stripe{display:flex;gap:3px;border-radius:12px;overflow:hidden}
+.sheet .stripe button{flex:1;padding:18px 8px;color:var(--band-ink);font-weight:900;display:flex;flex-direction:column;align-items:center;gap:6px}
+.sheet .stripe button:hover{filter:brightness(1.07)}
+
+#toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--nav);color:#fff;border-radius:999px;padding:8px 8px 8px 16px;display:none;gap:10px;align-items:center;z-index:50;white-space:nowrap;box-shadow:0 6px 20px #0006;font-size:13px}
+#toast button{background:#fff2;border-radius:999px;padding:4px 12px;font-weight:700}
+.has-foot #toast{bottom:70px}.has-fab #toast{bottom:74px}
+
+#pk{position:fixed;right:16px;bottom:16px;z-index:1000;background:#1b1d2e;color:#ddd;border-radius:14px;box-shadow:0 10px 40px #000a;width:320px;font-size:12px;user-select:none}
+#pk .pkh{padding:8px 12px;cursor:move;background:#0004;border-radius:14px 14px 0 0;display:flex;justify-content:space-between;font-weight:700;color:#aaa}
+#pk .body2{padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+#pk .nav{display:flex;gap:8px;align-items:center}
+#pk .nav button{background:#fff1;border-radius:8px;padding:6px 10px;font-weight:900;color:#fff}
+#pk .nav .nm2{flex:1;text-align:center;font-weight:800;color:#fff;font-size:14px}
+#pk .desc{opacity:.8;line-height:1.4}
+#pk .tg{display:flex;gap:4px;flex-wrap:wrap;align-items:center}
+#pk .tg button{background:#fff1;border-radius:999px;padding:4px 10px;color:#ccc}
+#pk .tg button.on{background:var(--blue);color:#fff}
+#pk .tg span{width:52px;opacity:.6}
+</style>
+</head>
+<body>
+<div id="stage"><div id="frame"><aside class="side" id="side"></aside><main id="main"><div id="app"></div><div id="toast"></div><div id="modal"></div></main></div></div>
+<div id="pk">
+  <div class="pkh" id="pkh"><span>⠿ PROTOTYPE · Board · Round 7</span><span>← →</span></div>
+  <div class="body2">
+    <div class="tg"><span>Screen</span><button data-tab="start">Start (Q10-12)</button><button data-tab="rough">Rough Sort</button><button data-tab="board">Board</button></div>
+    <div class="nav"><button id="prev">←</button><div class="nm2" id="dname"></div><button id="next">→</button></div>
+    <div class="desc" id="ddesc"></div>
+        <div class="tg" id="sqrow"><span>Question</span><button data-sq="0">Q10 Preview</button><button data-sq="1">Q11 Warning</button><button data-sq="2">Q12 Wording</button></div>
+    <div class="tg" id="scrow"><span>Scores</span><button data-scen="hi">96% scored</button><button data-scen="lo">56% scored</button><button data-scen="stars">5 stars</button><button data-scen="same">all the same</button></div>
+    <div class="tg" id="srow"><span>Search</span><button data-q="ha">"ha"</button><button data-q="frieren">"frieren"</button><button data-q="zzzz">no match</button><button data-q="">clear</button></div>
+    <div class="desc" id="lastdrop" style="color:#7bd88f">Last drop: –</div>
+    <div class="tg"><span>State</span><button data-mode="rs">During Rough Sort</button><button data-mode="lc">Last check</button></div>
+    <div class="tg"><span>View</span><button data-view="d">Desktop</button><button data-view="m">Mobile</button><button data-dark>Dark</button></div>
+  </div>
+</div>
+<script>
+const BANDS=[
+ {label:'Loved',kao:'(♡˙︶˙♡)',c:'var(--band-loved)'},
+ {label:'Liked',kao:'(˶ᵔ ᵕ ᵔ˶)',c:'var(--band-liked)'},
+ {label:'Okay',kao:'( ・_・)',c:'var(--band-okay)'},
+ {label:'Meh',kao:'(´・ω・`)',c:'var(--band-meh)'},
+ {label:'Hated',kao:'(×﹏×)',c:'var(--band-hated)'}];
+const SUBS=[{label:'Best',c:'var(--sub-best)',k:'Q'},{label:'Middle',c:'var(--sub-middle)',k:'W'},{label:'Lowest',c:'var(--sub-lowest)',k:'E'}];
+const NAMES=`Frieren: Beyond Journey's End|Steins;Gate|Fullmetal Alchemist: Brotherhood|Mob Psycho 100|Mob Psycho 100 II|Odd Taxi|Bocchi the Rock!|Cowboy Bebop|Neon Genesis Evangelion|Made in Abyss|Vinland Saga|Vinland Saga Season 2|Hunter x Hunter (2011)|Monster|Ping Pong the Animation|Haikyu!!|Haikyu!! Second Season|Haikyu!! To the Top|Kaguya-sama: Love is War|Kaguya-sama: Love is War Ultra Romantic|Spy x Family|Spy x Family Part 2|Chainsaw Man|Jujutsu Kaisen|Jujutsu Kaisen Season 2|Attack on Titan|Attack on Titan Season 2|Attack on Titan Season 3|Attack on Titan Final Season|Demon Slayer|Demon Slayer: Entertainment District Arc|Violet Evergarden|Your Lie in April|Anohana|Clannad|Clannad: After Story|Toradora!|Re:Zero|KonoSuba|KonoSuba 2|Overlord|Sword Art Online|Sword Art Online II|Tokyo Ghoul|Tokyo Ghoul √A|Death Note|Code Geass|Code Geass R2|Gurren Lagann|Kill la Kill|Promare|Little Witch Academia|Cyberpunk: Edgerunners|Dorohedoro|Dungeon Meshi|Oshi no Ko|Blue Lock|Sk8 the Infinity|Yuri!!! on Ice|Erased|The Promised Neverland|The Promised Neverland Season 2|Parasyte|Psycho-Pass|Psycho-Pass 2|Banana Fish|Given|Horimiya|Komi Can't Communicate|My Dress-Up Darling|Lycoris Recoil|Summertime Rendering|Ranking of Kings|86 Eighty-Six|Fire Force|Black Clover|My Hero Academia|My Hero Academia 2|One Punch Man|One Punch Man 2|Bleach: Thousand-Year Blood War|Naruto|Naruto Shippuden|Boruto|Darling in the Franxx|Eromanga Sensei|Mirai Nikki|Akame ga Kill!|Btooom!|Glasslip|Ex-Arm|Pupa|Mars of Destruction|Hand Shakers|School Days|Tokyo Revengers|Wonder Egg Priority|Sonny Boy|Paranoia Agent|Perfect Blue|Paprika|Akira|Ghost in the Shell|Serial Experiments Lain|Texhnolyze|Haibane Renmei|Mushishi|Natsume's Book of Friends|Barakamon|Silver Spoon|March Comes in Like a Lion|Hyouka|K-On!|Lucky Star|Nichijou|Azumanga Daioh|Girls' Last Tour|A Place Further Than the Universe|Laid-Back Camp|Yuru Camp Season 2|Non Non Biyori|Aria the Animation|Kino's Journey|Baccano!|Durarara!!|Durarara!!x2|Samurai Champloo|Trigun|Trigun Stampede|Space Dandy|Carole & Tuesday|Great Pretender|Run with the Wind|Welcome to the Ballroom|Blue Period|Kakegurui|Food Wars!|Dr. Stone|Dr. Stone: Stone Wars|Fruits Basket (2019)|Fruits Basket 2nd Season|Ouran High School Host Club|Nana|Honey and Clover|Wotakoi|Zombie Land Saga|Hinamatsuri|Grand Blue|Gintama|Gintama'|Gintama°|Hellsing Ultimate|Berserk (1997)|Berserk (2016)|Devilman Crybaby|Golden Kamuy|Dororo|Ergo Proxy|Wolf's Rain|Shiki|Another|Higurashi|Elfen Lied|Angel Beats!|Charlotte|Plastic Memories|Kiznaiver|Darker than Black|Noragami|Noragami Aragoto|Bungo Stray Dogs|Akudama Drive|Deca-Dence|Kemono Friends|Plunderer`.split('|');
+const QS=[{key:'pk5F',vs:[
+  {name:'F1 · Plain filter',desc:'What you have now: non-matches hide, counts read "3/52", an empty column says "No match", the search box says "N found". Nothing else.'},
+  {name:'F2 · Highlight + empty banner',desc:'Matched letters are highlighted in names. Empty columns say "No match · drop here still works". If nothing matches at all, a strip under the header says so with a Clear button.'},
+  {name:'F3 · Shrink empty columns',desc:'Columns with no match shrink to a thin strip (still a drop target, still shows its kaomoji + 0). Columns with matches get the room. On mobile, rail blocks with no match are dimmed.'},
+  {name:'F4 · Results tray',desc:'Columns are NOT filtered. Matches appear in a tray above the columns (with their Band pill); drag from the tray to any column.'},
+  {name:'F5 · Keyboard move',desc:'F2 look, plus: "/" focuses search; Enter picks the first match (outlined); then 1-5 moves it (Q/W/E for a split Band); Esc clears. No mouse needed.'}]},
+ {key:'pk5E',vs:[
+  {name:'E1 · Pill next to Undo',desc:'A "Board" pill in the row under the Band buttons, next to Don’t remember / Undo / AniList. Key B.'},
+  {name:'E2 · In the top progress pill',desc:'The "Rough Sort · 142/175" pill at the top becomes a button: "Rough Sort · 142/175 · Board ›".'},
+  {name:'E3 · Sidebar Band rows',desc:'The sidebar Band rows (counts) become clickable, with an "Open Board" link under them. Nothing new on the Rough Sort screen itself. (Desktop only: the sidebar is a strip on mobile.)'},
+  {name:'E4 · Toast after each tap',desc:'After every Band tap a short toast says "Put in Loved · Wrong? Fix on Board". Contextual: it appears right when a mistake happens. Tap a Band to see it.'},
+  {name:'E5 · Corner button',desc:'A labelled button in the top-right corner of the Rough Sort screen: "▦ Board  B", away from the answer buttons so it is never mis-tapped.'}]}];
+let S={ov:0,sq:+(localStorage.pk7Q||0),sv:[+(localStorage.pk7_0||0),+(localStorage.pk7_1||0),+(localStorage.pk7_2||0)],reveal:false,confirmed:false,scen:'hi',offerOn:true,step:null,more:false,qs:0,v:[+(localStorage.pk5F||1),+(localStorage.pk5E||0)],screen:'start',mode:localStorage.pkM||'rs',mobile:localStorage.pkV==='m',dark:localStorage.pkDark==='1',q:'',sel:0,titles:[],undo:[],split:new Set(),clock:1000,pending:null,kb:null};
+let rng=7;const rnd=()=>((rng=(rng*16807)%2147483647)/2147483647);
+function build(){
+ rng=7;S.undo=[];S.clock=1000;S.pending=null;S.kb=null;
+ const T=NAMES.map((n,i)=>({id:i,name:n,h:Math.floor(rnd()*360)}));
+ const sizes=S.mode==='rs'?[34,41,38,19,10]:[52,44,47,22,15];
+ let i=0;const placed=[];
+ sizes.forEach((sz,b)=>{for(let k=0;k<sz&&i<T.length;k++,i++){T[i].band=b;placed.push(T[i])}});
+ for(;i<T.length;i++)T[i].band=null;
+ placed.sort(()=>rnd()-.5);
+ if(S.mode==='rs')placed.forEach((t,k)=>t.t=k);else placed.forEach((t,k)=>t.t=k<150?0:k);
+ S.split=S.mode==='lc'?new Set([0]):new Set();
+ if(S.mode==='lc')T.filter(t=>t.band===0).forEach((t,k)=>t.sub=[0,1,1,2][k%4]);
+ S.titles=T;
+}
+const F=()=>1;
+const inBand=b=>S.titles.filter(t=>t.band===b).sort((x,y)=>y.t-x.t||x.name.localeCompare(y.name));
+const match=t=>!S.q||t.name.toLowerCase().includes(S.q.toLowerCase());
+const filtering=()=>S.q&&F()!==3;
+const shown=b=>filtering()?inBand(b).filter(match):inBand(b);
+const found=()=>S.titles.filter(t=>t.band!=null&&match(t));
+const cv=(t,cls='')=>`<div class="cv ${cls}" style="--h:${t.h}">${t.name.slice(0,14)}</div>`;
+const kao=(b,sz)=>`<span class="kao" style="background:${BANDS[b].c};font-size:${sz}px">${BANDS[b].kao}</span>`;
+const placedCount=()=>S.titles.filter(t=>t.band!=null).length;
+const left=()=>S.titles.length-placedCount();
+const cnt=b=>`${filtering()?shown(b).length+'/':''}${inBand(b).length}`;
+const searchBox=()=>`<label class="search"><span>⌕</span><input id="q" placeholder="Search titles${F()===4&&!S.mobile?'  ( / )':''}" value="${S.q.replace(/"/g,'&quot;')}"><span class="small fine">${S.q?found().length+' found':''}</span>${S.q?'<button data-clear class="small">✕</button>':''}</label>`;
+const rs=()=>S.mode==='rs';
+const undoBtn=(cls='ghostbtn')=>`<button class="${cls}" data-undo ${S.undo.length?'':'disabled'}>↶ Undo</button>`;
+const mainBtn=(cls='go')=>rs()?`<button class="${cls}" data-act>← Back to Rough Sort${S.mobile?'':' · '+left()+' left'}</button>`:`<button class="${cls}" data-act>Continue →</button>`;
+const title=()=>rs()?'Board':'Last check';
+const hint=()=>rs()?`${placedCount()} titles have a Band. Drag a title to another Band.`:'Moves are free until your first Duel. After that, moving a title costs Duels.';
+const none=()=>`<div class="empty-band">${S.q&&filtering()?(F()===0?'No match':'No match · drop here still works'):'Empty'}</div>`;
+const st=b=>S.split.has(b)?`<span class="small fine" >· 3 Sub-bands</span>`:'';
+const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const nm=t=>S.q&&(F()===1||F()===4)?t.name.replace(new RegExp(esc(S.q),'i'),m=>`<mark>${m}</mark>`):t.name;
+const card=(t,tag)=>{const mk=t.sub!=null&&S.split.has(t.band);
+ return `<div class="card${mk?' mk':''}${S.kb===t.id?' kbsel':''}" data-id="${t.id}" ${mk?`style="--s:${SUBS[t.sub].c}"`:''}>${cv(t,'bare')}<div class="nm">${tag?kao(t.band,9)+' ':''}${nm(t)}</div>${mk?`<span class="sb">${SUBS[t.sub].label}</span>`:''}</div>`};
+const colBody=b=>shown(b).map(t=>card(t)).join('')||none();
+const zones=(b,short)=>S.split.has(b)&&!S.mobile?`<div class="subzones">${SUBS.map((s,i)=>`<div data-drop="${b}" data-sub="${i}" style="--s:${s.c}">${short?s.label:s.label+' <span class="kbd">'+s.k+'</span>'}</div>`).join('')}</div>`:'';
+function columns(){
+ if(S.mobile){const b=S.sel,B=BANDS[b];
+  return `<div class="body"><div class="col" data-drop="${b}" style="--c:${B.c}"><div class="ch">${kao(b,12)}<span>${B.label} ${st(b)}</span><span class="n">${cnt(b)}</span></div><div class="list" data-scroll>${colBody(b)}</div></div><div class="rail">${BANDS.map((B2,i)=>`<div class="${i===b?'sel':''}${F()===2&&S.q&&!shown(i).length?' dim':''}" data-drop="${i}" data-sel="${i}" style="--c:${B2.c}">${kao(i,8)}<span>${cnt(i)}</span></div>`).join('')}</div></div>`}
+ const shrink=F()===2&&S.q;const tpl=BANDS.map((B,b)=>shrink&&!shown(b).length?'56px':'minmax(0,1fr)').join(' ');
+ return `<div class="cols" style="grid-template-columns:${tpl}">${BANDS.map((B,b)=>{const thin=shrink&&!shown(b).length;return thin?`<div class="col thin" data-drop="${b}" style="--c:${B.c}">${kao(b,9)}<b>0</b><span class="small fine">no match</span></div>`:`<div class="col" data-drop="${b}" style="--c:${B.c}"><div class="ch">${kao(b,12)}<span>${B.label} ${st(b)}</span><span class="n">${cnt(b)}</span></div>${zones(b)}<div class="list" data-scroll>${colBody(b)}</div></div>`}).join('')}</div>`;
+}
+function page(){
+ if(S.screen==='start')return startScreen();
+ if(S.screen==='rough'&&rs())return rough();
+ const c=columns();
+ const emptyAll=S.q&&!found().length&&(F()===1||F()===4)?`<div class="nomatch">No title matches “${S.q}”. Search looks at names in your title language. <button data-clear>Clear search</button></div>`:'';
+ const tray=F()===3&&S.q?`<div class="tray"><div class="small"><b>${found().length}</b> match “${S.q}” · drag one to a column</div><div class="trow">${found().map(t=>card(t,true)).join('')||'<span class="empty-band">No title matches</span>'}</div></div>`:'';
+ const kbh=F()===4&&!S.mobile?`<div class="kbh"><span class="kbd">/</span> search <span class="kbd">Enter</span> pick first match <span class="kbd">1</span>-<span class="kbd">5</span> move it <span class="kbd">Esc</span> clear${S.kb!=null?` · <b>Picked: ${S.titles[S.kb].name}</b>`:''}</div>`:'';
+ return `<div class="pg"><div class="hd"><div><div class="ttl">${title()}</div>${S.mobile?'':`<div class="small">${hint()}</div>`}</div><div style="flex:1"></div>${searchBox()}${undoBtn()}${mainBtn()}</div>${kbh}${emptyAll}${tray}${c}</div>`;
+}
+function rough(){
+ const t=S.titles.find(t=>t.band==null),E=0,p=placedCount(),n=S.titles.length;
+ if(!t)return `<div class="rs"><div class="rsin"><div class="t">Rough Sort done</div></div></div>`;
+ return `<div class="rs"><div class="topline"><i style="width:${p/n*100}%"></i></div>
+ <div class="float-info">${E===1?`<button class="pill" data-board>Rough Sort · ${p}/${n} <b style="color:var(--blue)">· Board ›</b></button>`:`<span class="pill">Rough Sort · ${p}/${n}</span>`}</div>
+ ${E===4?`<button class="pill corner" data-board>▦ Board <span class="kbd">B</span></button>`:''}
+ <div class="bg" style="--h:${t.h}"></div>
+ <div class="rsin"><div class="left">${cv(t)}<div class="t">${t.name}</div><div class="m">TV · 2019 · 12 eps</div></div>
+ <div class="ladder">${BANDS.map((B,b)=>`<button class="bandbtn" data-band="${b}"><span style="display:flex;gap:8px;align-items:center"><span class="kbd">${b+1}</span>${kao(b,16)}</span><span class="lab">${B.label}</span></button>`).join('')}
+ <div class="subrow"><button class="pill"><b>?</b> Don't remember <span class="kbd">0</span></button><button class="pill" data-undo ${S.undo.length?'':'disabled'}>↶ Undo <span class="kbd">⌫</span></button><button class="pill">↗ AniList</button></div><div class="boardrow"><button class="pill hl" data-board>▦ Board <span class="kbd">B</span></button><span class="cap">See every title you've sorted, by Band. Fix one without Undo.</span></div></div></div></div>`;
+}
+function side(){
+ const p=placedCount(),E3=false;
+ document.getElementById('side').innerHTML=`<div class="logo">Ani<b>Duel!</b></div><div class="small hide-m">zen · Anime · ${S.titles.length} titles</div><div class="hide-m ${E3?'clickrows':''}" style="display:flex;flex-direction:column;gap:5px" ${E3?'data-board title="Open Board"':''}>${BANDS.map((B,b)=>{const n=inBand(b).length;return `<div class="bandrow">${kao(b,10)}<div class="bar"><i style="width:${p?n/p*100:0}%"></i></div><span>${n}</span></div>`}).join('')}</div>${E3?`<button class="sidelink hide-m" data-board>▦ Open Board <span class="kbd">B</span></button>`:''}`;
+}
+function tapBand(b){const t=S.titles.find(t=>t.band==null);if(!t)return;S.undo.push({id:t.id,band:null,t:t.t});t.band=b;t.t=++S.clock;render();
+ if(false)toast(`Put “${t.name.slice(0,18)}” in ${BANDS[b].label} · Wrong?`,false,`<button data-board>Fix on Board</button>`)}
+function openBoard(){S.screen='board';S.q='';render()}
+/* ===== Start + Rough Sort from Scores offer (Q9) ===== */
+const OV=[
+ {name:'O1 · Switch in the panel',desc:'A switch card under the estimate: "Rough Sort from my AniList scores". Off by default; turning it on unfolds X of Y, the per-Band preview, the drawback and any warning. The Start button stays one button.'},
+ {name:'O2 · Two choice cards',desc:'Two radio cards: "Rough Sort by hand" and "From my scores". Each says how many taps it costs. The preview + drawback unfold under the scores card when it is picked.'},
+ {name:'O3 · Ask after Start',desc:'The Start panel is unchanged. Pressing "Start Rough Sort →" opens a dialog: "168 of 175 titles already have a score. Use them?" with the preview, drawback, warning and two buttons.'},
+ {name:'O4 · Two buttons',desc:'Two Start buttons: primary "Start from my scores →", secondary "Rough Sort by hand". A one-line summary + stacked bar sits above; "What happens?" unfolds the full explanation.'},
+ {name:'O5 · Own step',desc:'After Start, a full-screen step like the split offer: big per-Band chart on the left, X of Y, drawback, warning and the two choices on the right.'}];
+const SCEN={
+ hi:{label:'96% scored',scored:168,fmt:'POINT_10_DECIMAL'},
+ lo:{label:'56% scored',scored:98,fmt:'POINT_10_DECIMAL'},
+ stars:{label:'5 stars',scored:150,fmt:'POINT_5'},
+ same:{label:'all the same',scored:120,fmt:'POINT_10_DECIMAL'}};
+function plan(){
+ const sc=SCEN[S.scen],n=S.titles.length;let r=11;const rr=()=>((r=(r*16807)%2147483647)/2147483647);
+ const scores=[];for(let i=0;i<sc.scored;i++){let v;
+  if(S.scen==='same')v=80;
+  else if(sc.fmt==='POINT_5'){const x=rr();v=[20,40,60,80,100][x<.04?0:x<.12?1:x<.38?2:x<.8?3:4]}
+  else{let g=0;for(let k=0;k<4;k++)g+=rr();v=Math.round(Math.min(100,Math.max(10,76+(g-2)*24)))}
+  scores.push(v)}
+ const mean=scores.reduce((a,b)=>a+b,0)/scores.length,sd=Math.sqrt(scores.reduce((a,b)=>a+(b-mean)**2,0)/scores.length);
+ const counts=[0,0,0,0,0];
+ if(sd>0)scores.forEach(v=>{const z=(v-mean)/sd;counts[z>=1.5?0:z>=.5?1:z>-.5?2:z>-1.5?3:4]++});
+ return {scored:sc.scored,total:n,unscored:n-sc.scored,counts,warn:sc.scored/n<.8,offer:sd>0,pct:Math.round(sc.scored/n*100)};
+}
+const offerOn=()=>S.offerOn;
+function bandBars(P,big){const mx=Math.max(...P.counts,1);
+ return `<div class="bbars ${big?'big':''}">${BANDS.map((B,b)=>`<div class="bb">${kao(b,big?14:10)}<div class="track"><i style="width:${P.counts[b]/mx*100}%;background:${B.c}"></i></div><b>${P.counts[b]}</b></div>`).join('')}${P.unscored?`<div class="bb un"><span class="kao" style="background:var(--fg2);font-size:${big?13:10}px">no score</span><div class="track dashed"></div><b>${P.unscored}</b></div>`:''}</div>`}
+const stack=P=>`<div class="stack">${BANDS.map((B,b)=>P.counts[b]?`<i style="flex:${P.counts[b]};background:${B.c}" title="${B.label} ${P.counts[b]}"></i>`:'').join('')}${P.unscored?`<i class="un" style="flex:${P.unscored}"></i>`:''}</div>`;
+const xy=P=>`<div><b class="strong">${P.scored} of ${P.total}</b> titles have a score.</div>`;
+const drawback=P=>`<div class="small">Each scored title goes into a Band by how far its score sits from <b>your own average</b>. Titles in different Bands are <b>never compared</b>, so if one lands in the wrong Band, fix it on the Board before your first Duel.${P.unscored?` The ${P.unscored} without a score go through Rough Sort by hand.`:''}</div>`;
+const warnBox=P=>P.warn?`<div class="redwarn"><b>Not recommended.</b> Only ${P.pct}% of your titles have a score, so ${P.unscored} still need Rough Sort by hand, and the Bands are guessed from few scores.</div>`:'';
+const fewLevels=P=>S.scen==='stars'?`<div class="small fine">5 stars has few levels, so some Bands stay empty. That's fine.</div>`:'';
+function details(P){return `${xy(P)}${bandBars(P)}${warnBox(P)}${drawback(P)}${fewLevels(P)}`}
+
+const SQ=[
+ [{name:'PV1 · Bars',desc:'One bar per Band (kaomoji, bar, count) plus a dashed "no score" row. What round 6 had.'},
+  {name:'PV2 · Stacked bar + legend',desc:'One stacked bar for the whole Pool, coloured by Band, with a legend of kaomoji + counts underneath.'},
+  {name:'PV3 · Kaomoji chips',desc:'Just the five Band pills with their counts in a row, plus a grey "no score" chip. Most compact.'},
+  {name:'PV4 · Mini histogram',desc:'Five upright columns, Loved on the left, count on top. Shows the bell shape of your scores at a glance.'},
+  {name:'PV5 · One sentence',desc:'"13 Loved · 40 Liked · 67 Okay · 36 Meh · 12 Hated · 7 by hand". No graphics.'}],
+ [{name:'W1 · Red tag + red box',desc:'Subtitle says "not recommended" in red even while the switch is off; turning it on adds the red box. What round 6 had. (Pick "56% scored".)'},
+  {name:'W2 · Only when on',desc:'Nothing red while the switch is off. Turning it on shows the red box above the explanation. Quietest.'},
+  {name:'W3 · Red card',desc:'The whole card has a red border and a red "not recommended" badge from the start; the red box shows when on.'},
+  {name:'W4 · Confirm to use',desc:'Turning the switch on first shows the red box with "Use anyway" / "Keep by hand". The preview only appears after "Use anyway".'},
+  {name:'W5 · Hidden behind a link',desc:'Below 80% the switch card is replaced by one red line with a "Use my scores anyway" link that brings the switch back.'}],
+ [{name:'C1 · Explain fully',desc:'Title "Rough Sort from my AniList scores". A full paragraph. Start button unchanged.'},
+  {name:'C2 · Bullets',desc:'Same facts as four short bullets. Start button becomes "Start from my scores →" when on.'},
+  {name:'C3 · Friendly',desc:'Title "Let my scores do the Rough Sort". Warm, plain wording that promises the Board check.'},
+  {name:'C4 · Minimal',desc:'Two sentences only: never compared + you check on the Board.'},
+  {name:'C5 · Trade-off first',desc:'Title sells the gain ("Skip 168 taps"); the body starts with "Trade-off:".'}]];
+const CW=[
+ {title:P=>'Rough Sort from my AniList scores',btn:'Start Rough Sort →',body:P=>drawback(P)},
+ {title:P=>'Rough Sort from my AniList scores',btn:'Start from my scores →',body:P=>`<ul class="bul small"><li>Each scored title goes into a Band by how its score compares to <b>your own average</b>.</li><li>Titles in different Bands <b>never meet in a Duel</b>.</li><li>So check the Bands on the Board before your first Duel. Moves are free until then.</li>${P.unscored?`<li>The ${P.unscored} without a score: you tap their Band by hand.</li>`:''}</ul>`},
+ {title:P=>'Let my scores do the Rough Sort',btn:'Start →',body:P=>`<div class="small">AniDuel puts each title in a Band from how its score compares to your average. Heads-up: titles in different Bands never face each other, so a wrong Band sticks unless you fix it on the Board. You get a Board check right after${P.unscored?`, once you've tapped the ${P.unscored} unscored titles`:''}.</div>`},
+ {title:P=>'Use my AniList scores for Rough Sort',btn:'Start Rough Sort →',body:P=>`<div class="small">Titles in different Bands are never compared. You'll check the Bands on the Board before Duels start.</div>`},
+ {title:P=>`Skip ${P.scored} taps: use my AniList scores`,btn:'Start from my scores →',body:P=>`<div class="small"><b>Trade-off:</b> titles in different Bands are never compared, so a title in the wrong Band stays there unless you move it on the Board (free until your first Duel).${P.unscored?` ${P.unscored} titles have no score; you tap those by hand.`:''}</div>`}];
+function preview(P){const v=S.sv[0],mx=Math.max(...P.counts,1);
+ if(v===0)return bandBars(P);
+ if(v===1)return `${stack(P)}<div class="legend">${BANDS.map((B,b)=>`<span>${kao(b,10)} <b>${P.counts[b]}</b></span>`).join('')}${P.unscored?`<span><span class="kao" style="background:var(--fg2);font-size:10px">no score</span> <b>${P.unscored}</b></span>`:''}</div>`;
+ if(v===2)return `<div class="kchips">${BANDS.map((B,b)=>`<span class="kao" style="background:${B.c};font-size:11px">${B.kao} <b>${P.counts[b]}</b></span>`).join('')}${P.unscored?`<span class="kao" style="background:var(--fg2);font-size:11px">no score <b>${P.unscored}</b></span>`:''}</div>`;
+ if(v===3)return `<div class="hist">${BANDS.map((B,b)=>`<div class="hc"><b>${P.counts[b]}</b><i style="height:${P.counts[b]/mx*70}px;background:${B.c}"></i>${kao(b,9)}</div>`).join('')}${P.unscored?`<div class="hc"><b>${P.unscored}</b><i class="un" style="height:${Math.min(1,P.unscored/mx)*70}px"></i><span class="kao" style="background:var(--fg2);font-size:9px">no score</span></div>`:''}</div>`;
+ return `<div class="small strong">${BANDS.map((B,b)=>`${P.counts[b]} ${B.label}`).join(' · ')}${P.unscored?` · ${P.unscored} by hand`:''}</div>`;
+}
+const needConfirm=P=>P.warn&&S.sv[1]===3&&!S.confirmed;
+function o1(P){const C=CW[S.sv[2]],W=S.sv[1],w=P.warn,on=S.offerOn;
+ if(w&&W===4&&!S.reveal)return `<div class="redline">Only ${P.pct}% of your titles have a score, so Rough Sort from Scores isn't recommended. <button class="link2" data-reveal>Use my scores anyway</button></div>`;
+ const badge=w&&W===2?' <span class="redtag">not recommended</span>':'';
+ const subw=w&&W===0?' · <span class="red">not recommended</span>':'';
+ let inner='';
+ if(on){if(needConfirm(P))inner=`<div class="redwarn"><b>Not recommended.</b> Only ${P.pct}% of your titles have a score, so ${P.unscored} still need Rough Sort by hand, and the Bands are guessed from few scores.<div class="row2"><button class="go danger sm" data-confirm>Use anyway</button><button class="ghostbtn sm2" data-toggle>Keep by hand</button></div></div>`;
+  else inner=`${preview(P)}${w?warnBox(P):''}${C.body(P)}${fewLevels(P)}`}
+ return `<div class="offer sw ${on?'on':''} ${w&&W===2?'redcard':''}"><label class="swrow" data-toggle><span class="switch"><i></i></span><span class="grow"><b class="strong">${C.title(P)}</b>${badge}<div class="small">${P.scored} of ${P.total} titles have a score${subw}</div></span></label>${inner?`<div class="det">${inner}</div>`:''}</div>`;
+}
+function startScreen(){
+ const P=plan(),v=S.ov;
+ if(v===4&&S.step==='offer'&&P.offer)return `<div class="st st-step"><div class="stepin"><div class="l2"><div class="h2">Your scores would make these Bands</div>${bandBars(P,true)}</div><div class="r2"><div class="h1s">Rough Sort from your scores?</div>${xy(P)}${warnBox(P)}${drawback(P)}${fewLevels(P)}<div class="row2"><button class="go ${P.warn?'muted':''}" data-accept>Use my scores →</button><button class="ghostbtn" data-decline>Rough Sort by hand</button></div></div></div></div>`;
+ let offer='',btn=`<button class="go" data-start>Start Rough Sort →</button>`;
+ if(P.offer){
+  if(v===0){offer=o1(P);if(S.offerOn&&!needConfirm(P)&&!(P.warn&&S.sv[1]===4&&!S.reveal))btn=`<button class="go" data-start>${CW[S.sv[2]].btn}</button>`}
+  if(v===1){const s=S.offerOn;offer=`<div class="choices"><button class="choice ${!s?'on':''}" data-pickoff><span class="rad"></span><span><b class="strong">Rough Sort by hand</b><div class="small">Tap a Band for each of ${P.total} titles</div></span></button><button class="choice ${s?'on':''}" data-pickon><span class="rad"></span><span><b class="strong">From my AniList scores</b>${P.warn?' <span class="redtag">not recommended</span>':''}<div class="small">${P.unscored?`Only ${P.unscored} titles left to tap`:'No taps needed'}</div></span></button>${s?`<div class="det">${details(P)}</div>`:''}</div>`}
+  if(v===3){btn=`<div class="col2"><button class="go ${P.warn?'muted':''}" data-accept>Start from my scores →</button><button class="ghostbtn" data-decline>Rough Sort by hand</button></div>`;
+   offer=`<div class="offer">${xy(P)}${stack(P)}${P.warn?warnBox(P):''}<button class="small link2" data-more>${S.more?'Hide':'What happens?'}</button>${S.more?`<div class="det">${bandBars(P)}${drawback(P)}${fewLevels(P)}</div>`:''}</div>`}
+ }
+ const panel=`<div class="panel"><div class="userbar"><span class="ava"></span><span>zen</span><span class="small link2" style="margin-left:auto">Log out</span></div><div class="h2">What do you want to rank?</div><div class="seg"><button class="on">Anime</button><button>Manga</button></div><div class="lab2">List statuses</div><div class="chips2"><span class="chip on">✓ Completed <b>162</b></span><span class="chip on">✓ Watching <b>9</b></span><span class="chip">Paused <b>3</b></span><span class="chip on">✓ Dropped <b>4</b></span><span class="chip off">Planning · never ranked</span></div><div class="est"><b>${P.total}</b> titles · about <b>1,020</b> Duels <span class="small">(~51 min at 3 s each, spread over as many sittings as you like)</span></div>${offer}${btn}<div class="small fine">Read-only until you confirm an Import. Your progress stays in this browser.</div></div>`;
+ const dlg=v===2&&S.step==='offer'&&P.offer?`<div class="scrim"><div class="dlg wide"><div class="h2">${P.scored} of ${P.total} titles already have a score. Use them?</div><div class="small">AniDuel can do the Rough Sort for you from your AniList scores.</div>${bandBars(P)}${warnBox(P)}${drawback(P)}${fewLevels(P)}<div class="row2"><button class="go ${P.warn?'muted':''}" data-accept>Use my scores →</button><button class="ghostbtn" data-decline>Rough Sort by hand</button></div></div></div>`:'';
+ return `<div class="st st-hero"><div class="l"><div class="collage-bg">${S.titles.slice(0,36).map(t=>cv(t,'bare')).join('')}</div><div class="hero-copy"><span class="kao" style="background:var(--band-loved);font-size:20px;align-self:flex-start">(♡˙︶˙♡)</span><div class="big">Which one did you<br>like more?</div><div>Answer that a few hundred times.<br>Get scores that actually mean something.</div></div></div><div class="r">${panel}</div>${dlg}</div>`;
+}
+function bindStart(){
+ const P=plan();
+ const q=s=>document.querySelectorAll(s);
+ q('[data-toggle]').forEach(b=>b.onclick=e=>{e.preventDefault();S.offerOn=!S.offerOn;if(!S.offerOn)S.confirmed=false;render()});
+ q('[data-pickon]').forEach(b=>b.onclick=()=>{S.offerOn=true;render()});
+ q('[data-pickoff]').forEach(b=>b.onclick=()=>{S.offerOn=false;render()});
+ q('[data-reveal]').forEach(b=>b.onclick=()=>{S.reveal=true;render()});
+ q('[data-confirm]').forEach(b=>b.onclick=()=>{S.confirmed=true;render()});
+ q('[data-more]').forEach(b=>b.onclick=()=>{S.more=!S.more;render()});
+ q('[data-start]').forEach(b=>b.onclick=()=>{
+  if((S.ov===2||S.ov===4)&&P.offer){S.step='offer';render();return}
+  if((S.ov===0||S.ov===1)&&S.offerOn&&!needConfirm(P))return accept();
+  decline()});
+ q('[data-accept]').forEach(b=>b.onclick=accept);
+ q('[data-decline]').forEach(b=>b.onclick=decline);
+}
+function accept(){const P=plan();S.step=null;render();toast(`(would append bands-from-scores for ${P.scored} titles → ${P.unscored?'Rough Sort for '+P.unscored+' unscored → ':''}split offer if any → Last check)`)}
+function decline(){S.step=null;render();toast('(would start Rough Sort by hand, as today)')}
+
+function render(){
+ document.documentElement.dataset.theme=S.dark?'dark':'light';
+ document.body.classList.toggle('mobile',S.mobile);
+ 
+ const keepFocus=document.activeElement?.id==='q';const pos=keepFocus?document.activeElement.selectionStart:0;
+ const scrolls=[...document.querySelectorAll('#app [data-scroll]')].map(e=>[e.scrollTop,e.scrollLeft]);
+ document.getElementById('app').innerHTML=page();
+ [...document.querySelectorAll('#app [data-scroll]')].forEach((e,i)=>{if(scrolls[i]){e.scrollTop=scrolls[i][0];e.scrollLeft=scrolls[i][1]}});
+ side();
+ const V=S.screen==='start'?SQ[S.sq][S.sv[S.sq]]:S.screen==='rough'?{name:'Rough Sort · E1 + caption',desc:'Decided: Board pill next to Undo, with a caption after it (new). Press B or click it. ← → only switch on the Start screen.'}:{name:'Board',desc:'Decided so far: D1 columns · M5 rail · H1 toolbar · P2 zones / P1 dialog · S2 Sub-band marks · F2 search.'};
+ document.getElementById('dname').textContent=S.screen==='start'?`${V.name} (${S.sv[S.sq]+1}/5)`:V.name;
+ document.getElementById('frame').classList.toggle('noside',S.screen==='start');
+ document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('on',b.dataset.tab===S.screen));
+ document.querySelectorAll('[data-sq]').forEach(b=>b.onclick=()=>{S.sq=+b.dataset.sq;localStorage.pk7Q=S.sq;S.reveal=false;S.confirmed=false;if(S.sq===1){S.scen='lo';S.offerOn=false}else{S.offerOn=true;if(S.scen==='same')S.scen='hi'}render()});
+document.querySelectorAll('[data-scen]').forEach(b=>b.classList.toggle('on',b.dataset.scen===S.scen));
+ document.getElementById('scrow').style.display=document.getElementById('sqrow').style.display=S.screen==='start'?'flex':'none';
+ document.querySelectorAll('[data-sq]').forEach(b=>b.classList.toggle('on',+b.dataset.sq===S.sq));
+ document.getElementById('prev').style.visibility=document.getElementById('next').style.visibility=S.screen==='start'?'visible':'hidden';
+ document.getElementById('ddesc').textContent=V.desc+'';
+ 
+ document.querySelectorAll('[data-mode]').forEach(b=>b.classList.toggle('on',b.dataset.mode===S.mode));
+ document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('on',(b.dataset.view==='m')===S.mobile));
+ document.querySelector('[data-dark]').classList.toggle('on',S.dark);
+ const q=document.getElementById('q');
+ const lastd=document.getElementById('lastdrop');lastd.style.display=S.screen==='board'?'block':'none';
+ if(q){q.oninput=()=>{S.q=q.value;S.kb=null;render()};
+ q.onkeydown=e=>{if(F()!==4)return;if(e.key==='Enter'){const f=found()[0];if(f){S.kb=f.id;q.blur();render()}}if(e.key==='Escape'){S.q='';S.kb=null;q.blur();render()}};
+ if(keepFocus){q.focus();q.setSelectionRange(pos,pos)}}
+ document.getElementById('srow').style.display=S.screen==='board'?'flex':'none';
+ if(S.screen==='start')bindStart();
+ document.querySelectorAll('[data-clear]').forEach(b=>b.onclick=e=>{e.preventDefault();S.q='';S.kb=null;render()});
+ document.querySelectorAll('[data-board]').forEach(b=>b.onclick=openBoard);
+ document.querySelectorAll('[data-band]').forEach(b=>b.onclick=()=>tapBand(+b.dataset.band));
+ document.querySelectorAll('[data-undo]').forEach(b=>b.onclick=undo);
+ document.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>{if(rs()){S.screen='rough';render()}else toast('(would go to Band choice → first Duel)')});
+ document.querySelectorAll('[data-sel]').forEach(b=>b.onclick=()=>{S.sel=+b.dataset.sel;render()});
+ document.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>pickPending(+b.dataset.pick));
+ document.querySelectorAll('[data-chip]').forEach(b=>b.onclick=()=>{S.chip=+b.dataset.chip;render()});
+ document.querySelectorAll('[data-cancel]').forEach(b=>b.onclick=()=>{S.pending=null;render()});
+ if(S.pending)document.querySelector(`[data-id="${S.pending.id}"]`)?.classList.add('lifted');
+}
+let toastT;
+function toast(msg,undoable,extra){const el=document.getElementById('toast');el.innerHTML=`<span>${msg}</span>`+(undoable?`<button id="tu">Undo</button>`:'')+(extra||'');el.style.display='flex';if(undoable)document.getElementById('tu').onclick=undo;el.querySelectorAll('[data-board]').forEach(b=>b.onclick=()=>{el.style.display='none';openBoard()});clearTimeout(toastT);toastT=setTimeout(()=>el.style.display='none',3500)}
+function move(t,b,sub){S.undo.push({id:t.id,band:t.band,sub:t.sub,t:t.t});t.band=b;t.sub=sub;t.t=++S.clock;S.kb=null;render();toast(`Moved “${t.name.slice(0,22)}” to ${BANDS[b].label}${sub!=null?' › '+SUBS[sub].label:''}`,true)}
+function undo(){const u=S.undo.pop();if(!u)return;const t=S.titles[u.id];t.band=u.band;t.sub=u.sub;t.t=u.t;render();toast(u.band==null?'Undone':`Undone: back in ${BANDS[u.band].label}`)}
+function pickPending(i){const p=S.pending;S.pending=null;move(S.titles[p.id],p.band,i)}
+
+/* Sub-band picker: one function per variant */
+let modalKey=null;
+function closeModal(){document.getElementById('modal').innerHTML='';if(modalKey)window.removeEventListener('keydown',modalKey,true);modalKey=null}
+function openPicker(t,b,at){
+ const m=document.getElementById('modal'),v=0;
+ const pick=i=>{closeModal();move(t,b,i)};
+ const btns=SUBS.map((s,i)=>`<button data-sub2="${i}" style="background:${s.c}">${s.label}<span class="kbd">${s.k}</span></button>`).join('');
+ if(v===0||v===1)m.innerHTML=`<div class="scrim" data-close><div class="dlg"><div class="h2">${BANDS[b].label} has 3 Sub-bands. Where does “${t.name}” go?</div><div class="subs">${btns}</div><div class="small fine">Esc to cancel</div></div></div>`;
+ if(v===2){const r=document.getElementById('main').getBoundingClientRect();const x=Math.min(at.x-r.left,r.width-260),y=Math.min(at.y-r.top,r.height-190);
+  m.innerHTML=`<div class="popscrim" data-close></div><div class="pop" style="left:${Math.max(6,x)}px;top:${Math.max(6,y)}px"><div class="small"><b>${BANDS[b].label}</b> ›</div><div class="subs">${btns}</div></div>`}
+ if(v===4)m.innerHTML=`<div class="sheetscrim" data-close><div class="sheet"><div class="hd2">${cv(t,'bare')}<div>Move “${t.name}” to ${BANDS[b].label}<div class="small fine" style="font-weight:400">${BANDS[b].label} has 3 Sub-bands. Pick one.</div></div></div><div class="stripe">${SUBS.map((s,i)=>`<button data-sub2="${i}" style="background:${s.c}">${s.label}<span class="kbd">${s.k}</span></button>`).join('')}</div><div class="small fine" style="text-align:center">Esc or tap outside to cancel</div></div></div>`;
+ if(v===3){S.pending={id:t.id,band:b};render()}
+ modalKey=e=>{const i='QWE'.indexOf(e.key.toUpperCase());if(i>=0){e.stopPropagation();if(S.pending)pickPending(i);else pick(i)}else if(e.key==='Escape'){e.stopPropagation();if(S.pending){S.pending=null;render()}closeModal()}};
+ window.addEventListener('keydown',modalKey,true);
+ m.querySelectorAll('[data-sub2]').forEach(x=>x.onclick=e=>{e.stopPropagation();pick(+x.dataset.sub2)});
+ m.querySelectorAll('[data-close]').forEach(x=>x.onclick=e=>{if(e.target===x)closeModal()});
+}
+function drop(t,b,sub,at){
+ document.getElementById('lastdrop').textContent=`Last drop: “${t.name.slice(0,20)}” (${BANDS[t.band].label}) → ${BANDS[b].label}${sub!=null?' › '+SUBS[sub].label:''}${t.band===b&&sub==null?' · same Band, ignored':S.split.has(b)&&sub==null?' · split Band → picker':''}`;
+ if(t.band===b&&(sub==null||sub===t.sub))return;
+ if(S.split.has(b)){if(sub!=null)return move(t,b,sub);return openPicker(t,b,at)}
+ move(t,b);
+}
+
+/* drag & drop: mouse after 5px, touch after a 300 ms hold */
+let pend=null,drag=null,overEl=null,raf=0,last={x:0,y:0};
+document.addEventListener('pointerdown',e=>{
+ const el=e.target.closest('#app [data-id]');if(!el||e.button>0||S.pending)return;
+ pend={el,id:+el.dataset.id,x:e.clientX,y:e.clientY,touch:e.pointerType!=='mouse'};
+ if(pend.touch)pend.timer=setTimeout(()=>begin(),300);
+});
+function begin(){
+ if(!pend)return;drag=pend;pend=null;navigator.vibrate?.(15);
+ const g=document.createElement('div');g.id='ghost';g.innerHTML=cv(S.titles[drag.id]);document.body.appendChild(g);
+ drag.el.classList.add('lifted');document.body.classList.add('dragging');pos(last.x||drag.x,last.y||drag.y);loop();
+}
+function pos(x,y){last={x,y};const g=document.getElementById('ghost');if(g){g.style.left=x+'px';g.style.top=y+'px'}
+ const z=document.elementFromPoint(x,y)?.closest('[data-drop]');if(z!==overEl){overEl?.classList.remove('over');overEl=z;z?.classList.add('over')}}
+function loop(){if(!drag)return;
+ document.querySelectorAll('#app [data-scroll]').forEach(sc=>{const r=sc.getBoundingClientRect();if(last.x<r.left||last.x>r.right||last.y<r.top-40||last.y>r.bottom+40)return;
+  if(last.y<r.top+50)sc.scrollTop-=14;else if(last.y>r.bottom-50)sc.scrollTop+=14});
+ pos(last.x,last.y);raf=requestAnimationFrame(loop)}
+document.addEventListener('pointermove',e=>{
+ if(pend&&!drag){const d=Math.hypot(e.clientX-pend.x,e.clientY-pend.y);last={x:e.clientX,y:e.clientY};
+  if(!pend.touch&&d>5)begin();else if(pend.touch&&d>8){clearTimeout(pend.timer);pend=null}}
+ if(drag){e.preventDefault();pos(e.clientX,e.clientY)}
+});
+function end(ok){if(pend){clearTimeout(pend.timer);pend=null}if(!drag)return;cancelAnimationFrame(raf);
+ const d=drag;drag=null;document.getElementById('ghost')?.remove();document.body.classList.remove('dragging');d.el.classList.remove('lifted');
+ const z=overEl;overEl?.classList.remove('over');overEl=null;
+ if(ok&&z)drop(S.titles[d.id],+z.dataset.drop,z.dataset.sub!=null?+z.dataset.sub:null,{...last})}
+document.addEventListener('pointerup',()=>end(true));
+document.addEventListener('pointercancel',()=>{if(!drag)end(false)});
+document.addEventListener('touchmove',e=>{if(drag)e.preventDefault()},{passive:false});
+document.addEventListener('contextmenu',e=>{if(drag||pend)e.preventDefault()});
+document.addEventListener('dragstart',e=>e.preventDefault());
+
+const step=d=>{if(S.screen!=='start')return;S.sv[S.sq]=(S.sv[S.sq]+d+5)%5;localStorage['pk7_'+S.sq]=S.sv[S.sq];S.reveal=false;S.confirmed=false;S.step=null;S.more=false;closeModal();render()};
+document.getElementById('prev').onclick=()=>step(-1);
+document.getElementById('next').onclick=()=>step(1);
+document.addEventListener('keydown',e=>{if(e.target.closest?.('input'))return;if(e.key==='ArrowLeft')step(-1);if(e.key==='ArrowRight')step(1);if((e.ctrlKey||e.metaKey)&&e.key==='z')undo();
+ if(e.ctrlKey||e.metaKey||e.altKey)return;
+ if(S.screen==='start')return;
+ if(S.screen==='rough'){if(e.key>='1'&&e.key<='5')tapBand(+e.key-1);if(e.key==='Backspace'){e.preventDefault();undo()}if(e.key.toLowerCase()==='b'&&true)openBoard();return}
+ if(F()===4&&S.qs===0&&!S.mobile){if(e.key==='/'){e.preventDefault();document.getElementById('q').focus()}
+  if(S.kb!=null){const t=S.titles[S.kb];if(e.key>='1'&&e.key<='5'){const b=+e.key-1;drop(t,b,null,{x:innerWidth/2,y:innerHeight/2})}
+   const i='QWE'.indexOf(e.key.toUpperCase());if(i>=0&&S.split.size){drop(t,[...S.split][0],i,{x:0,y:0})}
+   if(e.key==='Escape'){S.kb=null;S.q='';render()}}}
+});
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{S.screen=b.dataset.tab;S.step=null;closeModal();if(S.screen==='rough'&&S.mode!=='rs'){S.mode='rs';localStorage.pkM='rs';build()}render()});
+document.querySelectorAll('[data-scen]').forEach(b=>b.onclick=()=>{S.scen=b.dataset.scen;S.step=null;S.reveal=false;S.confirmed=false;render()});
+document.querySelectorAll('[data-q]').forEach(b=>b.onclick=()=>{S.q=b.dataset.q;S.kb=null;S.screen='board';render()});
+
+document.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{S.mode=b.dataset.mode;localStorage.pkM=S.mode;build();render()});
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>{S.mobile=b.dataset.view==='m';localStorage.pkV=b.dataset.view;render()});
+document.querySelector('[data-dark]').onclick=()=>{S.dark=!S.dark;localStorage.pkDark=S.dark?'1':'0';render()};
+(()=>{const pk=document.getElementById('pk'),h=document.getElementById('pkh');let o=null;
+ h.addEventListener('pointerdown',e=>{const r=pk.getBoundingClientRect();o={dx:e.clientX-r.left,dy:e.clientY-r.top};h.setPointerCapture(e.pointerId)});
+ h.addEventListener('pointermove',e=>{if(!o)return;pk.style.left=(e.clientX-o.dx)+'px';pk.style.top=(e.clientY-o.dy)+'px';pk.style.right='auto';pk.style.bottom='auto'});
+ h.addEventListener('pointerup',()=>o=null)})();
+S.mode='rs';localStorage.pkM='rs';build();render();
+</script>
+</body>
+</html>
