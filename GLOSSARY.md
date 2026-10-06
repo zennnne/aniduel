@@ -28,6 +28,14 @@ _Avoid_: Sub-tier, split, section
 One comparison between two titles in the Pool, where the user picks the better one, declares them equal, or marks one as Forgotten.
 _Avoid_: Match, battle, comparison, pair
 
+**Refine Duel**:
+A Duel asked under the Scores Sort Goal because something moved a level boundary (a settings change, sync, Forgotten, Band move or Re-rank), to settle a title whose score is no longer certain. It is an ordinary Duel; the name only says why it is asked.
+_Avoid_: Re-duel, extra Duel
+
+**Settled**:
+A title is settled when more Duels can no longer change its score under the current settings. Under Scores, only settled titles can be ticked and imported.
+_Avoid_: Final, locked, done
+
 **Ranking**:
 The ordered result of Rough Sort and all Duels so far: the five Bands in order, any Sub-bands in order inside a Band, Tiers in order inside each Band or Sub-band, and titles inside each Tier.
 _Avoid_: Sort, order, list
