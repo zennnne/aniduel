@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ScoreFormat } from '../anilist/types.ts'
 import { BANDS, appendEvent, replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from './engine.ts'
+import { refineDuels } from './estimate.ts'
 import { defaultSettings, levels, score, withStep, type ScoringSettings } from './scoring.ts'
 
 /** Small seeded PRNG (mulberry32), so every case is reproducible. */
@@ -21,12 +22,14 @@ const FORMATS: readonly ScoreFormat[] = ['POINT_100', 'POINT_10_DECIMAL', 'POINT
 
 type Case = { ids: number[]; band: Map<number, BandIndex>; value: Map<number, number> }
 
-/** `n` titles; Band 0 holds the best ones. Values from `distinct` values (few = many ties). */
-function randomCase(random: () => number, n: number, distinct: number): Case {
+/** `n` titles in random Bands (or `sizes` titles per Band); Band 0 holds the best ones. Values from `distinct` values (few = many ties). */
+function randomCase(random: () => number, n: number, distinct: number, sizes?: readonly number[]): Case {
   const ids = Array.from({ length: n }, (_, i) => 1000 + i * 7)
   const value = new Map(ids.map((id) => [id, Math.floor(random() * distinct)]))
   const byValue = [...ids].sort((x, y) => value.get(y)! - value.get(x)! || x - y)
-  const cuts = [...BANDS.slice(1).map(() => Math.floor(random() * (n + 1)))].sort((x, y) => x - y)
+  const cuts = sizes
+    ? sizes.slice(0, -1).map((_, b) => sizes.slice(0, b + 1).reduce((sum, k) => sum + k, 0))
+    : [...BANDS.slice(1).map(() => Math.floor(random() * (n + 1)))].sort((x, y) => x - y)
   const band = new Map(byValue.map((id, i) => [id, cuts.filter((cut) => cut <= i).length as BandIndex]))
   return { ids, band, value }
 }
@@ -110,5 +113,45 @@ describe('a settings change on Scores', () => {
     play(c, newLog(c, 4, 'scores', 'POINT_10_DECIMAL', settings), (state) => {
       expect(state.prompt.kind === 'duel' && state.prompt.refine).toBeFalsy()
     })
+  })
+})
+
+describe('the Refine Duel estimate', () => {
+  /** A small Preview change: best one level down, worst one level up, or the other Distribution. */
+  function tweak(format: ScoreFormat, from: ScoringSettings, kind: number): ScoringSettings {
+    const options = levels(format, 'whole')
+    if (kind === 0) return { ...from, best: options[options.indexOf(from.best) + 1] }
+    if (kind === 1) return { ...from, worst: options[options.indexOf(from.worst) - 1] }
+    return { ...from, distribution: from.distribution === 'linear' ? 'bell' : 'linear' }
+  }
+
+  it('is about the number of Refine Duels the oracle then answers, and 0 when everything is settled', () => {
+    const random = rng(31)
+    let estimated = 0
+    let answered = 0
+    for (let trial = 0; trial < 12; trial++) {
+      const format = (['POINT_10_DECIMAL', 'POINT_100'] as const)[trial % 2]
+      const before = defaultSettings(format, 'whole')
+      const c = randomCase(random, 100, trial < 6 ? 30 : 1_000_000, [20, 20, 20, 20, 20])
+      const done = play(c, newLog(c, trial, 'scores', format, before))
+      expect(refineDuels(done.state)).toBe(0)
+      const set = appendEvent(done.log, { type: 'scoring-set', format, settings: tweak(format, before, trial % 3) })
+      const estimate = refineDuels(replay(set))
+      const actual = play(c, set).duels
+      // Each Ranking on its own: within a factor of two either way (a few Duels of slack for tiny counts).
+      expect(estimate).toBeLessThanOrEqual(actual * 2 + 3)
+      expect(estimate).toBeGreaterThanOrEqual(actual / 2 - 3)
+      estimated += estimate
+      answered += actual
+    }
+    expect(answered).toBeGreaterThan(100)
+    // Overall: within a third.
+    expect(Math.abs(estimated - answered)).toBeLessThanOrEqual(answered / 3)
+  }, 60_000)
+
+  it('is 0 on Full Ranking', () => {
+    const c = randomCase(rng(32), 20, 1_000_000)
+    const settings = defaultSettings('POINT_10', 'whole')
+    expect(refineDuels(replay(newLog(c, 1, 'full-ranking', 'POINT_10', settings)))).toBe(0)
   })
 })
