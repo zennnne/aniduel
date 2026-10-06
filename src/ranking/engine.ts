@@ -716,9 +716,9 @@ export function replay(log: DuelLog): RankingState {
     placedAt: new Map(),
   }
   const { effective, canUndo } = resolveUndo(log.events)
-  for (const [step, event] of effective.entries()) {
+  for (let step = 0; step < effective.length; step++) {
     machine.step = step
-    apply(machine, seed, event)
+    apply(machine, seed, effective[step])
     machine.segments.forEach(settle)
     refocus(machine)
   }
@@ -750,18 +750,37 @@ export function replay(log: DuelLog): RankingState {
     },
     bandChoice,
     canUndo,
-    board: {
-      open: !effective.some((event) => event.type === 'duel-answered'),
-      bands: machine.bands.map((segments) => ({ titles: boardTitles(machine, segments) })),
-    },
+    board: new LazyBoard(!effective.some((event) => event.type === 'duel-answered'), machine.bands, machine.placedAt),
+  }
+}
+
+/**
+ * The Board, with its Bands built on first read only: replay runs after every Duel answer, and most callers never
+ * look at the Board. A class rather than a closure in `replay`, so replay itself stays as cheap as before the Board.
+ */
+class LazyBoard implements BoardView {
+  readonly open: boolean
+  #segments: readonly (readonly Segment[])[]
+  #placedAt: ReadonlyMap<number, number>
+  #bands: BoardView['bands'] | undefined
+
+  constructor(open: boolean, segments: readonly (readonly Segment[])[], placedAt: ReadonlyMap<number, number>) {
+    this.open = open
+    this.#segments = segments
+    this.#placedAt = placedAt
+  }
+
+  get bands(): BoardView['bands'] {
+    this.#bands ??= this.#segments.map((segments) => ({ titles: boardTitles(segments, this.#placedAt) }))
+    return this.#bands
   }
 }
 
 /** A Band's titles in Board order: latest `at` first, then by id. */
-function boardTitles(machine: Machine, segments: readonly Segment[]): BoardTitle[] {
+function boardTitles(segments: readonly Segment[], placedAt: ReadonlyMap<number, number>): BoardTitle[] {
   const titles = segments.flatMap((segment, s) => {
     const ids = [...segment.tiers.flatMap((tier) => tier.members), ...segment.queue.map((insertion) => insertion.id)]
-    return ids.map((id) => withSub({ id, at: machine.placedAt.get(id) ?? 0 }, subOfSegment(segments, s)))
+    return ids.map((id) => withSub({ id, at: placedAt.get(id) ?? 0 }, subOfSegment(segments, s)))
   })
   return titles.sort((x, y) => y.at - x.at || x.id - y.id)
 }
