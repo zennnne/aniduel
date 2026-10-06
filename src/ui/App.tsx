@@ -37,6 +37,7 @@ import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { BoardScreen } from './board/BoardScreen.tsx'
+import { lastCheckDue } from './board/lastCheck.ts'
 import { SplitScreen } from './split/SplitScreen.tsx'
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
@@ -60,7 +61,8 @@ import { useDuelLog } from './useDuelLog.ts'
 
 /**
  * 'bands' = the Band choice, opened by going Back from a Duel or from the menu. 'board' = the Board, opened from
- * Rough Sort while it is open (#33); otherwise the Ranking screen shows.
+ * Rough Sort while it is open (#33); otherwise the Ranking screen shows. The last-check Board after Rough Sort
+ * (#34) is not a screen of its own: the Ranking screen shows it until the user continues.
  */
 type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import'
 const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import']
@@ -102,6 +104,8 @@ export function App() {
   const [splitView, setSplitView] = useState<{ band: BandIndex } | null>(null)
   // Bands whose split offer was turned down ("Keep it as it is") in this session.
   const [skippedSplits, setSkippedSplits] = useState<readonly BandIndex[]>([])
+  // The user pressed Continue on the last-check Board (#34). Session UI state only, never a log event.
+  const [lastCheckContinued, setLastCheckContinued] = useState(false)
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
   // Best / worst / Distribution for the Score Format AniList reported when Preview opened; null until then.
@@ -196,6 +200,7 @@ export function App() {
     setMediaType(key.mediaType)
     setSplitView(null)
     setSkippedSplits([])
+    setLastCheckContinued(false)
     setScoring(null)
     imports.open(key)
     setPreviewFix(null)
@@ -297,6 +302,24 @@ export function App() {
   const autoOffer =
     ranking?.prompt.kind === 'duel' && log && autoOfferDue(log) ? offers.find((band) => !skippedSplits.includes(band)) : undefined
   const splitBand = splitView?.band ?? autoOffer ?? null
+
+  // Back in Rough Sort (Undo, or a sync before the first Duel): finishing it shows the last check again (#34).
+  if (lastCheckContinued && ranking?.prompt.kind === 'rough-sort') setLastCheckContinued(false)
+  // Rough Sort → split offer → last check → Band choice → Duels.
+  const lastCheck = ranking ? lastCheckDue(ranking, lastCheckContinued) : false
+
+  /** The Board's entry points (Rough Sort pill, Band choice pill, menu) while it is open: before the first Duel answer. */
+  function openBoard() {
+    if (!ranking?.board.open) return
+    if (ranking.prompt.kind === 'rough-sort') goTo('board')
+    else setLastCheckContinued(false)
+  }
+
+  /** "Continue →" on the last check: the Band choice comes next. */
+  function continueFromLastCheck() {
+    setLastCheckContinued(true)
+    if (ranking?.prompt.kind === 'duel' && screen !== 'bands') goTo('bands')
+  }
 
   /**
    * Sync (#13, ADR 0005): brings the Pool in the log up to date with the fetched list and the chosen statuses.
@@ -534,6 +557,7 @@ export function App() {
             setSplitView({ band })
             goTo('ranking')
           },
+          openBoard,
           restore: () => setDialog('restore'),
           startOver: () => setDialog('start-over'),
           toggleTheme,
@@ -594,11 +618,28 @@ export function App() {
             setSplitView(null)
             showToast(<>Skipped. {BAND_UI[band].label} stays one Band</>)
           }}
+          // The last check comes before any Duel (#34), so the Band choice comes after it, not straight away.
+          nextStep={lastCheck ? 'last-check' : 'duels'}
           onClose={() => {
             setSplitView(null)
             // "Start Duels in Loved › Best": the split Band is chosen, so its Duels come next.
-            if (state.bands[band].subBands) chooseBand(band)
+            if (!lastCheck && state.bands[band].subBands) chooseBand(band)
           }}
+        />
+      )
+    }
+    if (lastCheck) {
+      return (
+        <BoardScreen
+          state={state}
+          entries={entries}
+          titleLanguage={titleLanguage}
+          heading="Last check"
+          hint="Moves are free until your first Duel. After that, moving a title costs Duels."
+          mainLabel="Continue →"
+          onMain={continueFromLastCheck}
+          onMove={moveTitle}
+          onUndo={shared.onUndo}
         />
       )
     }
@@ -632,7 +673,7 @@ export function App() {
             id={prompt.id}
             onBand={(band, sub) => answer(withSub({ type: 'band-assigned', id: prompt.id, band }, sub))}
             onForget={() => answer({ type: 'forgotten', id: prompt.id })}
-            onBoard={state.board.open ? () => goTo('board') : undefined}
+            onBoard={state.board.open ? openBoard : undefined}
           />
         )
       }
@@ -648,6 +689,7 @@ export function App() {
               next={state.bandChoice?.next ?? prompt.band}
               onChoose={chooseBand}
               onUndo={shared.onUndo}
+              onBoard={state.board.open ? openBoard : undefined}
             />
           )
         }

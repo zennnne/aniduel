@@ -39,7 +39,7 @@ export function BandBar({ state, band }: { state: RankingState; band: BandIndex 
 /**
  * Band choice = "result + chooser" (issue #4, B5): after Rough Sort and whenever a Band is finished, the user picks
  * which Band to Duel in next. The suggested Band (the top one with titles to place) is pre-selected.
- * Keys: 1-5 pick a Band, ↑ / ↓ move the selection, Enter continues, Backspace undoes.
+ * Keys: 1-5 pick a Band, ↑ / ↓ move the selection, Enter continues, Backspace undoes, B opens the Board.
  */
 export function BandChoiceScreen(props: {
   state: RankingState
@@ -51,8 +51,10 @@ export function BandChoiceScreen(props: {
   next: BandIndex
   onChoose: (band: BandIndex) => void
   onUndo: () => void
+  /** Opens the last-check Board again (#34); left out once a Duel is answered. */
+  onBoard?: () => void
 }) {
-  const { state, entries, titleLanguage, finished, next, onChoose, onUndo } = props
+  const { state, entries, titleLanguage, finished, next, onChoose, onUndo, onBoard } = props
   const open = BANDS.filter((band) => state.bands[band].unplaced.length > 0)
   const [selected, setSelected] = useState<BandIndex>(open.includes(next) ? next : (open[0] ?? next))
   const { done, total } = state.progress.ranked
@@ -74,6 +76,8 @@ export function BandChoiceScreen(props: {
       if (e.target instanceof HTMLElement && e.target.closest('button, a')) return
       e.preventDefault()
       if (open.includes(selected)) onChoose(selected)
+    } else if (e.key.toLowerCase() === 'b' && onBoard) {
+      onBoard()
     } else if (e.key === 'Backspace') {
       e.preventDefault()
       if (state.canUndo) onUndo()
@@ -164,6 +168,11 @@ export function BandChoiceScreen(props: {
             <button className="go sm" onClick={onUndo} disabled={!state.canUndo}>
               {UNDO_ICON} Undo <span className="kbd">⌫</span>
             </button>
+            {onBoard && (
+              <button className="go sm" onClick={onBoard}>
+                ▦ Board <span className="kbd">B</span>
+              </button>
+            )}
           </div>
         </section>
       </div>

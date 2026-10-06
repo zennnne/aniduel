@@ -26,6 +26,8 @@ export type MenuActions = {
   saveBackup: () => void
   chooseBand: () => void
   splitBand: (band: BandIndex) => void
+  /** During Rough Sort, the Board; after it, the last check again. */
+  openBoard: () => void
   restore: () => void
   startOver: () => void
   toggleTheme: () => void
@@ -62,6 +64,17 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       title: 'Save Backup file',
       description: 'Download your Duel log and settings',
       run: actions.saveBackup,
+    })
+  }
+  // The Board is open only before the first Duel answer (#34): after that, Move in the Duel screen changes a Band.
+  if (ranking?.board.open) {
+    items.push({
+      id: 'board',
+      group: 'This Ranking',
+      icon: '▦',
+      title: 'Open the Board',
+      description: 'Every title by Band · moves are free until your first Duel',
+      run: actions.openBoard,
     })
   }
   if (ranking?.prompt.kind === 'duel' && !ranking.bandChoice && !context.choosingBand) {
