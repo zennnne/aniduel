@@ -37,21 +37,21 @@ describe('planFromScores', () => {
   })
 
   it('warns below 80% scored, not at 80%', () => {
-    expect(planFromScores(pool(20, 40, 60, 80, 0)).warn).toBe(false)
-    expect(planFromScores(pool(20, 40, 60, 0, 0)).warn).toBe(true)
+    expect(planFromScores(pool(20, 40, 60, 80, 0)).belowThreshold).toBe(false)
+    expect(planFromScores(pool(20, 40, 60, 0, 0)).belowThreshold).toBe(true)
   })
 
   it('is not offered when nothing is scored or every score is the same (SD = 0)', () => {
-    expect(planFromScores(pool(0, 0, 0))).toMatchObject({ offer: false, scored: 0, total: 3 })
-    expect(planFromScores(pool(70, 70, 0, 70))).toMatchObject({ offer: false, scored: 3, total: 4 })
-    expect(planFromScores([])).toMatchObject({ offer: false, scored: 0, total: 0 })
-    expect(planFromScores(pool(70, 80)).offer).toBe(true)
+    expect(planFromScores(pool(0, 0, 0))).toMatchObject({ offerable: false, scored: 0, total: 3 })
+    expect(planFromScores(pool(70, 70, 0, 70))).toMatchObject({ offerable: false, scored: 3, total: 4 })
+    expect(planFromScores([])).toMatchObject({ offerable: false, scored: 0, total: 0 })
+    expect(planFromScores(pool(70, 80)).offerable).toBe(true)
   })
 
   it('gives a valid plan with some empty Bands for 3 smileys', () => {
     // AniList keeps smileys on the 100-point scale as 35 / 60 / 85. Mean 62.5, SD 17.5: z = +1.29, -0.14, -1.57.
     const plan = planFromScores(pool(85, 85, 60, 60, 60, 60, 60, 35, 35, 85))
-    expect(plan.offer).toBe(true)
+    expect(plan.offerable).toBe(true)
     expect(plan.counts).toEqual([0, 3, 5, 0, 2])
     expect(plan.bands[1]).toEqual([1, 2, 10])
   })
@@ -59,7 +59,7 @@ describe('planFromScores', () => {
   it('gives a valid plan with some empty Bands for 5 stars', () => {
     // Stars on the 100-point scale: 10 / 30 / 50 / 70 / 90. Mostly 4 stars, one 1-star outlier.
     const plan = planFromScores(pool(70, 70, 70, 70, 90, 50, 70, 70, 10, 70))
-    expect(plan.offer).toBe(true)
+    expect(plan.offerable).toBe(true)
     expect(plan.counts.reduce((a, b) => a + b, 0)).toBe(10)
     expect(plan.counts.filter((c) => c === 0).length).toBeGreaterThan(0)
     expect(plan.bands[4]).toEqual([9])

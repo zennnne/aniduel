@@ -1,11 +1,11 @@
 // Replaying `bands-from-scores` (ADR 0008): one user event that carries the Band of every scored title.
 import { describe, expect, it } from 'vitest'
-import { ReplayError, appendEvent, replay, startLog, type DuelLog, type LogEvent, type RankingState } from './engine.ts'
+import { ReplayError, appendEvent, replay, startLog, type DuelLog, type LogEvent, type PerBand, type RankingState } from './engine.ts'
 
 const header = { seed: 42, userId: 7, mediaType: 'ANIME' as const }
 const plus = (log: DuelLog, ...events: LogEvent[]): DuelLog => events.reduce(appendEvent, log)
 const logOf = (ids: number[], ...events: LogEvent[]): DuelLog => plus(startLog({ ...header, ids }), ...events)
-const fromScores = (...bands: [number[], number[], number[], number[], number[]]): LogEvent => ({
+const fromScores = (...bands: PerBand<number[]>): LogEvent => ({
   type: 'bands-from-scores',
   bands,
 })
@@ -58,5 +58,12 @@ describe('bands-from-scores', () => {
     expect(() => replay(logOf([1, 2], fromScores([1], [], [1], [], [])))).toThrow(ReplayError)
     const assigned = logOf([1, 2], { type: 'band-assigned', id: 1, band: 0 }, fromScores([], [1], [], [], []))
     expect(() => replay(assigned)).toThrow(ReplayError)
+  })
+
+  it('is refused once any title got its Band by hand, but not once that hand choice is undone', () => {
+    const byHand = logOf([1, 2, 3], { type: 'band-assigned', id: 1, band: 0 })
+    expect(() => replay(plus(byHand, fromScores([], [2], [3], [], [])))).toThrow(ReplayError)
+    const undone = plus(byHand, { type: 'undo' }, fromScores([1], [2], [3], [], []))
+    expect(replay(undone).bands.map(members)).toEqual([[1], [2], [3], [], []])
   })
 })

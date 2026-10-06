@@ -433,7 +433,7 @@ export function App() {
     if (!duelLog.latest()) {
       if (!startOrder) return
       const log = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder })
-      const plan = fromScores && scoresPlan?.offer ? scoresPlan : null
+      const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
       duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
     } else {
       // The statuses may have changed on Start: titles that now match join, the rest leave.

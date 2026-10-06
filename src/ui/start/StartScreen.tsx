@@ -129,7 +129,7 @@ function PoolSetup(form: PoolForm) {
   const { viewer, mediaType, statuses, pool } = form
   // The switch of the Rough Sort from Scores card: off by default; starting with it off declines (#32).
   const [fromScores, setFromScores] = useState(false)
-  const plan = form.scoresPlan?.offer ? form.scoresPlan : null
+  const plan = form.scoresPlan?.offerable ? form.scoresPlan : null
   const chosen = new Set(statuses)
   const label = (s: (typeof OFFERED_STATUSES)[number]) => statusLabel(s, mediaType)
   const n = pool?.titles.length ?? 0
@@ -231,7 +231,7 @@ function ScoresOffer({ plan, on, onToggle }: { plan: ScoresPlan; on: boolean; on
           <b className="strong">Use my AniList scores for Rough Sort</b>
           <span className="small">
             {plan.scored} of {plan.total} titles have a score
-            {plan.warn && (
+            {plan.belowThreshold && (
               <>
                 {' · '}
                 <span className="red">not recommended</span>
@@ -260,7 +260,7 @@ function ScoresOffer({ plan, on, onToggle }: { plan: ScoresPlan; on: boolean; on
               </div>
             )}
           </div>
-          {plan.warn && (
+          {plan.belowThreshold && (
             <div className="redwarn" role="alert">
               <b>Not recommended.</b> Only {percent}% of your titles have a score, so {unscored} still need Rough Sort by
               hand, and the Bands are guessed from few scores.

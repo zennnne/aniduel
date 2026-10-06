@@ -16,6 +16,8 @@ const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VER
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
 export type BandIndex = 0 | 1 | 2 | 3 | 4
 export const BANDS: readonly BandIndex[] = [0, 1, 2, 3, 4]
+/** One value per Band, indexed by BandIndex (Loved first). */
+export type PerBand<T> = [T, T, T, T, T]
 
 /** Sub-band index inside a split Band (ADR 0006): 0 = Best, 1 = Middle, 2 = Lowest. */
 export type SubBandIndex = 0 | 1 | 2
@@ -75,7 +77,7 @@ export type LogEvent =
    * user event. `bands[b]` lists, by id, the titles that go to the back of Band b's insertion queue, in that order.
    * Each must be waiting in Rough Sort; titles it doesn't list stay there. Replay never reads AniList scores.
    */
-  | { type: 'bands-from-scores'; bands: [number[], number[], number[], number[], number[]] }
+  | { type: 'bands-from-scores'; bands: PerBand<number[]> }
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
@@ -261,6 +263,8 @@ type Machine = {
   step: number
   /** For the Board: the position of the event that last put each title in its Band. */
   placedAt: Map<number, number>
+  /** Whether any title has had its Band chosen by hand (assigned in Rough Sort, or moved): no Rough Sort from Scores after that. */
+  placedByHand: boolean
 }
 
 type Place = { band: BandIndex; sub?: SubBandIndex }
@@ -373,20 +377,8 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       if (machine.roughSortQueue[0] !== event.id) {
         throw new ReplayError(`Band assigned to title ${event.id}, but Rough Sort prompts ${machine.roughSortQueue[0] ?? 'nothing'}`)
       }
-      const segment = destination(machine, event.band, event.sub)
-      takeOut(machine, event.id)
-      const place = placeAt(event.band, event.sub)
-      machine.lastPlace.set(event.id, place)
-      machine.placedAt.set(event.id, machine.step)
-      const resume = machine.returning.get(event.id)
-      if (!resume) {
-        segment.queue.push({ id: event.id, above: null, below: null })
-        return
-      }
-      // A title brought back through Rough Sort is placed next, like any other fix.
-      machine.returning.delete(event.id)
-      segment.queue.unshift({ id: event.id, above: null, below: null })
-      if (machine.roughSortQueue.length === 0) startDetour(machine, event.id, place, resume)
+      leaveRoughSort(machine, event.id, placeAt(event.band, event.sub), 'fix')
+      machine.placedByHand = true
       return
     }
     case 'duel-answered': {
@@ -433,6 +425,7 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       if (!placeOf(machine, event.id)) throw new ReplayError(`Title ${event.id} can't be moved: it is not in a Band`)
       sendToFront(machine, event.id, placeAt(event.band, event.sub))
       machine.placedAt.set(event.id, machine.step)
+      machine.placedByHand = true
       return
     case 'rerank-requested': {
       const place = placeOf(machine, event.id)
@@ -605,26 +598,50 @@ function splitBand(machine: Machine, event: Extract<LogEvent, { type: 'band-spli
   })
 }
 
-/** Rough Sort from Scores (ADR 0008): every listed title leaves the Rough Sort queue for the back of its Band's queue. */
+/**
+ * Rough Sort from Scores (ADR 0008): every listed title leaves the Rough Sort queue for the back of its Band's
+ * queue. Only valid while no title has had its Band chosen by hand (#31): it is offered when a Ranking starts.
+ */
 function bandsFromScores(machine: Machine, event: Extract<LogEvent, { type: 'bands-from-scores' }>): void {
+  if (machine.placedByHand) {
+    throw new ReplayError('Bands from scores must come before any Band is chosen by hand')
+  }
   if (!Array.isArray(event.bands) || event.bands.length !== BANDS.length) {
     throw new ReplayError('Bands from scores must list titles for each of the five Bands')
   }
   const listed = new Set<number>()
   for (const band of BANDS) {
-    const segment = destination(machine, band, undefined)
     for (const id of event.bands[band]) {
       if (listed.has(id) || !machine.roughSortQueue.includes(id)) {
         throw new ReplayError(`Bands from scores lists title ${id}, but it is not waiting in Rough Sort`)
       }
       listed.add(id)
-      takeOut(machine, id)
-      segment.queue.push({ id, above: null, below: null })
-      machine.lastPlace.set(id, placeAt(band, undefined))
-      machine.placedAt.set(id, machine.step)
-      machine.returning.delete(id)
+      leaveRoughSort(machine, id, placeAt(band, undefined), 'in-order')
     }
   }
+}
+
+/**
+ * A title leaves Rough Sort for the insertion queue of its (Sub-)band, normally at the back.
+ *
+ * A title brought back through Rough Sort (Unforgotten with no usable last Sub-band, in `returning`) differs by
+ * who placed it. Tapped by hand (`'fix'`), it is a fix like any other: it goes to the front and is placed next,
+ * then Duels resume where they were. Placed by Rough Sort from Scores (`'in-order'`), it is just one of the titles
+ * the event lists, and goes to the back in the event's order like the rest; nothing is resumed.
+ */
+function leaveRoughSort(machine: Machine, id: number, place: Place, returning: 'fix' | 'in-order'): void {
+  const segment = destination(machine, place.band, place.sub)
+  takeOut(machine, id)
+  machine.lastPlace.set(id, place)
+  machine.placedAt.set(id, machine.step)
+  const resume = machine.returning.get(id)
+  machine.returning.delete(id)
+  if (!resume || returning === 'in-order') {
+    segment.queue.push({ id, above: null, below: null })
+    return
+  }
+  segment.queue.unshift({ id, above: null, below: null })
+  if (machine.roughSortQueue.length === 0) startDetour(machine, id, place, resume)
 }
 
 /** `hash(seed, min, max)` for left/right placement (display only). 32-bit FNV-1a over the three words, then a final mix. */
@@ -714,6 +731,7 @@ export function replay(log: DuelLog): RankingState {
     returning: new Map(),
     step: 0,
     placedAt: new Map(),
+    placedByHand: false,
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (let step = 0; step < effective.length; step++) {

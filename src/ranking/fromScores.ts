@@ -1,21 +1,21 @@
 // Rough Sort from Scores (ADR 0008): pure, no I/O. Builds the Band of every scored title in the Pool from how far
 // its old AniList score sits from the user's own average. Only the result goes into the Duel log
 // (`bands-from-scores`); replay never reads AniList scores.
-import { BANDS, type BandIndex } from './engine.ts'
+import { BANDS, type BandIndex, type PerBand } from './engine.ts'
 
 export type ScoresPlan = {
   /** Per Band (Loved first): the scored titles it gets, in the order they were given. */
-  bands: [number[], number[], number[], number[], number[]]
+  bands: PerBand<number[]>
   /** Per Band: how many titles it gets. */
-  counts: [number, number, number, number, number]
+  counts: PerBand<number>
   /** Titles with a score ("X of Y"). */
   scored: number
   /** Every title in the Pool, scored or not. */
   total: number
-  /** Fewer than 80% of the titles have a score. */
-  warn: boolean
+  /** Fewer than 80% of the titles have a score: the offer says "not recommended". */
+  belowThreshold: boolean
   /** Whether to offer at all: false when nothing is scored or every score is the same (SD = 0). */
-  offer: boolean
+  offerable: boolean
 }
 
 /**
@@ -36,12 +36,14 @@ export function planFromScores(titles: readonly { id: number; score100: number }
   const spread = scored.reduce((s, t) => s + deviation(t.score100) ** 2n, 0n)
   const bands: ScoresPlan['bands'] = [[], [], [], [], []]
   if (spread > 0n) {
-    // |z| ≥ 1.5 ⇔ 4·n·d² ≥ 9·T; |z| ≥ 0.5 ⇔ 4·n·d² ≥ T.
-    const atLeast = (d: bigint, k2times4: bigint) => 4n * n * d * d >= k2times4 * spread
+    // The cut points as 4·k² (so k = 1.5 and k = 0.5 stay integers): |z| ≥ k ⇔ 4·n·d² ≥ 4k²·T.
+    const FAR = 9n // k = 1.5
+    const NEAR = 1n // k = 0.5
+    const atLeast = (d: bigint, fourKSquared: bigint) => 4n * n * d * d >= fourKSquared * spread
     for (const t of scored) {
       const d = deviation(t.score100)
       const band: BandIndex =
-        d > 0n ? (atLeast(d, 9n) ? 0 : atLeast(d, 1n) ? 1 : 2) : d < 0n ? (atLeast(d, 9n) ? 4 : atLeast(d, 1n) ? 3 : 2) : 2
+        d > 0n ? (atLeast(d, FAR) ? 0 : atLeast(d, NEAR) ? 1 : 2) : d < 0n ? (atLeast(d, FAR) ? 4 : atLeast(d, NEAR) ? 3 : 2) : 2
       bands[band].push(t.id)
     }
   }
@@ -51,8 +53,8 @@ export function planFromScores(titles: readonly { id: number; score100: number }
     counts,
     scored: scored.length,
     total: titles.length,
-    // Below 80% scored the offer says "not recommended" (in integers, so exactly 80% doesn't warn).
-    warn: 5 * scored.length < 4 * titles.length,
-    offer: spread > 0n,
+    // In integers, so exactly 80% doesn't warn.
+    belowThreshold: 5 * scored.length < 4 * titles.length,
+    offerable: spread > 0n,
   }
 }
