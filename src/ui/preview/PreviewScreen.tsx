@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import { BANDS, type RankingState } from '../../ranking/engine.ts'
+import { BANDS, type RankingState, type SortGoal } from '../../ranking/engine.ts'
+import { goalOf } from '../../ranking/sortGoal.ts'
 import { importPlan, isTicked, previewRows, type PendingWrite, type PreviewRow, type TickOverrides } from '../../ranking/preview.ts'
 import { formatLevel, hasHumanStep, levelOfRaw, levels, score, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
+import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
 import './preview.css'
 import { count, titleName } from '../meta.ts'
@@ -26,6 +28,8 @@ export function PreviewScreen(props: {
   format: ScoreFormat
   settings: ScoringSettings
   onSettings: (settings: ScoringSettings) => void
+  /** Switch the Sort Goal (#28): Full Ranking asks first. No Sort Goal `seg` without it. */
+  onSortGoal?: (goal: SortGoal) => void
   overrides: TickOverrides
   onTick: (id: number, ticked: boolean) => void
   onImport?: (plan: PendingWrite[]) => void
@@ -142,6 +146,7 @@ export function PreviewScreen(props: {
             </button>
           ))}
         </div>
+        {props.onSortGoal && <SortGoalSeg goal={goalOf(state)} onGoal={props.onSortGoal} />}
         {hasHumanStep(format) && state.sortGoal === 'scores' && (
           // Scores always uses whole points (ADR 0007): the Step is shown, locked (#25; #27 finishes this control).
           <div className="seg" title="Score Step: Scores always uses whole points">

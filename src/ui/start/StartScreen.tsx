@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Cover, ListStatus, MediaType, Viewer } from '../../anilist/types.ts'
 import { OFFERED_STATUSES, displayTitle, estimateMinutes, type Pool } from '../../pool/pool.ts'
-import { BANDS } from '../../ranking/engine.ts'
+import { BANDS, type SortGoal } from '../../ranking/engine.ts'
 import type { ScoresPlan } from '../../ranking/fromScores.ts'
 import { BAND_UI } from '../bands.ts'
 import { Kao } from '../Kao.tsx'
 import { MEDIA_LABEL, pluralWord } from '../meta.ts'
+import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import './start.css'
 import { statusLabel } from './statusLabel.ts'
 
@@ -32,6 +33,14 @@ export type PoolForm = {
   saved?: { done: number; total: number } | null
   /** Expected Duels from the saved Ranking's real Band sizes once its Rough Sort is done (#1 US8); else equal Bands are assumed. */
   bandDuels?: number | null
+  /** The Sort Goal shown (#28): the saved Ranking's, or the one a new Ranking will start on. */
+  goal: SortGoal
+  /** A new Ranking: just remembers the choice. A saved one: switches it (Full Ranking asks first). */
+  onGoal: (goal: SortGoal) => void
+  /** Expected Duels for the Pool under the shown Sort Goal, equal Bands assumed; null while the list is loading. */
+  poolDuels: number | null
+  /** About how many more Duels Full Ranking takes than Scores, for the long explanation; null if not known. */
+  extraDuels: number | null
   /** Opens Restore from Backup (e.g. on a new browser). */
   onRestore?: () => void
 }
@@ -133,7 +142,7 @@ function PoolSetup(form: PoolForm) {
   const chosen = new Set(statuses)
   const label = (s: (typeof OFFERED_STATUSES)[number]) => statusLabel(s, mediaType)
   const n = pool?.titles.length ?? 0
-  const duels = form.bandDuels ?? pool?.expectedDuels ?? 0
+  const duels = form.bandDuels ?? form.poolDuels ?? 0
 
   return (
     <>
@@ -175,6 +184,12 @@ function PoolSetup(form: PoolForm) {
           Planning · never ranked
         </span>
       </div>
+      <div className="lab2">Sort Goal</div>
+      <div className="goalrow">
+        <SortGoalSeg goal={form.goal} onGoal={form.onGoal} />
+        <span className="gexp">{form.goal === 'scores' ? 'Stops once every score is settled.' : 'Every title gets its own place.'}</span>
+        <GoalInfo extraDuels={form.extraDuels} />
+      </div>
       <div className="est" aria-live="polite">
         {pool ? (
           <>
@@ -209,6 +224,57 @@ function PoolSetup(form: PoolForm) {
       )}
       <Reassure />
     </>
+  )
+}
+
+/**
+ * The ⓘ beside the Sort Goal (#25): the long explanation. On desktop it shows while the pointer is over it; on touch
+ * a tap opens it as a popover with ×, and a tap anywhere else closes it.
+ */
+function GoalInfo({ extraDuels }: { extraDuels: number | null }) {
+  // 'hover' follows the mouse; 'pinned' was opened by a tap or click and stays until closed.
+  const [open, setOpen] = useState<'hover' | 'pinned' | null>(null)
+  const wrap = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (open !== 'pinned') return
+    const close = (e: PointerEvent) => !wrap.current?.contains(e.target as Node) && setOpen(null)
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [open])
+  return (
+    <span
+      className="iwrap"
+      ref={wrap}
+      onPointerEnter={(e) => e.pointerType === 'mouse' && !open && setOpen('hover')}
+      onPointerLeave={(e) => e.pointerType === 'mouse' && open === 'hover' && setOpen(null)}
+    >
+      <button
+        className={open ? 'info-i on' : 'info-i'}
+        aria-label="Scores or Full Ranking?"
+        aria-expanded={Boolean(open)}
+        onClick={() => setOpen(open === 'pinned' ? null : 'pinned')}
+      >
+        i
+      </button>
+      {open && (
+        <span className="ipop" role="tooltip">
+          {open === 'pinned' && (
+            <button className="x" aria-label="Close" onClick={() => setOpen(null)}>
+              ×
+            </button>
+          )}
+          <b>Scores</b> (default): Duels stop once every title's score is settled. Whole points (8, not 8.5). Titles on
+          the same score have no order among themselves.
+          <br />
+          <br />
+          <b>Full Ranking</b>: every title gets its own place, even on the same score, and you can pick 0.5 or 0.1 steps.
+          {extraDuels ? ` About ${extraDuels} more Duels.` : ''}
+          <br />
+          <br />
+          Same Bands, same kind of Duels. Switch any time from the menu; no answer is lost.
+        </span>
+      )}
+    </span>
   )
 }
 
