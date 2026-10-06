@@ -224,8 +224,10 @@ export function SplitScreen(props: {
   onSkip: () => void
   /** "Start Duels" once split. */
   onClose: () => void
+  /** What closing leads to: Duels, or the last-check Board first (#34), when the button just says "Continue". */
+  nextStep?: 'duels' | 'last-check'
 }) {
-  const { state, band, entries, titleLanguage, onSplit, onSkip, onClose } = props
+  const { state, band, entries, titleLanguage, onSplit, onSkip, onClose, nextStep = 'duels' } = props
   const b = state.bands[band]
   const label = BAND_UI[band].label
   const [phase, setPhase] = useState<'offer' | 'split'>('offer')
@@ -293,7 +295,7 @@ export function SplitScreen(props: {
         </div>
         <SplitChart state={state} split={band} />
         <button className="go" onClick={onClose}>
-          {first !== null ? `Start Duels in ${label} › ${SUB_BAND_UI[first].label}` : 'Continue'} <span className="kbd">Enter</span>
+          {first !== null && nextStep === 'duels' ? `Start Duels in ${label} › ${SUB_BAND_UI[first].label}` : 'Continue'} <span className="kbd">Enter</span>
         </button>
         <div className="small">
           {label} stays one row in the sidebar; its bar is striped by Sub-band. Duels go Best → Middle → Lowest.

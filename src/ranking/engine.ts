@@ -10,12 +10,14 @@ export const LOG_FORMAT_VERSION = 1
  * replay differently (ADR 0005). Adding an event kind or changing replay means bumping this and, for a new kind,
  * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006).
  */
-export const ENGINE_VERSION = 5
+export const ENGINE_VERSION = 6
 const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VERSION }, (_, i) => i + 1)
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
 export type BandIndex = 0 | 1 | 2 | 3 | 4
 export const BANDS: readonly BandIndex[] = [0, 1, 2, 3, 4]
+/** One value per Band, indexed by BandIndex (Loved first). */
+export type PerBand<T> = [T, T, T, T, T]
 
 /** Sub-band index inside a split Band (ADR 0006): 0 = Best, 1 = Middle, 2 = Lowest. */
 export type SubBandIndex = 0 | 1 | 2
@@ -70,6 +72,12 @@ export type LogEvent =
    * queue if it never had one, or if its Band was split since (so the second tap asks for the Sub-band).
    */
   | { type: 'unforgotten'; id: number }
+  /**
+   * Rough Sort from Scores (ADR 0008): the Band of every title the app placed from its old AniList score, as one
+   * user event. `bands[b]` lists, by id, the titles that go to the back of Band b's insertion queue, in that order.
+   * Each must be waiting in Rough Sort; titles it doesn't list stay there. Replay never reads AniList scores.
+   */
+  | { type: 'bands-from-scores'; bands: PerBand<number[]> }
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
@@ -86,7 +94,7 @@ type UndoRole = 'user' | 'barrier' | 'navigation'
 /**
  * One row per event kind: the engine version it came with (a log whose header is older refuses it), its name in
  * that error, and its Undo role. Engine version 2 came with `band-split`, 3 with `band-selected`, 4 with
- * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`).
+ * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`), 6 with `bands-from-scores`.
  */
 const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; name: string; undoRole: UndoRole } } = {
   'titles-added': { since: 1, name: 'Titles added', undoRole: 'barrier' },
@@ -99,6 +107,7 @@ const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; nam
   'band-moved': { since: 5, name: 'Band moved', undoRole: 'user' },
   'rerank-requested': { since: 5, name: 'Re-rank requested', undoRole: 'user' },
   unforgotten: { since: 5, name: 'Unforgotten', undoRole: 'user' },
+  'bands-from-scores': { since: 6, name: 'Bands from scores', undoRole: 'user' },
 }
 
 export type Prompt =
@@ -167,6 +176,21 @@ export type RankingState = {
   bandChoice: { finished: BandIndex | null; next: BandIndex } | null
   /** Whether an Undo appended now would cancel anything. */
   canUndo: boolean
+  board: BoardView
+}
+
+/** One title on the Board: `at` is the position of the event that last put it in its Band; `sub` only in a split Band. */
+export type BoardTitle = { id: number; at: number; sub?: SubBandIndex }
+
+/** The Board (#31): every title that has a Band, by Band. Display only, it never changes what the log replays to. */
+export type BoardView = {
+  /** Open while no Duel answer is in effect: during Rough Sort and right after it. */
+  open: boolean
+  /**
+   * Index = BandIndex, Loved first. Titles most recently put in the Band first. Titles put there by the same event
+   * share `at` and are listed by id here; the UI orders those by display name.
+   */
+  bands: readonly { titles: readonly BoardTitle[] }[]
 }
 
 /** The log can't be replayed: unknown version, or an event that doesn't fit the state it lands on. */
@@ -235,6 +259,12 @@ type Machine = {
   detour: { id: number; band: BandIndex; sub?: SubBandIndex; resume: Resume } | null
   /** Unforgotten titles waiting in Rough Sort (no usable last Sub-band): the detour starts once they are sorted. */
   returning: Map<number, Resume>
+  /** The position (among the events that still count) of the event being applied now. */
+  step: number
+  /** For the Board: the position of the event that last put each title in its Band. */
+  placedAt: Map<number, number>
+  /** Whether any title has had its Band chosen by hand (assigned in Rough Sort, or moved): no Rough Sort from Scores after that. */
+  placedByHand: boolean
 }
 
 type Place = { band: BandIndex; sub?: SubBandIndex }
@@ -347,19 +377,8 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       if (machine.roughSortQueue[0] !== event.id) {
         throw new ReplayError(`Band assigned to title ${event.id}, but Rough Sort prompts ${machine.roughSortQueue[0] ?? 'nothing'}`)
       }
-      const segment = destination(machine, event.band, event.sub)
-      takeOut(machine, event.id)
-      const place = placeAt(event.band, event.sub)
-      machine.lastPlace.set(event.id, place)
-      const resume = machine.returning.get(event.id)
-      if (!resume) {
-        segment.queue.push({ id: event.id, above: null, below: null })
-        return
-      }
-      // A title brought back through Rough Sort is placed next, like any other fix.
-      machine.returning.delete(event.id)
-      segment.queue.unshift({ id: event.id, above: null, below: null })
-      if (machine.roughSortQueue.length === 0) startDetour(machine, event.id, place, resume)
+      leaveRoughSort(machine, event.id, placeAt(event.band, event.sub), 'fix')
+      machine.placedByHand = true
       return
     }
     case 'duel-answered': {
@@ -405,6 +424,8 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
     case 'band-moved':
       if (!placeOf(machine, event.id)) throw new ReplayError(`Title ${event.id} can't be moved: it is not in a Band`)
       sendToFront(machine, event.id, placeAt(event.band, event.sub))
+      machine.placedAt.set(event.id, machine.step)
+      machine.placedByHand = true
       return
     case 'rerank-requested': {
       const place = placeOf(machine, event.id)
@@ -416,6 +437,7 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       const index = machine.forgotten.indexOf(event.id)
       if (index < 0) throw new ReplayError(`Title ${event.id} can't be brought back: it is not Forgotten`)
       machine.forgotten.splice(index, 1)
+      machine.placedAt.set(event.id, machine.step)
       const last = machine.lastPlace.get(event.id)
       // Its last Sub-band only counts if the Band is still split the same way (a Band split since needs a second tap).
       if (last && placeStillFits(machine, last)) {
@@ -426,6 +448,9 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       machine.returning.set(event.id, machine.detour?.resume ?? { focus: machine.focus, finished: machine.finished })
       return
     }
+    case 'bands-from-scores':
+      bandsFromScores(machine, event)
+      return
   }
 }
 
@@ -573,6 +598,52 @@ function splitBand(machine: Machine, event: Extract<LogEvent, { type: 'band-spli
   })
 }
 
+/**
+ * Rough Sort from Scores (ADR 0008): every listed title leaves the Rough Sort queue for the back of its Band's
+ * queue. Only valid while no title has had its Band chosen by hand (#31): it is offered when a Ranking starts.
+ */
+function bandsFromScores(machine: Machine, event: Extract<LogEvent, { type: 'bands-from-scores' }>): void {
+  if (machine.placedByHand) {
+    throw new ReplayError('Bands from scores must come before any Band is chosen by hand')
+  }
+  if (!Array.isArray(event.bands) || event.bands.length !== BANDS.length) {
+    throw new ReplayError('Bands from scores must list titles for each of the five Bands')
+  }
+  const listed = new Set<number>()
+  for (const band of BANDS) {
+    for (const id of event.bands[band]) {
+      if (listed.has(id) || !machine.roughSortQueue.includes(id)) {
+        throw new ReplayError(`Bands from scores lists title ${id}, but it is not waiting in Rough Sort`)
+      }
+      listed.add(id)
+      leaveRoughSort(machine, id, placeAt(band, undefined), 'in-order')
+    }
+  }
+}
+
+/**
+ * A title leaves Rough Sort for the insertion queue of its (Sub-)band, normally at the back.
+ *
+ * A title brought back through Rough Sort (Unforgotten with no usable last Sub-band, in `returning`) differs by
+ * who placed it. Tapped by hand (`'fix'`), it is a fix like any other: it goes to the front and is placed next,
+ * then Duels resume where they were. Placed by Rough Sort from Scores (`'in-order'`), it is just one of the titles
+ * the event lists, and goes to the back in the event's order like the rest; nothing is resumed.
+ */
+function leaveRoughSort(machine: Machine, id: number, place: Place, returning: 'fix' | 'in-order'): void {
+  const segment = destination(machine, place.band, place.sub)
+  takeOut(machine, id)
+  machine.lastPlace.set(id, place)
+  machine.placedAt.set(id, machine.step)
+  const resume = machine.returning.get(id)
+  machine.returning.delete(id)
+  if (!resume || returning === 'in-order') {
+    segment.queue.push({ id, above: null, below: null })
+    return
+  }
+  segment.queue.unshift({ id, above: null, below: null })
+  if (machine.roughSortQueue.length === 0) startDetour(machine, id, place, resume)
+}
+
 /** `hash(seed, min, max)` for left/right placement (display only). 32-bit FNV-1a over the three words, then a final mix. */
 function sideHash(seed: number, low: number, high: number): number {
   let h = 0x811c9dc5
@@ -658,10 +729,14 @@ export function replay(log: DuelLog): RankingState {
     lastPlace: new Map(),
     detour: null,
     returning: new Map(),
+    step: 0,
+    placedAt: new Map(),
+    placedByHand: false,
   }
   const { effective, canUndo } = resolveUndo(log.events)
-  for (const event of effective) {
-    apply(machine, seed, event)
+  for (let step = 0; step < effective.length; step++) {
+    machine.step = step
+    apply(machine, seed, effective[step])
     machine.segments.forEach(settle)
     refocus(machine)
   }
@@ -693,5 +768,37 @@ export function replay(log: DuelLog): RankingState {
     },
     bandChoice,
     canUndo,
+    board: new LazyBoard(!effective.some((event) => event.type === 'duel-answered'), machine.bands, machine.placedAt),
   }
+}
+
+/**
+ * The Board, with its Bands built on first read only: replay runs after every Duel answer, and most callers never
+ * look at the Board. A class rather than a closure in `replay`, so replay itself stays as cheap as before the Board.
+ */
+class LazyBoard implements BoardView {
+  readonly open: boolean
+  #segments: readonly (readonly Segment[])[]
+  #placedAt: ReadonlyMap<number, number>
+  #bands: BoardView['bands'] | undefined
+
+  constructor(open: boolean, segments: readonly (readonly Segment[])[], placedAt: ReadonlyMap<number, number>) {
+    this.open = open
+    this.#segments = segments
+    this.#placedAt = placedAt
+  }
+
+  get bands(): BoardView['bands'] {
+    this.#bands ??= this.#segments.map((segments) => ({ titles: boardTitles(segments, this.#placedAt) }))
+    return this.#bands
+  }
+}
+
+/** A Band's titles in Board order: latest `at` first, then by id. */
+function boardTitles(segments: readonly Segment[], placedAt: ReadonlyMap<number, number>): BoardTitle[] {
+  const titles = segments.flatMap((segment, s) => {
+    const ids = [...segment.tiers.flatMap((tier) => tier.members), ...segment.queue.map((insertion) => insertion.id)]
+    return ids.map((id) => withSub({ id, at: placedAt.get(id) ?? 0 }, subOfSegment(segments, s)))
+  })
+  return titles.sort((x, y) => y.at - x.at || x.id - y.id)
 }

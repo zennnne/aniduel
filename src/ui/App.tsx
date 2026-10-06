@@ -21,6 +21,7 @@ import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '.
 import { syncEvents } from '../pool/sync.ts'
 import {
   answeredDuels,
+  appendEvent,
   replay,
   startLog,
   withSub,
@@ -30,10 +31,13 @@ import {
   type SubBandIndex,
 } from '../ranking/engine.ts'
 import { duelsFromBands } from '../ranking/estimate.ts'
+import { planFromScores } from '../ranking/fromScores.ts'
 import type { ScoringSettings } from '../ranking/scoring.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
+import { BoardScreen } from './board/BoardScreen.tsx'
+import { lastCheckDue } from './board/lastCheck.ts'
 import { SplitScreen } from './split/SplitScreen.tsx'
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
@@ -55,9 +59,13 @@ import { StartScreen } from './start/StartScreen.tsx'
 import { useTheme } from './theme.ts'
 import { useDuelLog } from './useDuelLog.ts'
 
-/** 'bands' = the Band choice, opened by going Back from a Duel or from the menu. */
-type Screen = 'start' | 'ranking' | 'bands' | 'preview' | 'import'
-const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'preview', 'import']
+/**
+ * 'bands' = the Band choice, opened by going Back from a Duel or from the menu. 'board' = the Board, opened from
+ * Rough Sort while it is open (#33); otherwise the Ranking screen shows. The last-check Board after Rough Sort
+ * (#34) is not a screen of its own: the Ranking screen shows it until the user continues.
+ */
+type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import'
+const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import']
 
 type DialogName = 'logout' | 'restore' | 'start-over'
 
@@ -96,6 +104,8 @@ export function App() {
   const [splitView, setSplitView] = useState<{ band: BandIndex } | null>(null)
   // Bands whose split offer was turned down ("Keep it as it is") in this session.
   const [skippedSplits, setSkippedSplits] = useState<readonly BandIndex[]>([])
+  // The user pressed Continue on the last-check Board (#34). Session UI state only, never a log event.
+  const [lastCheckContinued, setLastCheckContinued] = useState(false)
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
   // Best / worst / Distribution for the Score Format AniList reported when Preview opened; null until then.
@@ -114,6 +124,16 @@ export function App() {
   const pool = useMemo(() => (list ? buildPool(list, statuses) : null), [list, statuses])
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
+  const titleLanguage = viewer?.titleLanguage
+  // A new Ranking's Rough Sort order, and the Rough Sort from Scores plan over it (ADR 0008).
+  const startOrder = useMemo(
+    () => (pool && titleLanguage ? roughSortOrder(pool.titles, titleLanguage) : null),
+    [pool, titleLanguage],
+  )
+  const scoresPlan = useMemo(
+    () => (startOrder ? planFromScores(startOrder.map((id) => ({ id, score100: oldScores.get(id) ?? 0 }))) : null),
+    [startOrder, oldScores],
+  )
 
   const imports = useImport({
     storage: localStorage,
@@ -180,6 +200,7 @@ export function App() {
     setMediaType(key.mediaType)
     setSplitView(null)
     setSkippedSplits([])
+    setLastCheckContinued(false)
     setScoring(null)
     imports.open(key)
     setPreviewFix(null)
@@ -281,6 +302,24 @@ export function App() {
   const autoOffer =
     ranking?.prompt.kind === 'duel' && log && autoOfferDue(log) ? offers.find((band) => !skippedSplits.includes(band)) : undefined
   const splitBand = splitView?.band ?? autoOffer ?? null
+
+  // Back in Rough Sort (Undo, or a sync before the first Duel): finishing it shows the last check again (#34).
+  if (lastCheckContinued && ranking?.prompt.kind === 'rough-sort') setLastCheckContinued(false)
+  // Rough Sort → split offer → last check → Band choice → Duels.
+  const lastCheck = ranking ? lastCheckDue(ranking, lastCheckContinued) : false
+
+  /** The Board's entry points (Rough Sort pill, Band choice pill, menu) while it is open: before the first Duel answer. */
+  function openBoard() {
+    if (!ranking?.board.open) return
+    if (ranking.prompt.kind === 'rough-sort') goTo('board')
+    else setLastCheckContinued(false)
+  }
+
+  /** "Continue →" on the last check: the Band choice comes next. */
+  function continueFromLastCheck() {
+    setLastCheckContinued(true)
+    if (ranking?.prompt.kind === 'duel' && screen !== 'bands') goTo('bands')
+  }
 
   /**
    * Sync (#13, ADR 0005): brings the Pool in the log up to date with the fetched list and the chosen statuses.
@@ -388,18 +427,14 @@ export function App() {
     goTo('ranking')
   }
 
-  function startOrContinue() {
+  /** `fromScores`: the user turned on Rough Sort from Scores (ADR 0008), a new Ranking only. */
+  function startOrContinue(fromScores = false) {
     if (!viewer) return
     if (!duelLog.latest()) {
-      if (!pool) return
-      duelLog.save(
-        startLog({
-          seed: newSeed(),
-          userId: viewer.id,
-          mediaType,
-          ids: roughSortOrder(pool.titles, viewer.titleLanguage),
-        }),
-      )
+      if (!startOrder) return
+      const log = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder })
+      const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
+      duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
     } else {
       // The statuses may have changed on Start: titles that now match join, the rest leave.
       const summary = syncPool(mediaType, list, statuses)
@@ -522,6 +557,7 @@ export function App() {
             setSplitView({ band })
             goTo('ranking')
           },
+          openBoard,
           restore: () => setDialog('restore'),
           startOver: () => setDialog('start-over'),
           toggleTheme,
@@ -537,6 +573,8 @@ export function App() {
         statuses,
         pool,
         saved: ranking?.progress.roughSort ?? null,
+        // Offered for a new Ranking only.
+        scoresPlan: hasProgress ? null : scoresPlan,
         bandDuels: ranking ? duelsFromBands(ranking) : null,
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
@@ -552,7 +590,7 @@ export function App() {
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
-    (screen === 'ranking' || screen === 'bands' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
+    (screen === 'ranking' || screen === 'bands' || screen === 'board' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
   const importView = imports.view
   const inImport = screen === 'import' && importView
   // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows.
@@ -580,16 +618,54 @@ export function App() {
             setSplitView(null)
             showToast(<>Skipped. {BAND_UI[band].label} stays one Band</>)
           }}
+          // The last check comes before any Duel (#34), so the Band choice comes after it, not straight away.
+          nextStep={lastCheck ? 'last-check' : 'duels'}
           onClose={() => {
             setSplitView(null)
             // "Start Duels in Loved › Best": the split Band is chosen, so its Duels come next.
-            if (state.bands[band].subBands) chooseBand(band)
+            if (!lastCheck && state.bands[band].subBands) chooseBand(band)
           }}
         />
       )
     }
+    if (lastCheck) {
+      return (
+        <BoardScreen
+          state={state}
+          entries={entries}
+          titleLanguage={titleLanguage}
+          heading="Last check"
+          hint="Moves are free until your first Duel. After that, moving a title costs Duels."
+          mainLabel="Continue →"
+          onMain={continueFromLastCheck}
+          onMove={moveTitle}
+          onUndo={shared.onUndo}
+        />
+      )
+    }
     switch (prompt.kind) {
-      case 'rough-sort':
+      case 'rough-sort': {
+        if (screen === 'board' && state.board.open) {
+          const { done, total } = state.progress.roughSort
+          const placed = state.board.bands.reduce((sum, band) => sum + band.titles.length, 0)
+          return (
+            <BoardScreen
+              state={state}
+              entries={entries}
+              titleLanguage={titleLanguage}
+              heading="Board"
+              hint={`${count(placed, 'title')} ${placed === 1 ? 'has' : 'have'} a Band. Drag a title to another Band.`}
+              mainLabel={
+                <>
+                  ← Back to Rough Sort<span className="hide-m"> · {total - done} left</span>
+                </>
+              }
+              onMain={() => goTo('ranking')}
+              onMove={moveTitle}
+              onUndo={shared.onUndo}
+            />
+          )
+        }
         return (
           <RoughSortScreen
             {...shared}
@@ -597,8 +673,10 @@ export function App() {
             id={prompt.id}
             onBand={(band, sub) => answer(withSub({ type: 'band-assigned', id: prompt.id, band }, sub))}
             onForget={() => answer({ type: 'forgotten', id: prompt.id })}
+            onBoard={state.board.open ? openBoard : undefined}
           />
         )
+      }
       case 'duel':
         if (state.bandChoice || screen === 'bands') {
           return (
@@ -611,6 +689,7 @@ export function App() {
               next={state.bandChoice?.next ?? prompt.band}
               onChoose={chooseBand}
               onUndo={shared.onUndo}
+              onBoard={state.board.open ? openBoard : undefined}
             />
           )
         }

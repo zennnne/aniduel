@@ -11,6 +11,7 @@ import './roughsort.css'
  * Rough Sort = "Ladder" (issue #4): the title on the left, five Band buttons on the right
  * (Loved on top), with Don't remember / Undo / AniList underneath. Keys 1-5, 0, Backspace.
  * A split Band opens a second tap under its button: Best / Middle / Lowest (Q / W / E; Esc or Backspace goes back).
+ * Under them, the Board pill (key B) opens the Board (#33).
  */
 export function RoughSortScreen(props: {
   state: RankingState
@@ -24,8 +25,10 @@ export function RoughSortScreen(props: {
   onBand: (band: BandIndex, sub?: SubBandIndex) => void
   onForget: () => void
   onUndo: () => void
+  /** Opens the Board; left out while the Board is closed. */
+  onBoard?: () => void
 }) {
-  const { state, id, entries, titleLanguage, mediaType, onBand, onForget, onUndo } = props
+  const { state, id, entries, titleLanguage, mediaType, onBand, onForget, onUndo, onBoard } = props
   const { done, total } = state.progress.roughSort
   // A split Band needs a second tap to pick its Sub-band; it never defaults to Middle (ADR 0006).
   const [pending, setPending] = useState<BandIndex | null>(null)
@@ -60,6 +63,7 @@ export function RoughSortScreen(props: {
     }
     if (e.key >= '1' && e.key <= '5') pickBand((Number(e.key) - 1) as BandIndex)
     else if (e.key === '0') onForget()
+    else if (e.key.toLowerCase() === 'b' && onBoard) onBoard()
   })
 
   useEffect(() => {
@@ -141,6 +145,14 @@ export function RoughSortScreen(props: {
               </a>
             )}
           </div>
+          {onBoard && (
+            <div className="rs-boardrow">
+              <button className="pill hl" onClick={onBoard}>
+                ▦ Board <span className="kbd">B</span>
+              </button>
+              <span className="cap">See every title you've sorted, by Band. Fix one without Undo.</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
