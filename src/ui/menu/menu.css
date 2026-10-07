@@ -37,12 +37,23 @@
   width: 300px;
   background: var(--fg);
   border-radius: 14px;
-  padding: 10px;
+  /* Same-colour border insets the scrollbar so it doesn't square off the rounded corners. */
+  border: 6px solid var(--fg);
+  padding: 4px;
   box-shadow: 0 10px 40px #000a;
   z-index: 40;
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Scroll inside the popover instead of running off the top of short windows. */
+  max-height: calc(100vh - 120px);
+  max-height: calc(100dvh - 120px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.mpop > * {
+  flex-shrink: 0;
 }
 .mgroup {
   display: flex;
