@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { saveDuelLog } from '../persistence/progress.ts'
 import { appendEvent, replay, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
 
@@ -20,15 +20,27 @@ export type DuelLogStore = {
   append: (...events: LogEvent[]) => RankingState | null
 }
 
+/** A log and its replay, kept together so each log is replayed once. */
+export type ReplayedLog = { log: DuelLog; ranking: RankingState }
+
+/** `log` with `events` appended (ADR 0005), replayed. Throws (ReplayError) if it doesn't replay. */
+export function appendAndReplay(log: DuelLog, events: LogEvent[]): ReplayedLog {
+  const next = events.reduce(appendEvent, log)
+  return { log: next, ranking: replay(next) }
+}
+
 /** The Duel log of the open Ranking: appended to, replayed and saved after every answer (ADR 0001, ADR 0005). */
 export function useDuelLog(storage: Storage): DuelLogStore {
-  const [log, setLog] = useState<DuelLog | null>(null)
+  const [shown, setShown] = useState<ReplayedLog | null>(null)
   const latestRef = useRef<DuelLog | null>(null)
-  const ranking = useMemo(() => (log ? replay(log) : null), [log])
+
+  function showReplayed(next: ReplayedLog | null) {
+    latestRef.current = next?.log ?? null
+    setShown(next)
+  }
 
   function show(next: DuelLog | null) {
-    latestRef.current = next
-    setLog(next)
+    showReplayed(next ? appendAndReplay(next, []) : null)
   }
 
   function save(next: DuelLog) {
@@ -39,11 +51,11 @@ export function useDuelLog(storage: Storage): DuelLogStore {
   function append(...events: LogEvent[]): RankingState | null {
     const current = latestRef.current
     if (!current) return null
-    const next = events.reduce(appendEvent, current)
-    const state = replay(next)
-    save(next)
-    return state
+    const next = appendAndReplay(current, events)
+    saveDuelLog(storage, next.log)
+    showReplayed(next)
+    return next.ranking
   }
 
-  return { log, ranking, latest: () => latestRef.current, show, save, append }
+  return { log: shown?.log ?? null, ranking: shown?.ranking ?? null, latest: () => latestRef.current, show, save, append }
 }
