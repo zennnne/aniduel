@@ -80,3 +80,28 @@ describe('the Sort Goal switch in the menu', () => {
     expect(items(null).map((i) => i.id)).not.toContain('sort-goal')
   })
 })
+
+// US29: the split item counts the titles that still need Duels.
+describe('the split offer in the menu', () => {
+  const splitItem = (log: DuelLog) =>
+    buildMenuItems(
+      { mediaType: 'ANIME', statuses: ['COMPLETED'], hasLog: true, hasProgress: true, ranking: replay(log), choosingBand: false, splitOffers: [4] },
+      actions,
+    ).find((i) => i.id === 'split-band-4')!
+  const hated = Array.from({ length: 100 }, (_, i) => i + 1)
+
+  it('counts titles without a place on Full Ranking', () => {
+    // The first title of the Band has a place once Rough Sort is done.
+    expect(splitItem(logOf(hated, ...hated.map((id) => assign(id, 4)))).description).toBe(
+      '99 titles without a place: Best / Middle / Lowest cuts the Duels',
+    )
+  })
+
+  it('counts titles not settled yet on Scores', () => {
+    // 100 titles in one Band span every level, so none is settled, the placed one included.
+    const log = startLog({ ...header, ids: hated, scoreFormat: 'POINT_3' })
+    expect(splitItem({ ...log, events: [...log.events, ...hated.map((id) => assign(id, 4))] }).description).toBe(
+      '100 titles not settled: Best / Middle / Lowest cuts the Duels',
+    )
+  })
+})

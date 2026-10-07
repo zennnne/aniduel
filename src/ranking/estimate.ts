@@ -1,9 +1,9 @@
 // Duel estimates. Full Ranking (binary insertion): placing k titles needs about log2(k!) Duels. Scores (ADR 0007):
 // titles that end on one level need no order among themselves, which saves part of log2(g!) per level of g titles.
 // Duels only happen inside a Band (or Sub-band), so the estimate is summed per Band.
-import type { ScoreFormat } from '../anilist/types.ts'
-import { progressOf, type BandIndex, type RankingState, type SortGoal } from './engine.ts'
-import { levelAt, score, type SavedScoring, type ScoringSettings } from './scoring.ts'
+import { progressOf, titlesIn, type BandIndex, type RankingState, type SortGoal } from './engine.ts'
+import { levelAt, score, type SavedScoring } from './scoring.ts'
+import { isScores } from './sortGoal.ts'
 
 export const BAND_COUNT = 5
 
@@ -19,15 +19,12 @@ function log2Factorial(k: number): number {
   return sum
 }
 
-/** What a Scores estimate needs: the scoring settings that turn positions into levels. */
-export type ScoresScale = { format: ScoreFormat; settings: ScoringSettings }
-
 /**
- * Expected Duels for the given Band (or Sub-band) sizes, top to bottom, rounded. With a `scale` the Ranking is on
- * Scores: each Band saves part of log2(g!) for every level its positions share (g titles), so a Band whose titles
+ * Expected Duels for the given Band (or Sub-band) sizes, top to bottom, rounded. With a `scale` (the scoring
+ * settings that turn positions into levels) the Ranking is on Scores: each Band saves part of log2(g!) for every level its positions share (g titles), so a Band whose titles
  * all get different levels costs what it costs on Full Ranking.
  */
-export function duelsForBandSizes(sizes: readonly number[], scale?: ScoresScale): number {
+export function duelsForBandSizes(sizes: readonly number[], scale?: SavedScoring): number {
   const n = sizes.reduce((sum, k) => sum + k, 0)
   let total = 0
   let offset = 0
@@ -57,8 +54,13 @@ type Part = { readonly tiers: readonly (readonly unknown[])[]; readonly unplaced
 type BandPart = Part & { readonly subBands?: readonly Part[] }
 
 /** The Scores scale of a Ranking on Scores (its log's own settings), or undefined on Full Ranking. */
-export function scaleOf(state: { readonly sortGoal?: SortGoal; readonly scoring?: SavedScoring }): ScoresScale | undefined {
-  return state.sortGoal === 'scores' && state.scoring ? state.scoring : undefined
+export function scaleOf(state: { readonly sortGoal?: SortGoal; readonly scoring?: SavedScoring }): SavedScoring | undefined {
+  return isScores(state) ? state.scoring : undefined
+}
+
+/** The size of every Band, Sub-band by Sub-band in a split Band, top to bottom: what Duels never cross. */
+function segmentSizes(bands: readonly BandPart[]): number[] {
+  return bands.flatMap((band) => (band.subBands ?? [band]).map(titlesIn))
 }
 
 /**
@@ -73,8 +75,7 @@ export function duelsFromBands(state: {
 }): number | null {
   const { done, total } = state.progress.roughSort
   if (done < total) return null
-  const size = (part: Part) => part.tiers.reduce((n, tier) => n + tier.length, 0) + part.unplaced.length
-  return duelsForBandSizes(state.bands.flatMap((band) => (band.subBands ?? [band]).map(size)), scaleOf(state))
+  return duelsForBandSizes(segmentSizes(state.bands), scaleOf(state))
 }
 
 /**
@@ -86,8 +87,7 @@ export function fullRankingExtra(state: RankingState): number {
   const scale = scaleOf(state)
   if (!scale) return 0
   const { done, total } = state.progress.roughSort
-  const size = (part: Part) => part.tiers.reduce((n, tier) => n + tier.length, 0) + part.unplaced.length
-  const sizes = done < total ? equalBandSizes(total) : state.bands.flatMap((band) => (band.subBands ?? [band]).map(size))
+  const sizes = done < total ? equalBandSizes(total) : segmentSizes(state.bands)
   return Math.max(0, duelsForBandSizes(sizes) - duelsForBandSizes(sizes, scale))
 }
 
@@ -110,8 +110,7 @@ export function duelsLeft(band: BandPart): number {
 export function duelsLeftIn(state: RankingState, band: BandIndex): number {
   const scale = scaleOf(state)
   if (!scale) return duelsLeft(state.bands[band])
-  const size = (part: Part) => part.tiers.reduce((n, tier) => n + tier.length, 0) + part.unplaced.length
-  const sizes = state.bands.flatMap((b) => (b.subBands ?? [b]).map(size))
+  const sizes = segmentSizes(state.bands)
   const full = duelsForBandSizes(sizes)
   const ratio = full > 0 ? duelsForBandSizes(sizes, scale) / full : 1
   let sum = 0

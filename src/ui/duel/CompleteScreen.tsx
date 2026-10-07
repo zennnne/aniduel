@@ -1,5 +1,6 @@
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
 import { BANDS, type RankingState } from '../../ranking/engine.ts'
+import { isScores } from '../../ranking/sortGoal.ts'
 import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import './duel.css'
@@ -19,7 +20,7 @@ export function CompleteScreen(props: {
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const bands = BANDS.map((band) => ({ band, lines: rankingLines(state, band, name) })).filter(({ lines }) => lines.length > 0)
   // Scores (#25): each line is a score level, its titles sorted by name and joined by " · ", since they have no order.
-  const scores = Boolean(state.standing)
+  const scores = isScores(state)
   return (
     <div className="ranked">
       <div className="h1">{scores ? 'Every score is settled' : 'Every Band is ranked'}</div>

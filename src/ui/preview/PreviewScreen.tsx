@@ -13,12 +13,13 @@ import {
   type TickOverrides,
   type UnsettledRow,
 } from '../../ranking/preview.ts'
-import { goalOf } from '../../ranking/sortGoal.ts'
+import { goalOf, isScores } from '../../ranking/sortGoal.ts'
 import { formatLevel, hasHumanStep, levelOfRaw, levels, score, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
+import { unsettledSummary } from './unsettledCard.ts'
 import './preview.css'
 import { count, titleName } from '../meta.ts'
 
@@ -193,7 +194,7 @@ export function PreviewScreen(props: {
           ))}
         </div>
         {props.onSwitchGoal && <SortGoalSeg goal={goalOf(state)} onGoal={props.onSwitchGoal} />}
-        {hasHumanStep(format) && state.sortGoal === 'scores' && (
+        {hasHumanStep(format) && isScores(state) && (
           // Scores always uses whole points (ADR 0007): the Step is locked on Whole, and the caption gives the way out (#25).
           <>
             <div className="seg lock" title="Score Step: Scores always uses whole points">
@@ -211,7 +212,7 @@ export function PreviewScreen(props: {
             </span>
           </>
         )}
-        {hasHumanStep(format) && state.sortGoal !== 'scores' && (
+        {hasHumanStep(format) && !isScores(state) && (
           <div className="seg" title="Score Step">
             {(['fine', 'human'] as const).map((s) => (
               <button key={s} className={settings.step === s ? 'on' : ''} onClick={() => onSettings(withStep(settings, format, s))}>
@@ -230,7 +231,7 @@ export function PreviewScreen(props: {
             ⚠
           </span>
           <span className="small strong grow">
-            {count(unsettled.length, 'title')} not settled after your settings change · about {count(refine, 'Refine Duel')} ·{' '}
+            {unsettledSummary(unsettled.length, refine)} ·{' '}
             <button className="link small" onClick={() => setShowUnsettled(!showUnsettled)}>
               {showUnsettled ? 'hide' : 'show'}
             </button>

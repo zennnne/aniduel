@@ -36,11 +36,35 @@ export type SegmentStanding = {
 /** A Duel: the insertion at `insertion` (index into `queue`) against the Tier at `tier`. */
 export type LevelDuel = { insertion: number; tier: number }
 
-/** Per insertion, its interval as Tier indexes: it may land in gaps lo..hi, or tie a Tier lo..hi-1. */
-function intervals(segment: LevelSegment): { lo: number[]; hi: number[] } {
+/**
+ * An insertion's interval as Tier indexes: it may land in the gaps lo..hi (between Tier lo-1 and Tier hi), or tie a
+ * Tier lo..hi-1. It is empty (lo = hi) when the insertion sits between two adjacent Tiers. `indexOf` finds a Tier
+ * among the Segment's `tierCount` Tiers.
+ */
+export function intervalOf(
+  insertion: LevelInsertion,
+  tierCount: number,
+  indexOf: (tier: LevelTier) => number,
+): { lo: number; hi: number } {
+  return { lo: insertion.above ? indexOf(insertion.above) + 1 : 0, hi: insertion.below ? indexOf(insertion.below) : tierCount }
+}
+
+/** Every Tier of a Segment by identity, to its index. */
+export function tierIndex(segment: LevelSegment): (tier: LevelTier) => number {
   const index = new Map(segment.tiers.map((tier, i) => [tier, i]))
-  const lo = segment.queue.map((q) => (q.above ? index.get(q.above)! + 1 : 0))
-  const hi = segment.queue.map((q) => (q.below ? index.get(q.below)! : segment.tiers.length))
+  return (tier) => index.get(tier)!
+}
+
+/** Per insertion, its interval (see `intervalOf`). */
+function intervals(segment: LevelSegment): { lo: number[]; hi: number[] } {
+  const indexOf = tierIndex(segment)
+  const lo: number[] = []
+  const hi: number[] = []
+  for (const insertion of segment.queue) {
+    const interval = intervalOf(insertion, segment.tiers.length, indexOf)
+    lo.push(interval.lo)
+    hi.push(interval.hi)
+  }
   return { lo, hi }
 }
 

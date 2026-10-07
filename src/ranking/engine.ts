@@ -1,7 +1,7 @@
 // Ranking Engine (ADR 0001, ADR 0005): pure, no I/O. The Duel log is the source of truth;
 // every derived thing (next prompt, the Ranking, progress) is rebuilt by replaying it.
 import type { MediaType, ScoreFormat } from '../anilist/types.ts'
-import { knowledgeOf, nextLevelDuel, type LevelContext, type PositionRange, type SegmentKnowledge } from './levelSelect.ts'
+import { intervalOf, knowledgeOf, nextLevelDuel, tierIndex, type LevelContext, type PositionRange, type SegmentKnowledge } from './levelSelect.ts'
 import { defaultSettings, levelAt, parseSavedScoring, type SavedScoring, type ScoringSettings } from './scoring.ts'
 
 export const LOG_FORMAT_VERSION = 1
@@ -189,14 +189,18 @@ export type Progress = { done: number; total: number }
  * out of all its titles. `progress.bands` holds the same per Band.
  */
 export function progressOf(state: Pick<RankingState, 'standing'>, part: SubBandState): Progress {
-  const placed = part.tiers.reduce((sum, tier) => sum + tier.length, 0)
-  const total = placed + part.unplaced.length
+  const total = titlesIn(part)
   const settled = state.standing?.settled
-  if (!settled) return { done: placed, total }
+  if (!settled) return { done: total - part.unplaced.length, total }
   let done = 0
   for (const tier of part.tiers) for (const id of tier) if (settled.has(id)) done++
   for (const id of part.unplaced) if (settled.has(id)) done++
   return { done, total }
+}
+
+/** Every title in a Band or Sub-band: in its Tiers and without a place. */
+export function titlesIn(part: { readonly tiers: readonly (readonly unknown[])[]; readonly unplaced: readonly unknown[] }): number {
+  return part.tiers.reduce((sum, tier) => sum + tier.length, 0) + part.unplaced.length
 }
 
 /**
@@ -358,12 +362,13 @@ type Machine = {
   scoring: SavedScoring | null
   seed: number
   /**
-   * Under Scores: the layout and each Segment's knowledge, worked out once and dropped after an event that may
-   * change them (nothing in between changes a Segment). `layout` undefined = not worked out yet.
+   * Under Scores only: the layout and each Segment's knowledge, worked out once and dropped after an event that may
+   * change them (nothing in between changes a Segment). `layout` undefined = not worked out yet. Never read on Full
+   * Ranking, so it is not kept up to date there.
    */
-  cache: { layout?: ScoresLayout | null; knowledge: Map<Segment, SegmentKnowledge> }
-  /** The Segment the last Duel answer was in: under Scores only it can have a title to place. */
-  answered: Segment | null
+  scoresCache: { layout?: ScoresLayout; knowledge: Map<Segment, SegmentKnowledge> }
+  /** The Segment the event being applied answered a Duel in (null for any other event). */
+  answeredIn: Segment | null
   /** Whether every score was settled on Scores at some point: Duels on Scores after that are Refine Duels. */
   settledOnce: boolean
 }
@@ -371,17 +376,23 @@ type Machine = {
 type Place = { band: BandIndex; sub?: SubBandIndex }
 type Resume = { focus: BandIndex | null; finished: BandIndex | null }
 
-/** The open interval of Tier indexes an insertion may still land in: between Tier lo-1 and Tier hi. */
-function intervalOf(segment: Segment, insertion: Insertion): { lo: number; hi: number } {
+/**
+ * `intervalOf` (levelSelect.ts) for one insertion of a Segment, finding Tiers by `indexOf`. Written out rather than
+ * passing a closure: Full Ranking calls it after every event of every replay.
+ */
+function insertionInterval(segment: Segment, insertion: Insertion): { lo: number; hi: number } {
   const lo = insertion.above ? segment.tiers.indexOf(insertion.above) + 1 : 0
   const hi = insertion.below ? segment.tiers.indexOf(insertion.below) : segment.tiers.length
   return { lo, hi }
 }
 
-/** Full Ranking: places every front insertion that needs no more Duels (an empty interval), in queue order. */
-function settle(segment: Segment): void {
+/**
+ * Full Ranking: gives a place to every front insertion whose interval is empty (it needs no more Duels), in queue
+ * order. Stops at the first front insertion that still needs a Duel.
+ */
+function placeEmptyFronts(segment: Segment): void {
   for (let front = segment.queue[0]; front; front = segment.queue[0]) {
-    const { lo, hi } = intervalOf(segment, front)
+    const { lo, hi } = insertionInterval(segment, front)
     if (lo < hi) return
     segment.queue.shift()
     segment.tiers.splice(lo, 0, { members: [front.id] })
@@ -494,7 +505,7 @@ function apply(machine: Machine, event: RecordedEvent): void {
       }
       const { segment, insertion } = work
       machine.focus = work.band
-      machine.answered = segment
+      machine.answeredIn = segment
       if (event.result === 'tie') {
         segment.queue.splice(segment.queue.indexOf(insertion), 1)
         pivot.members.push(insertion.id)
@@ -565,7 +576,7 @@ function apply(machine: Machine, event: RecordedEvent): void {
       if (!scoring || scoring.settings.step !== event.settings?.step) {
         throw new ReplayError(`Scoring settings ${JSON.stringify(event.settings)} don't fit Score Format ${String(event.format)}`)
       }
-      if (machine.sortGoal === 'scores' && scoring.settings.step !== 'whole') {
+      if (onScores(machine) && scoring.settings.step !== 'whole') {
         throw new ReplayError('Scores always uses the whole Score Step')
       }
       machine.scoring = scoring
@@ -660,23 +671,29 @@ type ScoresLayout = {
   priority: (id: number) => number
 }
 
+/** Whether the log is on the Scores Sort Goal now (ADR 0007). Full Ranking skips all the Scores work. */
+function onScores(machine: Machine): machine is Machine & { sortGoal: 'scores'; scoring: SavedScoring } {
+  // `sort-goal-set 'scores'` is refused without scoring settings, so on Scores they are always there.
+  return machine.sortGoal === 'scores' && machine.scoring !== null
+}
+
 /** The Scores layout now, or null on Full Ranking. */
 function scoresLayout(machine: Machine): ScoresLayout | null {
-  if (machine.cache.layout === undefined) machine.cache.layout = layoutNow(machine)
-  return machine.cache.layout
+  if (!onScores(machine)) return null
+  machine.scoresCache.layout ??= layoutNow(machine)
+  return machine.scoresCache.layout
 }
 
 function knowledge(machine: Machine, layout: ScoresLayout, segment: Segment): SegmentKnowledge {
-  let known = machine.cache.knowledge.get(segment)
+  let known = machine.scoresCache.knowledge.get(segment)
   if (!known) {
     known = knowledgeOf(segment, levelContext(layout, segment))
-    machine.cache.knowledge.set(segment, known)
+    machine.scoresCache.knowledge.set(segment, known)
   }
   return known
 }
 
-function layoutNow(machine: Machine): ScoresLayout | null {
-  if (machine.sortGoal !== 'scores' || !machine.scoring) return null
+function layoutNow(machine: Machine & { scoring: SavedScoring }): ScoresLayout {
   const offsets = new Map<Segment, number>()
   let size = 0
   for (const segment of machine.segments) {
@@ -711,19 +728,18 @@ function levelContext(layout: ScoresLayout, segment: Segment): LevelContext {
  * Scores: places every insertion whose interval is empty (it sits between two adjacent Tiers), in queue order.
  * Only one title of a gap becomes a Tier this way: the next one then has that Tier in its interval.
  */
-function settleAll(segment: Segment): void {
-  let index = new Map(segment.tiers.map((tier, i) => [tier, i]))
+function placeEmptyIntervals(segment: Segment): void {
+  let indexOf = tierIndex(segment)
   for (let i = 0; i < segment.queue.length; ) {
     const insertion = segment.queue[i]
-    const lo = insertion.above ? index.get(insertion.above)! + 1 : 0
-    const hi = insertion.below ? index.get(insertion.below)! : segment.tiers.length
+    const { lo, hi } = intervalOf(insertion, segment.tiers.length, indexOf)
     if (lo < hi) {
       i++
       continue
     }
     segment.queue.splice(i, 1)
     segment.tiers.splice(lo, 0, { members: [insertion.id] })
-    index = new Map(segment.tiers.map((tier, t) => [tier, t]))
+    indexOf = tierIndex(segment)
   }
 }
 
@@ -892,15 +908,17 @@ function current(machine: Machine): Work | null {
     let offset = 0
     for (let s = 0; s < segments.length; s++) {
       const segment = segments[s]
-      const sub = subOfSegment(segments, s)
       if (!detour || segment === detour) {
         if (layout) {
           const duel = nextLevelDuel(knowledge(machine, layout, segment), detour ? machine.detour?.id : undefined)
-          if (duel) return { band, sub, segment, insertion: segment.queue[duel.insertion], pivot: duel.tier, interval: null, offset }
+          if (duel) {
+            const insertion = segment.queue[duel.insertion]
+            return { band, sub: subOfSegment(segments, s), segment, insertion, pivot: duel.tier, interval: null, offset }
+          }
         } else if (segment.queue[0]) {
-          const interval = intervalOf(segment, segment.queue[0])
+          const interval = insertionInterval(segment, segment.queue[0])
           const pivot = Math.floor((interval.lo + interval.hi) / 2)
-          return { band, sub, segment, insertion: segment.queue[0], pivot, interval, offset }
+          return { band, sub: subOfSegment(segments, s), segment, insertion: segment.queue[0], pivot, interval, offset }
         }
       }
       offset += segment.tiers.length
@@ -972,27 +990,30 @@ export function replay(log: DuelLog): RankingState {
     sortGoal: null,
     scoring: null,
     seed,
-    cache: { knowledge: new Map() },
-    answered: null,
+    scoresCache: { knowledge: new Map() },
+    answeredIn: null,
     settledOnce: false,
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (let step = 0; step < effective.length; step++) {
     machine.step = step
     const event = effective[step]
-    machine.answered = null
+    machine.answeredIn = null
     apply(machine, event)
-    if (machine.sortGoal !== 'scores') machine.segments.forEach(settle)
-    else if (machine.answered) settleAll(machine.answered)
-    else machine.segments.forEach(settleAll)
-    // A Duel answer changes only its own Segment: no title joins or leaves, so the layout still holds.
-    if (machine.answered && machine.sortGoal === 'scores') machine.cache.knowledge.delete(machine.answered)
-    else machine.cache = { knowledge: new Map() }
+    const answeredIn = machine.answeredIn
+    if (!onScores(machine)) machine.segments.forEach(placeEmptyFronts)
+    else if (answeredIn) {
+      placeEmptyIntervals(answeredIn)
+      // A Duel answer changes only its own Segment: no title joins or leaves, so the layout still holds.
+      machine.scoresCache.knowledge.delete(answeredIn)
+    } else {
+      machine.segments.forEach(placeEmptyIntervals)
+      machine.scoresCache = { knowledge: new Map() }
+    }
     refocus(machine)
     // A focused Band always has work, so only a Ranking with no focus can be all settled. An empty one doesn't count.
-    if (!machine.settledOnce && machine.roughSortQueue.length === 0 && machine.focus === null) {
-      const layout = scoresLayout(machine)
-      machine.settledOnce = layout !== null && layout.size > 0 && BANDS.every((band) => !hasWork(machine, band))
+    if (!machine.settledOnce && onScores(machine) && machine.roughSortQueue.length === 0 && machine.focus === null) {
+      machine.settledOnce = scoresLayout(machine)!.size > 0 && BANDS.every((band) => !hasWork(machine, band))
     }
   }
   const layout = scoresLayout(machine)

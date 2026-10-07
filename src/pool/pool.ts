@@ -1,6 +1,7 @@
 // Pool: the titles from one user's list (one Media Type, filtered by list status) being ranked.
 import type { ListEntry, ListStatus, Title, TitleLanguage } from '../anilist/types.ts'
-import { duelsForBandSizes, equalBandSizes, type ScoresScale } from '../ranking/estimate.ts'
+import { duelsForBandSizes, equalBandSizes } from '../ranking/estimate.ts'
+import type { SavedScoring } from '../ranking/scoring.ts'
 
 /** Statuses the user can pick, in display order. Planning is never offered: those titles were never watched or read. */
 export const OFFERED_STATUSES = ['COMPLETED', 'REPEATING', 'CURRENT', 'PAUSED', 'DROPPED'] as const satisfies readonly ListStatus[]
@@ -20,7 +21,7 @@ export function displayTitle(title: Title, language: TitleLanguage): string {
  * Expected Duels for a Pool of `n` titles before Rough Sort, assuming five equal Bands: on Full Ranking, or on
  * Scores with the given scoring settings (ADR 0007).
  */
-export function estimateDuels(n: number, scale?: ScoresScale): number {
+export function estimateDuels(n: number, scale?: SavedScoring): number {
   return duelsForBandSizes(equalBandSizes(n), scale)
 }
 
@@ -64,7 +65,7 @@ export type Pool = {
  * Builds the Pool from the user's list (fetched for every offered status) and the chosen statuses. `scale`: the
  * estimate is for Scores with those settings (a new Ranking starts on Scores), else for Full Ranking.
  */
-export function buildPool(list: readonly ListEntry[], statuses: readonly ListStatus[], scale?: ScoresScale): Pool {
+export function buildPool(list: readonly ListEntry[], statuses: readonly ListStatus[], scale?: SavedScoring): Pool {
   const countByStatus = Object.fromEntries(OFFERED_STATUSES.map((s) => [s, 0])) as Record<OfferedStatus, number>
   for (const entry of list) {
     if (entry.status in countByStatus) countByStatus[entry.status as OfferedStatus]++

@@ -13,6 +13,14 @@ export function goalOf(ranking: Pick<RankingState, 'sortGoal'>): SortGoal {
 }
 
 /**
+ * Whether a Ranking is on the Scores Sort Goal: the one question every caller asks. A replayed Ranking on Scores
+ * always has its `scoring` and `standing` too.
+ */
+export function isScores(ranking: Pick<RankingState, 'sortGoal'>): boolean {
+  return goalOf(ranking) === 'scores'
+}
+
+/**
  * The events that switch a Ranking to `goal`, with the Score Format AniList reports now (none if it is already
  * there). Its scoring settings (the log's own, or for an older log the saved ones, converted if the Score Format
  * changed) move to the new goal's Score Step, best and worst snapped to the nearest levels on it. The order is the

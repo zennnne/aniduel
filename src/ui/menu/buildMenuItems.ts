@@ -1,7 +1,8 @@
 import type { ListStatus, MediaType } from '../../anilist/types.ts'
 import type { BandIndex, RankingState, SortGoal } from '../../ranking/engine.ts'
 import { fullRankingExtra } from '../../ranking/estimate.ts'
-import { goalOf } from '../../ranking/sortGoal.ts'
+import { isScores } from '../../ranking/sortGoal.ts'
+import { titlesToSort } from '../../ranking/split.ts'
 import { BAND_UI } from '../bands.ts'
 import { MEDIA_LABEL } from '../meta.ts'
 import { statusLabel } from '../start/statusLabel.ts'
@@ -62,7 +63,7 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
   ]
   // Any Ranking can switch, older ones (on Full Ranking, without a Sort Goal) too, but nobody is told (#23).
   if (context.hasLog && ranking) {
-    const toFull = goalOf(ranking) === 'scores'
+    const toFull = isScores(ranking)
     items.push({
       id: 'sort-goal',
       group: 'This Ranking',
@@ -113,7 +114,7 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
         group: 'This Ranking',
         icon: '⫼',
         title: `Split ${BAND_UI[band].label} into Sub-bands`,
-        description: `${ranking.bands[band].unplaced.length} titles without a place: Best / Middle / Lowest cuts the Duels`,
+        description: `${titlesToSort(ranking, band)} titles ${isScores(ranking) ? 'not settled' : 'without a place'}: Best / Middle / Lowest cuts the Duels`,
         run: () => actions.splitBand(band),
       })
     }
