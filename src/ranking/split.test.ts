@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { replay, startLog, type BandIndex, type DuelLog, type LogEvent } from './engine.ts'
-import { autoOfferDue, defaultCuts, offerSavings, splitOffers, splitSavings, worstCaseDuels } from './split.ts'
+import { autoOfferDue, defaultCuts, offerSavings, splitOffers, splitSavings, unplacedToSort, worstCaseDuels } from './split.ts'
 
 const range = (from: number, count: number) => Array.from({ length: count }, (_, i) => from + i)
 
@@ -93,13 +93,22 @@ describe('which Bands are offered a split', () => {
       expect(autoOfferDue({ ...log, events: [...log.events, { type: 'titles-added', ids: [1000] }] })).toBe(true)
       expect(splitOffers(synced)).toEqual([4])
     })
+
+    it('leaves settled titles out of the estimate, though they are still unplaced', () => {
+      // The same 94 unplaced Loved titles estimate up to −141 on Full Ranking (below); settled, they need no Duel.
+      const state = replay(onScores([95, 0, 0, 0, 300]))
+      expect(unplacedToSort(state, state.bands[0])).toEqual([])
+      expect(offerSavings(state, state.bands[0])).toBe(0)
+      expect(unplacedToSort(state, state.bands[4])).toHaveLength(299)
+      expect(offerSavings(state, state.bands[4])).toBe(448)
+    })
   })
 
   it('estimates the offer with a ¼ / ½ / ¼ split of the unplaced titles and of the ranked ones', () => {
     // 95 in Loved: 1 placed, 94 unplaced. Default cuts put the single Tier in Middle.
-    const band = replay(afterRoughSort([95, 0, 0, 0, 0])).bands[0]
+    const state = replay(afterRoughSort([95, 0, 0, 0, 0]))
     // Worst case: 538 Duels as one Band; 89 + 219 + 89 split 24 / (1 + 46) / 24.
-    expect(offerSavings(band)).toBe(141)
+    expect(offerSavings(state, state.bands[0])).toBe(141)
   })
 })
 

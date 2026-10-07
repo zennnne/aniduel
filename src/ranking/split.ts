@@ -1,6 +1,6 @@
 // Splitting an oversized Band into Sub-bands (ADR 0006): when to offer it, and what it saves.
 // Pure functions over RankingState (and the log, for when to offer); the split itself is the engine's `band-split` event.
-import { BANDS, progressOf, type BandIndex, type BandState, type DuelLog, type RankingState } from './engine.ts'
+import { BANDS, progressOf, type BandIndex, type DuelLog, type RankingState, type SubBandState } from './engine.ts'
 
 /** A split is offered for a Band with at least this many titles that still need Duels (see `titlesToSort`). */
 export const SPLIT_OFFER_THRESHOLD = 90
@@ -83,11 +83,21 @@ export function splitOffers(state: RankingState): BandIndex[] {
   return BANDS.filter((band) => !state.bands[band].subBands && titlesToSort(state, band) >= SPLIT_OFFER_THRESHOLD)
 }
 
-/** The offer's estimate for a Band: its unplaced titles split ¼ / ½ / ¼ and its ranked titles cut at the default cuts. */
-export function offerSavings(band: BandState): number {
+/**
+ * The unplaced titles of a Band or Sub-band that still need Duels: all of them on Full Ranking; on Scores, those not
+ * settled (ADR 0007). The estimates count only these.
+ */
+export function unplacedToSort(state: Pick<RankingState, 'standing'>, part: SubBandState): number[] {
+  const settled = state.standing?.settled
+  return settled ? part.unplaced.filter((id) => !settled.has(id)) : [...part.unplaced]
+}
+
+/** The offer's estimate for a Band: its unplaced titles to sort split ¼ / ½ / ¼ and its ranked titles cut at the default cuts. */
+export function offerSavings(state: Pick<RankingState, 'standing'>, band: SubBandState): number {
   const [c1, c2] = defaultCuts(band.tiers.map((tier) => tier.length))
-  const [best, middle, lowest] = quarterSplit(band.unplaced.length)
-  return splitSavings({ places: band.tiers.length, unplaced: band.unplaced.length }, [
+  const toSort = unplacedToSort(state, band).length
+  const [best, middle, lowest] = quarterSplit(toSort)
+  return splitSavings({ places: band.tiers.length, unplaced: toSort }, [
     { places: c1, unplaced: best },
     { places: c2 - c1, unplaced: middle },
     { places: band.tiers.length - c2, unplaced: lowest },
