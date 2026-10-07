@@ -36,6 +36,8 @@ export type ImportDeps = {
   append: (...events: LogEvent[]) => unknown
   /** Old AniList score (100-point) of every Pool title, or null while the list is loading. */
   oldScores: ReadonlyMap<number, number> | null
+  /** A title's name as Preview shows it; on Scores it orders the titles on one level (ADR 0007). */
+  name: (id: number) => string
   setScoring: (settings: ScoringSettings) => void
   setNotice: (notice: Notice) => void
   /** Whether the Import screen is showing, and how to go to a screen. */
@@ -111,7 +113,7 @@ export function useImport(deps: ImportDeps) {
    */
   function currentPlan(state: RankingState, format: Viewer['scoreFormat'], settings: ScoringSettings): PendingWrite[] {
     if (!previewOpen(state.prompt) || !deps.oldScores) return []
-    return importPlan(previewRows(state, score(state, format, settings), deps.oldScores, format), ticks)
+    return importPlan(previewRows(state, score(state, format, settings), deps.oldScores, format, deps.name), ticks)
   }
 
   /** Preview's Import button: the plan is shown for confirmation; nothing is written yet. */

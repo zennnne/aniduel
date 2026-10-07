@@ -5,6 +5,8 @@ import { defaultSettings, score } from './scoring.ts'
 import { rankingOf } from './testRanking.ts'
 
 const linear = (best: number, worst: number) => ({ distribution: 'linear' as const, step: 'fine' as const, best, worst })
+// Titles named by id, where a test does not care about order inside a level.
+const idName = (id: number) => `#${id}`
 
 describe('Preview rows', () => {
   // 10 point, 10..4 over three titles → 10, 7, 4.
@@ -13,7 +15,7 @@ describe('Preview rows', () => {
 
   it('shows each ranked Pool title with its old and new score, in Ranking order', () => {
     const pool = new Map([[1, 100], [2, 0], [3, 47], [9, 80]])
-    expect(previewRows(state, scores, pool, 'POINT_10')).toEqual([
+    expect(previewRows(state, scores, pool, 'POINT_10', idName)).toEqual([
       { id: 1, band: 0, settled: true, level: 10, scoreRaw: 100, oldScore100: 100, oldLevel: 10, changed: false },
       { id: 2, band: 1, settled: true, level: 7, scoreRaw: 70, oldScore100: 0, oldLevel: null, changed: true },
       { id: 3, band: 1, settled: true, level: 4, scoreRaw: 40, oldScore100: 47, oldLevel: 4, changed: false },
@@ -22,12 +24,12 @@ describe('Preview rows', () => {
 
   it('compares old and new at the Score Format level, not the raw score', () => {
     // Raw 79 shows as 7 on 10 point, so a new 7 (raw 70) is no change; on 100 point 79 → 70 would be.
-    const rows = settledRows(previewRows(state, scores, new Map([[1, 100], [2, 79], [3, 40]]), 'POINT_10'))
+    const rows = settledRows(previewRows(state, scores, new Map([[1, 100], [2, 79], [3, 40]]), 'POINT_10', idName))
     expect(rows.map((r) => r.changed)).toEqual([false, false, false])
   })
 
   it('leaves out ranked titles that are no longer in the Pool', () => {
-    const rows = previewRows(state, scores, new Map([[1, 100], [3, 40]]), 'POINT_10')
+    const rows = previewRows(state, scores, new Map([[1, 100], [3, 40]]), 'POINT_10', idName)
     expect(rows.map((r) => r.id)).toEqual([1, 3])
   })
 })
@@ -48,7 +50,7 @@ describe('Preview rows on Scores', () => {
 
   it('shows every settled title, including those never given an exact place, best level first', () => {
     expect(state.prompt.kind).toBe('all-complete')
-    const rows = settledRows(previewRows(state, score(state, 'POINT_3', settings), new Map(ids.map((id) => [id, 0])), 'POINT_3'))
+    const rows = settledRows(previewRows(state, score(state, 'POINT_3', settings), new Map(ids.map((id) => [id, 0])), 'POINT_3', idName))
     expect(rows.map((r) => r.id).sort((x, y) => x - y)).toEqual(ids)
     // Linear 3..1 over ten positions: 3, 2.78, 2.56 | 2.33 … 1.67 | 1.44, 1.22, 1.
     expect(rows.map((r) => r.level)).toEqual([3, 3, 3, 2, 2, 2, 2, 1, 1, 1])
@@ -69,10 +71,19 @@ describe('Preview rows on Scores', () => {
     ])
   })
 
+  it('plans the writes on one level in name order, not Ranking order', () => {
+    // The same plan whether Preview made it or a resumed Import recalculates it.
+    const names = new Map([[1, 'Mushishi'], [2, 'Frieren'], [3, 'odd Taxi']])
+    const top = (id: number) => names.get(id) ?? `#${id}`
+    const rows = previewRows(state, score(state, 'POINT_3', settings), new Map(ids.map((id) => [id, 0])), 'POINT_3', top)
+    const planned = importPlan(rows, new Map()).map((w) => w.mediaId)
+    expect(planned.slice(0, 3)).toEqual([2, 1, 3])
+  })
+
   it('flags titles unsettled by a settings change, and never plans them even when ticked', () => {
     // Bell 3..2 moves the boundaries away from where the Duels settled them.
     const changed = { ...settings, distribution: 'bell' as const, worst: 2 }
-    const rows = previewRows(state, score(state, 'POINT_3', changed), new Map(ids.map((id) => [id, 0])), 'POINT_3')
+    const rows = previewRows(state, score(state, 'POINT_3', changed), new Map(ids.map((id) => [id, 0])), 'POINT_3', idName)
     const open = rows.filter((r) => !r.settled).map((r) => r.id)
     expect(rows).toHaveLength(ids.length)
     expect(open.length).toBeGreaterThan(0)
@@ -95,7 +106,7 @@ describe('Unsettled rows on Scores', () => {
   }
   const state = replay(log)
   const settings = defaultSettings('POINT_3', 'whole')
-  const rows = previewRows(state, score(state, 'POINT_3', settings), new Map(ids.map((id) => [id, 0])), 'POINT_3')
+  const rows = previewRows(state, score(state, 'POINT_3', settings), new Map(ids.map((id) => [id, 0])), 'POINT_3', idName)
   const unsettled = rows.filter((r) => !r.settled).map((r) => r.id)
 
   it('shows every title in a Band, flagging those whose level is not settled yet', () => {
@@ -124,7 +135,7 @@ describe('Unsettled rows on Scores', () => {
 
 describe('Import selection', () => {
   const state = rankingOf([[[1], [2], [3]]], [9])
-  const rows = previewRows(state, score(state, 'POINT_10', linear(10, 4)), new Map([[1, 100], [2, 0], [3, 90], [9, 50]]), 'POINT_10')
+  const rows = previewRows(state, score(state, 'POINT_10', linear(10, 4)), new Map([[1, 100], [2, 0], [3, 90], [9, 50]]), 'POINT_10', idName)
 
   it('ticks only titles whose score changes, by default', () => {
     expect(rows.map((r) => isTicked(r, new Map()))).toEqual([false, true, true])

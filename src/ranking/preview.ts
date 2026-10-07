@@ -49,15 +49,15 @@ export type PreviewRow = SettledRow | UnsettledRow
  * One row per title in the Ranking that is still in the Pool. Forgotten titles have no place, and titles outside
  * the Pool (no entry in `oldScores`) are left out, so neither is ever written.
  * Full Ranking: every row is settled, in Ranking order. Scores (ADR 0007): every title in a Band, settled or not:
- * the settled rows by level, best first, and by `name` inside a level, since titles on a level have no order (Ranking
- * order when no `name` is given), then the unsettled rows.
+ * the settled rows by level, best first, and by `name` inside a level, since titles on a level have no order, then
+ * the unsettled rows. Preview and a resumed Import pass the same `name`, so both make the same plan.
  */
 export function previewRows(
   ranking: RankingState,
   scores: Scores,
   oldScores: ReadonlyMap<number, number>,
   format: ScoreFormat,
-  name?: (id: number) => string,
+  name: (id: number) => string,
 ): PreviewRow[] {
   const rows: PreviewRow[] = []
   for (const band of BANDS) {
@@ -78,9 +78,7 @@ export function previewRows(
   }
   if (!isScores(ranking)) return rows
   const settled = settledRows(rows)
-  // Sorting is stable: without names, titles on a level keep their Ranking order.
-  const byName = name ? (x: SettledRow, y: SettledRow) => compareNames(name(x.id), name(y.id)) : () => 0
-  settled.sort((x, y) => y.level - x.level || byName(x, y))
+  settled.sort((x, y) => y.level - x.level || compareNames(name(x.id), name(y.id)))
   return [...settled, ...rows.filter((row) => !row.settled)]
 }
 
