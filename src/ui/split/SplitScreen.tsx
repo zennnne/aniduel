@@ -10,7 +10,16 @@ import {
   type RankingState,
   type SubBandIndex,
 } from '../../ranking/engine.ts'
-import { LOW_SAVINGS, defaultCuts, offerSavings, quarterSplit, splitSavings, worstCaseDuels, type SegmentSize } from '../../ranking/split.ts'
+import {
+  LOW_SAVINGS,
+  defaultCuts,
+  offerSavings,
+  quarterSplit,
+  splitSavings,
+  unplacedToSort,
+  worstCaseDuels,
+  type SegmentSize,
+} from '../../ranking/split.ts'
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { Dialog } from '../Dialog.tsx'
 import { Kao, SubPill } from '../Kao.tsx'
@@ -19,10 +28,10 @@ import './split.css'
 
 type BandSplitEvent = Extract<LogEvent, { type: 'band-split' }>
 
-/** Worst-case Duels left in a Band, Sub-band by Sub-band once it is split. */
-function bandWorstCase(band: BandState): number {
+/** Worst-case Duels left in a Band, Sub-band by Sub-band once it is split; settled titles on Scores need none. */
+function bandWorstCase(state: RankingState, band: BandState): number {
   const parts = band.subBands ?? [band]
-  return worstCaseDuels(parts.map((p) => ({ places: p.tiers.length, unplaced: p.unplaced.length })))
+  return worstCaseDuels(parts.map((p) => ({ places: p.tiers.length, unplaced: unplacedToSort(state, p).length })))
 }
 
 /**
@@ -242,21 +251,27 @@ export function SplitScreen(props: {
 
   const loneTier = !strip && b.tiers.length === 1 ? b.tiers[0] : null
   const effectiveCuts = strip ? cuts : loneTier ? LONE_TIER_CUTS[loneSub] : ([0, 0] as [number, number])
+  // Settled titles (Scores) still go in a column, since the split places every unplaced title, but the estimates skip them.
   const columns = SUB_BANDS.map((sub) => b.unplaced.filter((id) => (columnOf.get(id) ?? 1) === sub))
+  const toSort = new Set(unplacedToSort(state, b))
   const places = [effectiveCuts[0], effectiveCuts[1] - effectiveCuts[0], b.tiers.length - effectiveCuts[1]]
-  const whole: SegmentSize = { places: b.tiers.length, unplaced: b.unplaced.length }
-  const parts = SUB_BANDS.map((sub) => ({ places: places[sub], unplaced: columns[sub].length })) as [SegmentSize, SegmentSize, SegmentSize]
+  const whole: SegmentSize = { places: b.tiers.length, unplaced: toSort.size }
+  const parts = SUB_BANDS.map((sub) => ({ places: places[sub], unplaced: columns[sub].filter((id) => toSort.has(id)).length })) as [
+    SegmentSize,
+    SegmentSize,
+    SegmentSize,
+  ]
   const liveSavings = splitSavings(whole, parts)
   const quarterSavings = (() => {
-    const [q1, q2, q3] = quarterSplit(b.unplaced.length)
+    const [q1, q2, q3] = quarterSplit(toSort.size)
     return splitSavings(whole, [
       { places: places[0], unplaced: q1 },
       { places: places[1], unplaced: q2 },
       { places: places[2], unplaced: q3 },
     ])
   })()
-  const allNow = sum(state.bands.map(bandWorstCase))
-  const thisNow = bandWorstCase(b)
+  const allNow = sum(state.bands.map((band) => bandWorstCase(state, band)))
+  const thisNow = bandWorstCase(state, b)
 
   const moveTo = (id: number, sub: SubBandIndex) => {
     if (loneTier?.includes(id)) setLoneSub(sub)
@@ -283,7 +298,7 @@ export function SplitScreen(props: {
   })
 
   if (isDone) {
-    const after = bandWorstCase(b)
+    const after = bandWorstCase(state, b)
     // Choosing a split Band starts at its first Sub-band with titles to place.
     const first =
       SUB_BANDS.find((sub) => {
@@ -312,7 +327,7 @@ export function SplitScreen(props: {
   }
 
   if (phase === 'offer') {
-    const offer = offerSavings(b)
+    const offer = offerSavings(state, b)
     return (
       <div className="sppage">
         <div className="h1">Your Bands are lopsided</div>
