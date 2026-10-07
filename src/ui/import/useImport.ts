@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import type { AniListGateway } from '../../anilist/gateway.ts'
-import type { Viewer } from '../../anilist/types.ts'
+import type { TitleLanguage, Viewer } from '../../anilist/types.ts'
 import { planHash, resumeImport } from '../../import/plan.ts'
 import { browserClock, importSummary, newImport, runImport, type ImportState, type RunnerStatus } from '../../import/runner.ts'
 import {
@@ -32,13 +32,17 @@ export type ImportDeps = {
   /** The open Ranking's user and Media Type; null before login. */
   key: RankingKey | null
   latestLog: () => DuelLog | null
-  /** Appends to the open Ranking's Duel log and saves it (a Score Format conversion, ADR 0007). */
-  append: (...events: LogEvent[]) => unknown
+  /**
+   * Appends to the open Ranking's Duel log and saves it (its scoring settings, ADR 0007), returning the new state.
+   * Null without a log.
+   */
+  append: (...events: LogEvent[]) => RankingState | null
   /** Old AniList score (100-point) of every Pool title, or null while the list is loading. */
   oldScores: ReadonlyMap<number, number> | null
-  /** A title's name as Preview shows it; on Scores it orders the titles on one level (ADR 0007). */
-  name: (id: number) => string
-  setScoring: (settings: ScoringSettings) => void
+  /** A title's name as Preview shows it in this title language; on Scores it orders the titles on one level (ADR 0007). */
+  name: (id: number, language: TitleLanguage) => string
+  /** Resume ran its fresh `Viewer` check and put the settings in the log: Preview may open again (ADR 0003). */
+  onViewerChecked: () => void
   setNotice: (notice: Notice) => void
   /** Whether the Import screen is showing, and how to go to a screen. */
   onImportScreen: boolean
@@ -111,9 +115,11 @@ export function useImport(deps: ImportDeps) {
    * The Import plan for the current Ranking, as Preview would make it; empty unless Preview could be open (the Ranking
    * is finished, or only Refine Duels are left: then its settled titles).
    */
-  function currentPlan(state: RankingState, format: Viewer['scoreFormat'], settings: ScoringSettings): PendingWrite[] {
+  function currentPlan(state: RankingState, viewer: Viewer, settings: ScoringSettings): PendingWrite[] {
     if (!previewOpen(state.prompt) || !deps.oldScores) return []
-    return importPlan(previewRows(state, score(state, format, settings), deps.oldScores, format, deps.name), ticks)
+    const format = viewer.scoreFormat
+    const name = (id: number) => deps.name(id, viewer.titleLanguage)
+    return importPlan(previewRows(state, score(state, format, settings), deps.oldScores, format, name), ticks)
   }
 
   /** Preview's Import button: the plan is shown for confirmation; nothing is written yet. */
@@ -177,20 +183,19 @@ export function useImport(deps: ImportDeps) {
     if (!gateway || !viewer) return
     gateway.viewer().then((fresh) => {
       deps.setViewer(fresh)
-      let log = deps.latestLog()
-      if (!log || !deps.key) return
+      const before = deps.latestLog()
+      if (!before || !deps.key) return
       const key = { userId: fresh.id, mediaType: deps.key.mediaType }
-      const { settings, event } = scoringFor(replay(log), loadScoringSettings(deps.storage, key), fresh.scoreFormat)
-      if (event) {
-        deps.append(event)
-        log = deps.latestLog() ?? log
-      }
-      deps.setScoring(settings)
-      const state = replay(log)
+      // The settings go into the log first (ADR 0007), so Preview and the plan read the same ones from it.
+      const replayed = replay(before)
+      const { settings, event } = scoringFor(replayed, loadScoringSettings(deps.storage, key), fresh.scoreFormat)
+      const state = (event && deps.append(event)) || replayed
+      const log = deps.latestLog() ?? before
+      deps.onViewerChecked()
       const decision = resumeImport(savedState, {
         hash: planHash(log, { format: fresh.scoreFormat, settings }, ticks),
         format: fresh.scoreFormat,
-        plan: () => currentPlan(state, fresh.scoreFormat, settings),
+        plan: () => currentPlan(state, fresh, settings),
       })
       const drop = (message: string) => {
         deleteImportState(deps.storage, key)

@@ -119,9 +119,9 @@ export function App() {
   const [lastCheckContinued, setLastCheckContinued] = useState(false)
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
-  // Best / worst / Distribution for the Score Format AniList reported when Preview opened; null until then.
-  const [scoring, setScoring] = useState<ScoringSettings | null>(null)
   const [openingPreview, setOpeningPreview] = useState(false)
+  // ADR 0003: Preview only after a fresh Viewer check in this Ranking session (openPreview, or an Import resume).
+  const [previewChecked, setPreviewChecked] = useState(false)
   // A fix started from Preview (#11): its Duels run on the Ranking screen, then Preview opens again.
   const [previewFix, setPreviewFix] = useState<{ id: number; verb: string } | null>(null)
   // "Go to Duels →" on Preview's unsettled card (#29): once every score is settled again, Preview opens again.
@@ -164,8 +164,8 @@ export function App() {
     latestLog: duelLog.latest,
     append: duelLog.append,
     oldScores: pool ? oldScores : null,
-    name: (id) => titleName(entries.get(id), id, titleLanguage ?? 'ROMAJI'),
-    setScoring,
+    name: (id, language) => titleName(entries.get(id), id, language),
+    onViewerChecked: () => setPreviewChecked(true),
     setNotice,
     onImportScreen: screen === 'import',
     goTo,
@@ -223,7 +223,7 @@ export function App() {
     setSplitView(null)
     setSkippedSplits([])
     setLastCheckContinued(false)
-    setScoring(null)
+    setPreviewChecked(false)
     imports.open(key)
     setPreviewFix(null)
     setRefining(false)
@@ -231,8 +231,7 @@ export function App() {
     setStatuses(loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES)
     try {
       const saved = loadDuelLog(localStorage, key)
-      if (saved) replay(saved) // refuse a log the engine can't replay before showing anything from it
-      duelLog.show(saved)
+      duelLog.show(saved) // replays first: a log the engine can't replay throws before anything from it shows
       setSavedBroken(false)
       if (saved && resume) goTo('ranking')
       return saved !== null
@@ -254,6 +253,7 @@ export function App() {
     setViewer(null)
     setLists({})
     setStatuses(DEFAULT_STATUSES)
+    setPreviewChecked(false)
     duelLog.show(null)
     setSavedBroken(false)
     setSplitView(null)
@@ -486,7 +486,8 @@ export function App() {
   /**
    * Runs `Viewer` again first (spec Auth, ADR 0003): if the Score Format changed since best / worst were
    * chosen, they are converted to the new format, the conversion is appended to the Duel log (ADR 0007), and a
-   * blue banner says so.
+   * blue banner says so. An older log without settings of its own gets them appended too, so Preview reads them
+   * from the log.
    */
   function openPreview() {
     if (!gateway || !viewer || openingPreview) return
@@ -498,7 +499,7 @@ export function App() {
         const key = { userId: fresh.id, mediaType }
         const current = duelLog.latest()
         if (!current) return
-        const { settings, converted, event } = scoringFor(replay(current), loadScoringSettings(localStorage, key), fresh.scoreFormat)
+        const { converted, event } = scoringFor(replay(current), loadScoringSettings(localStorage, key), fresh.scoreFormat)
         if (event) duelLog.append(event)
         if (converted) {
           imports.dropForFormatChange(key)
@@ -507,7 +508,7 @@ export function App() {
             message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[fresh.scoreFormat]}. Best / Worst were converted. Check them before importing.`,
           })
         }
-        setScoring(settings)
+        setPreviewChecked(true)
         goTo('preview')
       },
       (e: unknown) => {
@@ -521,7 +522,6 @@ export function App() {
   function changeScoring(settings: ScoringSettings) {
     if (!viewer || !duelLog.latest()) return
     duelLog.append({ type: 'scoring-set', format: viewer.scoreFormat, settings })
-    setScoring(settings)
   }
 
   /**
@@ -534,9 +534,8 @@ export function App() {
     const key = { userId: viewer.id, mediaType }
     const events = switchGoalEvents(replay(current), loadScoringSettings(localStorage, key), viewer.scoreFormat, goal)
     if (events.length === 0) return
-    let state: RankingState | null
     try {
-      state = duelLog.append(...events)
+      duelLog.append(...events)
     } catch (e) {
       setNotice({
         tone: 'error',
@@ -544,7 +543,6 @@ export function App() {
       })
       return
     }
-    if (scoring && state?.scoring) setScoring(state.scoring.settings)
     showToast(
       goal === 'scores' ? (
         <>
@@ -689,7 +687,9 @@ export function App() {
   const inImport = screen === 'import' && importView
   // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows. On Scores,
   // Refine Duels left by a settings change keep Preview open: its settled titles can still be imported (#29).
-  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && scoring && pool
+  // Its scoring settings are the log's own (ADR 0007), put there on the Score Format AniList reports by `openPreview`.
+  const scoring = ranking?.scoring && viewer && ranking.scoring.format === viewer.scoreFormat ? ranking.scoring.settings : null
+  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && previewChecked && scoring && pool
 
   /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {

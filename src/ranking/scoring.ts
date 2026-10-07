@@ -223,9 +223,10 @@ export function settingsFor(saved: SavedScoring | null, format: ScoreFormat): { 
 
 /**
  * The scoring settings a Ranking uses with the Score Format AniList reports now (run `Viewer` first): its log's
- * own (ADR 0007), or for an older log without any, the settings saved outside it. If they were made for another
- * Score Format they are converted (ADR 0003): `converted` is true, tell the user, and append `event` so the
- * conversion travels with the log.
+ * own (ADR 0007), or for an older log without any, the settings saved outside it (or the defaults). If they were
+ * made for another Score Format they are converted (ADR 0003): `converted` is true, tell the user. `event` is the
+ * `scoring-set` to append whenever the log doesn't hold these settings yet (an older log, or a conversion), so from
+ * then on the log is the only place they live; null when it already does.
  */
 export function scoringFor(
   ranking: Pick<RankingState, 'scoring'>,
@@ -233,7 +234,8 @@ export function scoringFor(
   format: ScoreFormat,
 ): { settings: ScoringSettings; converted: boolean; event: Extract<LogEvent, { type: 'scoring-set' }> | null } {
   const { settings, converted } = settingsFor(ranking.scoring ?? saved, format)
-  return { settings, converted, event: converted ? { type: 'scoring-set', format, settings } : null }
+  const inLog = ranking.scoring !== undefined && !converted
+  return { settings, converted, event: inLog ? null : { type: 'scoring-set', format, settings } }
 }
 
 /**

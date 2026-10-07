@@ -89,6 +89,19 @@ describe('a log from engine version 6 (fixture)', () => {
     expect(next.header.engine).toBe(7)
     expect(replay(next).scoring).toEqual({ format: 'POINT_10', settings: bell })
   })
+
+  it('takes the settings scoringFor gives it, with the same Ranking (the first Preview of an older log)', () => {
+    const saved = { format: 'POINT_10' as const, settings: { distribution: 'linear' as const, step: 'fine' as const, best: 8, worst: 2 } }
+    const before = replay(log)
+    const { event } = scoringFor(before, saved, 'POINT_10')
+    const after = replay(appendEvent(log, event!))
+    expect(after.scoring).toEqual(saved)
+    expect(after.sortGoal).toBeUndefined()
+    expect(after.prompt).toEqual(before.prompt)
+    expect(after.bands).toEqual(before.bands)
+    expect(after.forgotten).toEqual(before.forgotten)
+    expect(after.canUndo).toBe(true)
+  })
 })
 
 describe('scoringFor: the scoring settings a Ranking uses', () => {
@@ -109,16 +122,35 @@ describe('scoringFor: the scoring settings a Ranking uses', () => {
     })
   })
 
-  it('falls back to the saved settings for a log without any, and records a conversion of those too', () => {
+  it('falls back to the saved settings for a log without any, and gives the event that puts them in the log', () => {
     const state = replay(logOf([1]))
-    expect(scoringFor(state, saved, 'POINT_10')).toEqual({ settings: saved.settings, converted: false, event: null })
+    expect(scoringFor(state, saved, 'POINT_10')).toEqual({
+      settings: saved.settings,
+      converted: false,
+      event: { type: 'scoring-set', format: 'POINT_10', settings: saved.settings },
+    })
     const converted = { distribution: 'linear', step: 'fine', best: 4, worst: 1 } as const
     expect(scoringFor(state, saved, 'POINT_5')).toEqual({
       settings: converted,
       converted: true,
       event: { type: 'scoring-set', format: 'POINT_5', settings: converted },
     })
-    expect(scoringFor(state, null, 'POINT_5')).toEqual({ settings: defaultSettings('POINT_5'), converted: false, event: null })
+  })
+
+  it('gives the default settings and their event for a log without any and nothing saved', () => {
+    const state = replay(logOf([1]))
+    expect(scoringFor(state, null, 'POINT_5')).toEqual({
+      settings: defaultSettings('POINT_5'),
+      converted: false,
+      event: { type: 'scoring-set', format: 'POINT_5', settings: defaultSettings('POINT_5') },
+    })
+  })
+
+  it('gives no event once the log holds the settings it gave', () => {
+    const before = replay(logOf([1]))
+    const { event } = scoringFor(before, saved, 'POINT_10')
+    const after = replay(logOf([1], event!))
+    expect(scoringFor(after, null, 'POINT_10')).toEqual({ settings: saved.settings, converted: false, event: null })
   })
 })
 
