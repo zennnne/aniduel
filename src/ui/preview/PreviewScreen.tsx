@@ -1,11 +1,25 @@
 import { useMemo, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import { BANDS, type RankingState } from '../../ranking/engine.ts'
-import { importPlan, isTicked, previewRows, type PendingWrite, type PreviewRow, type TickOverrides } from '../../ranking/preview.ts'
+import { BANDS, type RankingState, type SortGoal } from '../../ranking/engine.ts'
+import { refineDuels } from '../../ranking/estimate.ts'
+import {
+  importPlan,
+  isTicked,
+  previewRows,
+  settledRows,
+  type PendingWrite,
+  type PreviewRow,
+  type SettledRow,
+  type TickOverrides,
+  type UnsettledRow,
+} from '../../ranking/preview.ts'
+import { goalOf, isScores } from '../../ranking/sortGoal.ts'
 import { formatLevel, hasHumanStep, levelOfRaw, levels, score, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
+import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
+import { unsettledSummary } from './unsettledCard.ts'
 import './preview.css'
 import { count, titleName } from '../meta.ts'
 
@@ -16,6 +30,8 @@ type Filter = 'changing' | 'all'
  * Preview ("score rows", issue #4): best / worst / Distribution, one row per score level with the covers
  * that get it, each Band's level range, and the Forgotten titles. Everything recomputes live.
  * Re-rank, Move Band, Bring back and Import are disabled while their handler is not passed (Import while one runs).
+ * On Scores, titles a settings change left unsettled show in an orange card instead, with the way to their Refine
+ * Duels (#25, #29); every settled title can still be imported.
  */
 export function PreviewScreen(props: {
   state: RankingState
@@ -32,20 +48,38 @@ export function PreviewScreen(props: {
   onRerank?: (id: number) => void
   onMove?: (id: number) => void
   onBringBack?: (id: number) => void
+  /**
+   * Asks to switch the Sort Goal, from the Sort Goal `seg` and the "Need 0.5? Switch to Full Ranking" caption under
+   * Scores. To Full Ranking it opens the switch dialog (#25, #28). Without it there is no `seg` and the link is disabled.
+   */
+  onSwitchGoal?: (goal: SortGoal) => void
+  /** "Go to Duels →" on the unsettled card: the Refine Duels (#29). The button is disabled while it is not passed. */
+  onRefine?: () => void
 }) {
   const { state, entries, oldScores, titleLanguage, format, settings, onSettings, overrides, onTick } = props
   const [filter, setFilter] = useState<Filter>('changing')
   const [open, setOpen] = useState<number | null>(null)
+  const [showUnsettled, setShowUnsettled] = useState(false)
 
+  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const scores = useMemo(() => score(state, format, settings), [state, format, settings])
-  const rows = useMemo(() => previewRows(state, scores, oldScores, format), [state, scores, oldScores, format])
-  const plan = importPlan(rows, overrides)
+  const allRows = useMemo(
+    () => previewRows(state, scores, oldScores, format, (id) => titleName(entries.get(id), id, titleLanguage)),
+    [state, scores, oldScores, format, entries, titleLanguage],
+  )
+  const plan = importPlan(allRows, overrides)
+  // Score rows hold settled titles only (#25); unsettled ones (Scores, after a settings change) are never ticked.
+  const rows = settledRows(allRows)
   const changing = rows.filter((r) => r.changed).length
   const label = (level: number) => formatLevel(format, level)
-  const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
+  const unsettled = allRows.filter((r): r is UnsettledRow => !r.settled)
+  const refine = useMemo(() => refineDuels(state), [state])
+  /** The levels an unsettled title can still get: "8 or 7", or "9–6" for more. */
+  const between = (row: UnsettledRow) =>
+    row.levels.length === 2 ? `${label(row.levels[0])} or ${label(row.levels[1])}` : `${label(row.levels[0])}–${label(row.levels[row.levels.length - 1])}`
 
-  // Score rows: only levels that have titles, highest first.
-  const byLevel = new Map<number, PreviewRow[]>()
+  // Score rows: only levels that have titles, highest first. On Scores, `rows` is already sorted by name in a level.
+  const byLevel = new Map<number, SettledRow[]>()
   for (const row of rows) byLevel.set(row.level, [...(byLevel.get(row.level) ?? []), row])
   const scoreRows = [...byLevel.entries()].sort((a, b) => b[0] - a[0])
 
@@ -62,7 +96,7 @@ export function PreviewScreen(props: {
     return (
       <div
         key={row.id}
-        className={`tlcard b${row.band}${ticked ? '' : ' off'}`}
+        className={`tlcard b${row.band}${ticked || !row.settled ? '' : ' off'}`}
         onClick={() => setOpen(open === row.id ? null : row.id)}
         title={name(row.id)}
       >
@@ -71,14 +105,25 @@ export function PreviewScreen(props: {
         ) : (
           <div className="cv ph" style={{ ['--c' as string]: entry?.coverColor ?? undefined }} />
         )}
+        {!row.settled && <span className="rbadge">{between(row)}</span>}
         <span className="ob">{row.oldLevel === null ? 'new' : `${label(row.oldLevel)}→`}</span>
         {open === row.id && (
           <div className="tlpop" onClick={(e) => e.stopPropagation()}>
             <b>{name(row.id)}</b>
             <span className="small">
-              <Kao band={row.band} size={9} /> · AniList {row.oldLevel === null ? 'no score' : label(row.oldLevel)} → <b>{label(row.level)}</b>
+              <Kao band={row.band} size={9} /> · AniList {row.oldLevel === null ? 'no score' : label(row.oldLevel)} →{' '}
+              <b>{row.settled ? label(row.level) : `${between(row)}?`}</b>
             </span>
-            {row.changed ? (
+            {!row.settled ? (
+              <>
+                <span className="small uns-why">
+                  Not settled yet: a few Refine Duels decide between {between(row)}. Can't be imported until then.
+                </span>
+                <label className="row small uns-off">
+                  <input type="checkbox" checked={false} disabled /> Import this
+                </label>
+              </>
+            ) : row.changed ? (
               <label className="row small">
                 <input type="checkbox" checked={ticked} onChange={(e) => onTick(row.id, e.target.checked)} /> Import this
               </label>
@@ -106,6 +151,12 @@ export function PreviewScreen(props: {
           <div className="h1">Preview</div>
           <div className="small">
             {rows.length} ranked · {changing} change at your Score Format · {plan.length} ticked for Import
+            {unsettled.length > 0 && (
+              <>
+                {' '}
+                · <b className="strong">{unsettled.length} not settled</b>
+              </>
+            )}
           </div>
         </div>
         <div className="grow" />
@@ -142,7 +193,26 @@ export function PreviewScreen(props: {
             </button>
           ))}
         </div>
-        {hasHumanStep(format) && (
+        {props.onSwitchGoal && <SortGoalSeg goal={goalOf(state)} onGoal={props.onSwitchGoal} />}
+        {hasHumanStep(format) && isScores(state) && (
+          // Scores always uses whole points (ADR 0007): the Step is locked on Whole, and the caption gives the way out (#25).
+          <>
+            <div className="seg lock" title="Score Step: Scores always uses whole points">
+              {(['whole', 'human', 'fine'] as const).map((s) => (
+                <button key={s} className={s === 'whole' ? 'on' : ''} disabled>
+                  {s === 'whole' ? 'Whole' : stepLabel(format, s)}
+                </button>
+              ))}
+            </div>
+            <span className="small">
+              Need {stepLabel(format, 'human')}?{' '}
+              <button className="link small" disabled={!props.onSwitchGoal} onClick={() => props.onSwitchGoal?.('full-ranking')}>
+                Switch to Full Ranking
+              </button>
+            </span>
+          </>
+        )}
+        {hasHumanStep(format) && !isScores(state) && (
           <div className="seg" title="Score Step">
             {(['fine', 'human'] as const).map((s) => (
               <button key={s} className={settings.step === s ? 'on' : ''} onClick={() => onSettings(withStep(settings, format, s))}>
@@ -153,6 +223,25 @@ export function PreviewScreen(props: {
         )}
         <span className="small">Score Format: {SCORE_FORMAT_LABEL[format]}</span>
       </div>
+
+      {unsettled.length > 0 && (
+        // Never on Full Ranking: every title there has a level (#25).
+        <div className="unscard">
+          <span className="unsicon" aria-hidden>
+            ⚠
+          </span>
+          <span className="small strong grow">
+            {unsettledSummary(unsettled.length, refine)} ·{' '}
+            <button className="link small" onClick={() => setShowUnsettled(!showUnsettled)}>
+              {showUnsettled ? 'hide' : 'show'}
+            </button>
+          </span>
+          <button className="go sm" disabled={!props.onRefine} onClick={props.onRefine}>
+            Go to Duels →
+          </button>
+          {showUnsettled && <div className="unscovers">{unsettled.map(cover)}</div>}
+        </div>
+      )}
 
       <div className="seg pv-filter">
         <button className={filter === 'changing' ? 'on' : ''} onClick={() => setFilter('changing')}>

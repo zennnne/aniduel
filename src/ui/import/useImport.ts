@@ -7,15 +7,15 @@ import {
   deleteImportState,
   deleteTickOverrides,
   loadImportState,
-  loadScoringFor,
+  loadScoringSettings,
   loadTickOverrides,
   saveImportState,
   saveTickOverrides,
   type RankingKey,
 } from '../../persistence/progress.ts'
-import { replay, type DuelLog, type RankingState } from '../../ranking/engine.ts'
-import { importPlan, previewRows, type PendingWrite, type TickOverrides } from '../../ranking/preview.ts'
-import { score, type ScoringSettings } from '../../ranking/scoring.ts'
+import { replay, type DuelLog, type LogEvent, type RankingState } from '../../ranking/engine.ts'
+import { importPlan, previewOpen, previewRows, type PendingWrite, type TickOverrides } from '../../ranking/preview.ts'
+import { score, scoringFor, type ScoringSettings } from '../../ranking/scoring.ts'
 import { SCORE_FORMAT_LABEL } from '../preview/scoreFormat.ts'
 import type { Notice } from '../Shell.tsx'
 import type { ImportStage } from './ImportScreen.tsx'
@@ -32,6 +32,8 @@ export type ImportDeps = {
   /** The open Ranking's user and Media Type; null before login. */
   key: RankingKey | null
   latestLog: () => DuelLog | null
+  /** Appends to the open Ranking's Duel log and saves it (a Score Format conversion, ADR 0007). */
+  append: (...events: LogEvent[]) => unknown
   /** Old AniList score (100-point) of every Pool title, or null while the list is loading. */
   oldScores: ReadonlyMap<number, number> | null
   setScoring: (settings: ScoringSettings) => void
@@ -103,9 +105,12 @@ export function useImport(deps: ImportDeps) {
     setTicks(next)
   }
 
-  /** The Import plan for the current Ranking, as Preview would make it; empty unless the Ranking is finished. */
+  /**
+   * The Import plan for the current Ranking, as Preview would make it; empty unless Preview could be open (the Ranking
+   * is finished, or only Refine Duels are left: then its settled titles).
+   */
   function currentPlan(state: RankingState, format: Viewer['scoreFormat'], settings: ScoringSettings): PendingWrite[] {
-    if (state.prompt.kind !== 'all-complete' || !deps.oldScores) return []
+    if (!previewOpen(state.prompt) || !deps.oldScores) return []
     return importPlan(previewRows(state, score(state, format, settings), deps.oldScores, format), ticks)
   }
 
@@ -170,10 +175,14 @@ export function useImport(deps: ImportDeps) {
     if (!gateway || !viewer) return
     gateway.viewer().then((fresh) => {
       deps.setViewer(fresh)
-      const log = deps.latestLog()
+      let log = deps.latestLog()
       if (!log || !deps.key) return
       const key = { userId: fresh.id, mediaType: deps.key.mediaType }
-      const { settings } = loadScoringFor(deps.storage, key, fresh.scoreFormat)
+      const { settings, event } = scoringFor(replay(log), loadScoringSettings(deps.storage, key), fresh.scoreFormat)
+      if (event) {
+        deps.append(event)
+        log = deps.latestLog() ?? log
+      }
       deps.setScoring(settings)
       const state = replay(log)
       const decision = resumeImport(savedState, {
@@ -186,7 +195,7 @@ export function useImport(deps: ImportDeps) {
         setSaved(null)
         setView(null)
         deps.setNotice({ tone: 'info', message })
-        if (deps.onImportScreen) deps.goTo(state.prompt.kind === 'all-complete' ? 'preview' : 'ranking')
+        if (deps.onImportScreen) deps.goTo(previewOpen(state.prompt) ? 'preview' : 'ranking')
       }
       switch (decision.kind) {
         case 'dropped':
@@ -199,7 +208,7 @@ export function useImport(deps: ImportDeps) {
         case 'confirm-again':
           if (decision.state.writes.length === 0) {
             drop(
-              state.prompt.kind === 'all-complete'
+              previewOpen(state.prompt)
                 ? 'Your Ranking changed since the last Import, and no score is left to write.'
                 : 'Your Ranking changed since the last Import and is not finished, so the unfinished Import was dropped.',
             )

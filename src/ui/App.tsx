@@ -11,13 +11,12 @@ import {
   loadDuelLog,
   loadLastMediaType,
   loadPoolSettings,
-  loadScoringFor,
+  loadScoringSettings,
   saveLastMediaType,
   savePoolSettings,
-  saveScoringSettings,
   type RankingKey,
 } from '../persistence/progress.ts'
-import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, roughSortOrder } from '../pool/pool.ts'
+import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, estimateDuels, roughSortOrder } from '../pool/pool.ts'
 import { syncEvents } from '../pool/sync.ts'
 import {
   answeredDuels,
@@ -28,11 +27,14 @@ import {
   type BandIndex,
   type LogEvent,
   type RankingState,
+  type SortGoal,
   type SubBandIndex,
 } from '../ranking/engine.ts'
-import { duelsFromBands } from '../ranking/estimate.ts'
+import { duelsFromBands, fullRankingExtra } from '../ranking/estimate.ts'
 import { planFromScores } from '../ranking/fromScores.ts'
-import type { ScoringSettings } from '../ranking/scoring.ts'
+import { previewOpen } from '../ranking/preview.ts'
+import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
+import { goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
@@ -44,6 +46,7 @@ import { DuelScreen } from './duel/DuelScreen.tsx'
 import { Kao, SubPill } from './Kao.tsx'
 import { MoveSheet } from './move/MoveSheet.tsx'
 import { LogoutDialog } from './LogoutDialog.tsx'
+import { FullRankingDialog } from './menu/FullRankingDialog.tsx'
 import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
 import { buildMenuItems } from './menu/buildMenuItems.ts'
 import { RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
@@ -67,7 +70,7 @@ import { useDuelLog } from './useDuelLog.ts'
 type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import'
 const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import']
 
-type DialogName = 'logout' | 'restore' | 'start-over'
+type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking'
 
 const TOAST_MS = 4000
 
@@ -76,6 +79,14 @@ const COLLAGE_TILES = 36
 
 function loginRedirect() {
   window.location.assign(authorizeUrl(aniListClientId({ dev: import.meta.env.DEV })))
+}
+
+/**
+ * Whether a fix started from Preview (Re-rank, Move, Bring back) needs no more Duels: the Ranking is finished, or
+ * only Refine Duels of other titles are left (on Scores the fixed title is worked on first, until it is settled).
+ */
+function fixDone(state: RankingState, id: number): boolean {
+  return previewOpen(state.prompt) && (state.prompt.kind !== 'duel' || state.prompt.a !== id)
 }
 
 function newSeed(): number {
@@ -113,15 +124,24 @@ export function App() {
   const [openingPreview, setOpeningPreview] = useState(false)
   // A fix started from Preview (#11): its Duels run on the Ranking screen, then Preview opens again.
   const [previewFix, setPreviewFix] = useState<{ id: number; verb: string } | null>(null)
+  // "Go to Duels →" on Preview's unsettled card (#29): once every score is settled again, Preview opens again.
+  const [refining, setRefining] = useState(false)
   // The title whose Move sheet is open over Preview.
   const [previewMoving, setPreviewMoving] = useState<number | null>(null)
+  // The Sort Goal a new Ranking starts on, chosen on Start (#28). A saved Ranking's goal lives in its log.
+  const [newGoal, setNewGoal] = useState<SortGoal>('scores')
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
   // The open Ranking's user and Media Type: the key everything saved for it lives under.
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
   const list = lists[mediaType]
-  const pool = useMemo(() => (list ? buildPool(list, statuses) : null), [list, statuses])
+  // A new Ranking starts on Scores with the Score Format's defaults (ADR 0007): its estimate is for that.
+  const viewerFormat = viewer ? viewer.scoreFormat : null
+  const pool = useMemo(
+    () => (list ? buildPool(list, statuses, viewerFormat ? { format: viewerFormat, settings: defaultSettings(viewerFormat, 'whole') } : undefined) : null),
+    [list, statuses, viewerFormat],
+  )
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
   const titleLanguage = viewer?.titleLanguage
@@ -142,6 +162,7 @@ export function App() {
     setViewer,
     key: rankingKey,
     latestLog: duelLog.latest,
+    append: duelLog.append,
     oldScores: pool ? oldScores : null,
     setScoring,
     setNotice,
@@ -204,6 +225,7 @@ export function App() {
     setScoring(null)
     imports.open(key)
     setPreviewFix(null)
+    setRefining(false)
     setPreviewMoving(null)
     setStatuses(loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES)
     try {
@@ -351,7 +373,8 @@ export function App() {
 
   /**
    * Appends one answer, checks it replays, and saves the log before showing the result. Returns the new state, or
-   * null if the answer was dropped. Once a fix started from Preview is placed (or undone), Preview opens again.
+   * null if the answer was dropped. Once a fix started from Preview is placed (or undone), Preview opens again; so
+   * it does once the Refine Duels started from Preview are all answered.
    */
   function answer(event: LogEvent): RankingState | null {
     let state: RankingState | null
@@ -361,9 +384,14 @@ export function App() {
       return null // an answer for a prompt that is no longer showing (e.g. a double key press)
     }
     if (!state) return null
-    if (previewFix && state.prompt.kind === 'all-complete') {
+    if (previewFix && fixDone(state, previewFix.id)) {
       setPreviewFix(null)
       if (screen !== 'preview') goTo('preview')
+    }
+    if (refining && state.prompt.kind === 'all-complete') {
+      setRefining(false)
+      if (screen !== 'preview') goTo('preview')
+      showToast('Every score is settled again')
     }
     return state
   }
@@ -398,7 +426,7 @@ export function App() {
    */
   function fixFromPreview(id: number, verb: string, state: RankingState | null) {
     if (!state) return
-    if (state.prompt.kind === 'all-complete') {
+    if (fixDone(state, id)) {
       // A move keeps its own toast (with Undo).
       if (verb !== 'Moving') {
         showToast(
@@ -413,6 +441,14 @@ export function App() {
     goTo('ranking')
   }
 
+  /** "Go to Duels →" on Preview (#29): the Refine Duels, from the top Band that has some. */
+  function refineFromPreview() {
+    if (!ranking || ranking.prompt.kind !== 'duel') return
+    setRefining(true)
+    if (ranking.bandChoice) chooseBand(ranking.bandChoice.next)
+    else goTo('ranking')
+  }
+
   /**
    * Duels go on in `band` (a split Band starts at its first Sub-band with titles to place). The Band choice gets
    * its own history entry, so Back from the Duel returns to it.
@@ -420,7 +456,7 @@ export function App() {
   function chooseBand(band: BandIndex) {
     const current = duelLog.latest()
     const state = current ? replay(current) : null
-    if (!state || state.bands[band].unplaced.length === 0) return
+    if (!state || state.progress.bands[band].done === state.progress.bands[band].total) return
     const alreadyThere = state.prompt.kind === 'duel' && !state.bandChoice && state.prompt.band === band
     if (!alreadyThere) answer({ type: 'band-selected', band })
     if (screen === 'ranking') window.history.replaceState({ screen: 'bands' }, '')
@@ -432,7 +468,10 @@ export function App() {
     if (!viewer) return
     if (!duelLog.latest()) {
       if (!startOrder) return
-      const log = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder })
+      // The new log carries its own Sort Goal and default scoring settings (ADR 0007).
+      const started = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder, scoreFormat: viewer.scoreFormat })
+      // Full Ranking picked on Start: the same switch as from the menu, before anything is sorted.
+      const log = switchGoalEvents(replay(started), null, viewer.scoreFormat, newGoal).reduce(appendEvent, started)
       const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
       duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
     } else {
@@ -445,7 +484,8 @@ export function App() {
 
   /**
    * Runs `Viewer` again first (spec Auth, ADR 0003): if the Score Format changed since best / worst were
-   * chosen, they are converted to the new format and a blue banner says so.
+   * chosen, they are converted to the new format, the conversion is appended to the Duel log (ADR 0007), and a
+   * blue banner says so.
    */
   function openPreview() {
     if (!gateway || !viewer || openingPreview) return
@@ -455,7 +495,10 @@ export function App() {
         setOpeningPreview(false)
         setViewer(fresh)
         const key = { userId: fresh.id, mediaType }
-        const { settings, converted } = loadScoringFor(localStorage, key, fresh.scoreFormat)
+        const current = duelLog.latest()
+        if (!current) return
+        const { settings, converted, event } = scoringFor(replay(current), loadScoringSettings(localStorage, key), fresh.scoreFormat)
+        if (event) duelLog.append(event)
         if (converted) {
           imports.dropForFormatChange(key)
           setNotice({
@@ -473,10 +516,51 @@ export function App() {
     )
   }
 
+  /** Settings changed on Preview go into the Duel log (ADR 0007), so a reload or a Backup gives the same scores. */
   function changeScoring(settings: ScoringSettings) {
-    if (!viewer || !rankingKey) return
-    saveScoringSettings(localStorage, rankingKey, { format: viewer.scoreFormat, settings })
+    if (!viewer || !duelLog.latest()) return
+    duelLog.append({ type: 'scoring-set', format: viewer.scoreFormat, settings })
     setScoring(settings)
+  }
+
+  /**
+   * Switches the open Ranking's Sort Goal (#28, ADR 0007): its settings move to the new goal's Score Step. Every
+   * earlier answer still counts. Preview keeps showing the new settings.
+   */
+  function applySortGoal(goal: SortGoal) {
+    const current = duelLog.latest()
+    if (!viewer || !current) return
+    const key = { userId: viewer.id, mediaType }
+    const events = switchGoalEvents(replay(current), loadScoringSettings(localStorage, key), viewer.scoreFormat, goal)
+    if (events.length === 0) return
+    let state: RankingState | null
+    try {
+      state = duelLog.append(...events)
+    } catch (e) {
+      setNotice({
+        tone: 'error',
+        message: `Your Ranking couldn't switch its Sort Goal (${e instanceof Error ? e.message : 'unknown error'}). Your progress was left untouched.`,
+      })
+      return
+    }
+    if (scoring && state?.scoring) setScoring(state.scoring.settings)
+    showToast(
+      goal === 'scores' ? (
+        <>
+          Switched to <b>Scores</b> · Duels stop once every score is settled
+        </>
+      ) : (
+        <>
+          Switched to <b>Full Ranking</b> · every title gets its own place
+        </>
+      ),
+    )
+  }
+
+  /** The menu, Start and Preview: Scores switches at once; Full Ranking asks first, with "+~N Duels" (#25). */
+  function requestSortGoal(goal: SortGoal) {
+    if (goal === 'full-ranking') setDialog('full-ranking')
+    else applySortGoal(goal)
   }
 
   /** Downloads the Backup file for the current user and Media Type. */
@@ -562,9 +646,14 @@ export function App() {
           startOver: () => setDialog('start-over'),
           toggleTheme,
           logout: () => setDialog('logout'),
+          switchSortGoal: requestSortGoal,
         },
       )
     : []
+
+  // Start: the saved Ranking's Sort Goal, or the one a new Ranking will start on, and its estimate (#28).
+  const shownGoal: SortGoal = ranking ? goalOf(ranking) : newGoal
+  const fullPoolDuels = pool ? estimateDuels(pool.titles.length) : null
 
   const form = viewer
     ? {
@@ -576,6 +665,10 @@ export function App() {
         // Offered for a new Ranking only.
         scoresPlan: hasProgress ? null : scoresPlan,
         bandDuels: ranking ? duelsFromBands(ranking) : null,
+        goal: shownGoal,
+        onGoal: (goal: SortGoal) => (ranking ? requestSortGoal(goal) : setNewGoal(goal)),
+        poolDuels: pool && shownGoal === 'scores' ? pool.expectedDuels : fullPoolDuels,
+        extraDuels: ranking ? fullRankingExtra(ranking) || null : pool && fullPoolDuels !== null ? fullPoolDuels - pool.expectedDuels : null,
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
           const next = statuses.includes(s) ? statuses.filter((x) => x !== s) : [...statuses, s]
@@ -593,8 +686,9 @@ export function App() {
     (screen === 'ranking' || screen === 'bands' || screen === 'board' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
   const importView = imports.view
   const inImport = screen === 'import' && importView
-  // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows.
-  const inPreview = screen === 'preview' && ranking?.prompt.kind === 'all-complete' && scoring && pool
+  // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows. On Scores,
+  // Refine Duels left by a settings change keep Preview open: its settled titles can still be imported (#29).
+  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && scoring && pool
 
   /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
@@ -702,7 +796,7 @@ export function App() {
             onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
             onForget={(id) => answer({ type: 'forgotten', id })}
             onMove={moveTitle}
-            note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : undefined}
+            note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : prompt.refine ? 'Refine' : undefined}
           />
         )
       case 'all-complete':
@@ -760,6 +854,8 @@ export function App() {
           format={viewer.scoreFormat}
           settings={scoring}
           onSettings={changeScoring}
+          onSwitchGoal={requestSortGoal}
+          onRefine={refineFromPreview}
           overrides={imports.ticks}
           onTick={imports.tick}
           onImport={importView?.stage === 'running' ? undefined : (plan) => imports.plan(plan, scoring)}
@@ -811,6 +907,16 @@ export function App() {
           replacesProgress={hasProgress}
           onRestore={restore}
           onCancel={() => setDialog(null)}
+        />
+      )}
+      {dialog === 'full-ranking' && ranking && (
+        <FullRankingDialog
+          extraDuels={fullRankingExtra(ranking)}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            applySortGoal('full-ranking')
+          }}
         />
       )}
       {dialog === 'start-over' && viewer && (

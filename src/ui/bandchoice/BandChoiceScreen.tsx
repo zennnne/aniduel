@@ -1,24 +1,23 @@
 import { useEffect, useEffectEvent, useState } from 'react'
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
-import { BANDS, SUB_BANDS, type BandIndex, type RankingState } from '../../ranking/engine.ts'
-import { duelsLeft } from '../../ranking/estimate.ts'
+import { BANDS, SUB_BANDS, progressOf, type BandIndex, type RankingState } from '../../ranking/engine.ts'
+import { duelsLeftIn } from '../../ranking/estimate.ts'
+import { isScores } from '../../ranking/sortGoal.ts'
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import './bandchoice.css'
 import { count, titleName } from '../meta.ts'
+import { rankingLines } from '../rankingLines.ts'
 
 /** A Band's progress bar; a split Band's bar is striped, one stripe per Sub-band, each filled by its own progress. */
 export function BandBar({ state, band }: { state: RankingState; band: BandIndex }) {
   const b = state.bands[band]
-  const placed = (tiers: readonly (readonly number[])[]) => tiers.reduce((n, tier) => n + tier.length, 0)
   if (b.subBands) {
     return (
       <div className="prog segs" title="Best / Middle / Lowest">
         {SUB_BANDS.map((sub) => {
-          const part = b.subBands![sub]
-          const done = placed(part.tiers)
-          const total = done + part.unplaced.length
+          const { done, total } = progressOf(state, b.subBands![sub])
           return (
             <span key={sub} style={{ flex: Math.max(total, 1), background: SUB_BAND_UI[sub].colour }}>
               <i style={{ width: `${total ? (done / total) * 100 : 100}%` }} />
@@ -55,10 +54,12 @@ export function BandChoiceScreen(props: {
   onBoard?: () => void
 }) {
   const { state, entries, titleLanguage, finished, next, onChoose, onUndo, onBoard } = props
-  const open = BANDS.filter((band) => state.bands[band].unplaced.length > 0)
+  // Bands with Duels left: titles without a place (Full Ranking) or not yet settled (Scores).
+  const left = (band: BandIndex) => state.progress.bands[band].total - state.progress.bands[band].done
+  const open = BANDS.filter((band) => left(band) > 0)
   const [selected, setSelected] = useState<BandIndex>(open.includes(next) ? next : (open[0] ?? next))
   const { done, total } = state.progress.ranked
-  const toGo = open.reduce<number>((sum, band) => sum + duelsLeft(state.bands[band]), 0)
+  const toGo = open.reduce<number>((sum, band) => sum + duelsLeftIn(state, band), 0)
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
@@ -90,14 +91,13 @@ export function BandChoiceScreen(props: {
     return () => window.removeEventListener('keydown', listener)
   }, [])
 
-  // Place of the finished Band's first Tier in the whole Ranking (a Tier is one place).
-  const firstPlace = finished === null ? 1 : state.bands.slice(0, finished).reduce((sum, b) => sum + b.tiers.length, 1)
+  const lines = finished === null ? [] : rankingLines(state, finished, name)
 
   return (
     <div className="bc">
       <div className="h1">Which Band next?</div>
       <div className="sub">
-        {done}/{total} placed · about {count(toGo, 'Duel')} to go
+        {done}/{total} {isScores(state) ? 'settled' : 'placed'} · about {count(toGo, 'Duel')} to go
       </div>
       <div className="bc-total">
         <span className="small">Total</span>
@@ -111,19 +111,19 @@ export function BandChoiceScreen(props: {
             <div className="row">
               <Kao band={finished} size={14} /> <b className="strong">{BAND_UI[finished].label} — your order</b>
             </div>
-            {state.bands[finished].tiers.map((tier, i) => {
-              const cover = entries.get(tier[0])
+            {lines.map((line) => {
+              const cover = entries.get(line.ids[0])
               return (
-                <div key={tier[0]} className="ln">
-                  <b>{firstPlace + i}</b>
+                <div key={line.key} className="ln">
+                  <b>{line.mark}</b>
                   {cover?.coverUrl ? (
                     <img className="cv" src={cover.coverUrl} alt="" style={{ background: cover.coverColor ?? undefined }} />
                   ) : (
                     <div className="cv ph" style={{ ['--c' as string]: cover?.coverColor ?? undefined }} />
                   )}
                   <span>
-                    <b>{tier.map(name).join(', ')}</b>
-                    {tier.length > 1 && <span className="tie"> Tier · same score</span>}
+                    <b>{line.ids.map(name).join(', ')}</b>
+                    {line.note && <span className="tie"> {line.note}</span>}
                   </span>
                 </div>
               )
@@ -135,14 +135,14 @@ export function BandChoiceScreen(props: {
           <b className="strong">Next Band</b>
           {BANDS.map((band) => {
             const p = state.progress.bands[band]
-            const left = state.bands[band].unplaced.length
+            const toPlace = left(band)
             return (
               <button
                 key={band}
                 className={band === selected ? 'on' : undefined}
-                disabled={left === 0}
+                disabled={toPlace === 0}
                 onClick={() => onChoose(band)}
-                onMouseEnter={() => left > 0 && setSelected(band)}
+                onMouseEnter={() => toPlace > 0 && setSelected(band)}
               >
                 <span className="row">
                   <span className="kbd">{band + 1}</span>
@@ -156,7 +156,7 @@ export function BandChoiceScreen(props: {
                   <BandBar state={state} band={band} />
                 </span>
                 <span className="small">
-                  {left === 0 ? (p.total ? 'done' : 'empty') : band === selected ? <b className="nx">next</b> : `${p.done}/${p.total}`}
+                  {toPlace === 0 ? (p.total ? 'done' : 'empty') : band === selected ? <b className="nx">next</b> : `${p.done}/${p.total}`}
                 </span>
               </button>
             )

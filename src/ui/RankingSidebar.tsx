@@ -1,14 +1,16 @@
 import type { ReactNode } from 'react'
 import type { ListEntry, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
-import { BANDS, SUB_BANDS, type BandIndex, type RankingState } from '../ranking/engine.ts'
+import { BANDS, SUB_BANDS, progressOf, type BandIndex, type RankingState } from '../ranking/engine.ts'
 import { SUB_BAND_UI } from './bands.ts'
 import { Kao } from './Kao.tsx'
 import { MEDIA_LABEL, count, titleName } from './meta.ts'
+import { rankingLines } from './rankingLines.ts'
 
 /**
  * Sidebar of the "Cockpit" Shell (issue #4): logo, who and what is being ranked, one row per Band
  * (placed / titles in the Band), and during a Duel the current Band's Ranking so far, with the
- * insertion bounds (inb) and the pivot (piv) highlighted.
+ * insertion bounds (inb) and the pivot (piv) highlighted. On Scores it lists the Band's levels instead, without a
+ * highlight: the engine has no insertion bounds there (#25).
  */
 export function RankingSidebar(props: {
   viewer: Viewer
@@ -47,8 +49,7 @@ export function RankingSidebar(props: {
                 // A split Band stays one row; its bar is striped by Sub-band (width = titles in it, fill = placed).
                 <div className="bar segs" title="Best / Middle / Lowest">
                   {SUB_BANDS.map((sub) => {
-                    const placed = subBands[sub].tiers.reduce((n, t) => n + t.length, 0)
-                    const all = placed + subBands[sub].unplaced.length
+                    const { done: placed, total: all } = progressOf(state, subBands[sub])
                     const fill = roughSorting || all === 0 ? 100 : (placed / all) * 100
                     return (
                       <span key={sub} style={{ flex: all, ['--sub' as string]: SUB_BAND_UI[sub].colour }}>
@@ -81,18 +82,30 @@ export function RankingSidebar(props: {
       {duel && !state.bandChoice && (
         <>
           <div className="small row hide-m">
-            <Kao band={duel.band} size={10} /> Ranking so far
+            <Kao band={duel.band} size={10} /> Ranking so far{duel.bounds ? '' : ' · by score'}
           </div>
           <div className="rank hide-m">
-            {state.bands[duel.band].tiers.map((tier, i) => {
-              const { lo, hi, pivot } = duel.bounds
-              const cls = i === pivot ? 'piv' : i >= lo && i < hi ? 'inb' : 'out'
-              return (
-                <div key={tier[0]} className={cls}>
-                  {i + 1}. {tier.map(name).join(' = ')}
-                </div>
-              )
-            })}
+            {duel.bounds
+              ? state.bands[duel.band].tiers.map((tier, i) => {
+                  const { lo, hi, pivot } = duel.bounds!
+                  const cls = i === pivot ? 'piv' : i >= lo && i < hi ? 'inb' : 'out'
+                  return (
+                    <div key={tier[0]} className={cls}>
+                      {i + 1}. {tier.map(name).join(' = ')}
+                    </div>
+                  )
+                })
+              : rankingLines(state, duel.band, name).map((line) => (
+                  // Scores, "Plain" (#25): the level, then its titles as chips sorted by name; nothing highlighted.
+                  <div key={line.key} className="lvl">
+                    <b>{line.mark}</b>
+                    <span className="lvchips">
+                      {line.ids.map((id) => (
+                        <span key={id}>{name(id)}</span>
+                      ))}
+                    </span>
+                  </div>
+                ))}
           </div>
         </>
       )}

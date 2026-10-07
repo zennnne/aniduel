@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { replay, startLog, type DuelLog } from '../ranking/engine.ts'
+import { appendEvent, replay, startLog, type DuelLog } from '../ranking/engine.ts'
+import { score, scoringFor } from '../ranking/scoring.ts'
 import { createBackup, readBackup, restoreBackup } from './backup.ts'
 import {
   loadDuelLog,
@@ -67,6 +68,29 @@ describe('Backup and Restore', () => {
     const old = JSON.parse(file.json) as { settings: Record<string, unknown> }
     delete old.settings.scoring
     expect(readBackup(JSON.stringify(old), anime).settings.scoring).toBeNull()
+  })
+
+  it('settings changed on Preview travel in the Duel log: a reload and a Restore elsewhere give the same scores', () => {
+    // Linear 9..4 over three titles: 9, 6.5 (rounds to 7), 4. The defaults would give 10, 6.5 → 7, 3.
+    // A new log is on Scores, which always uses the whole Score Step (on 10 point, its only one).
+    const chosen = { distribution: 'linear' as const, step: 'whole' as const, best: 9, worst: 4 }
+    let log = startLog({ ...anime, seed: 42, ids: [1, 2, 3], scoreFormat: 'POINT_10' })
+    for (const id of [1, 2, 3]) log = appendEvent(log, { type: 'band-assigned', id, band: id === 3 ? 4 : 0 })
+    log = appendEvent(log, { type: 'duel-answered', a: 2, b: 1, result: 'b' })
+    log = appendEvent(log, { type: 'scoring-set', format: 'POINT_10', settings: chosen })
+    const here = memoryStorage()
+    saveDuelLog(here, log)
+    const scoresIn = (storage: Storage) => {
+      const state = replay(loadDuelLog(storage, anime)!)
+      const { settings } = scoringFor(state, loadScoringSettings(storage, anime), 'POINT_10')
+      return { settings, levels: [...score(state, 'POINT_10', settings).titles].map(([id, s]) => [id, s.level]) }
+    }
+    expect(scoresIn(here)).toEqual({ settings: chosen, levels: [[1, 9], [2, 7], [3, 4]] })
+
+    const elsewhere = memoryStorage()
+    saveScoringSettings(elsewhere, anime, { format: 'POINT_10', settings: { ...chosen, distribution: 'bell', best: 10, worst: 1 } })
+    restoreBackup(elsewhere, readBackup(createBackup(here, { ...anime, userName: 'zen' }, now)!.json, anime))
+    expect(scoresIn(elsewhere)).toEqual(scoresIn(here))
   })
 
   it('names the file after the user, Media Type and day', () => {

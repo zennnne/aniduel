@@ -1,6 +1,8 @@
 // Ranking Engine (ADR 0001, ADR 0005): pure, no I/O. The Duel log is the source of truth;
 // every derived thing (next prompt, the Ranking, progress) is rebuilt by replaying it.
-import type { MediaType } from '../anilist/types.ts'
+import type { MediaType, ScoreFormat } from '../anilist/types.ts'
+import { intervalOf, knowledgeOf, nextLevelDuel, tierIndex, type LevelContext, type PositionRange, type SegmentKnowledge } from './levelSelect.ts'
+import { defaultSettings, levelAt, parseSavedScoring, type SavedScoring, type ScoringSettings } from './scoring.ts'
 
 export const LOG_FORMAT_VERSION = 1
 /**
@@ -10,7 +12,7 @@ export const LOG_FORMAT_VERSION = 1
  * replay differently (ADR 0005). Adding an event kind or changing replay means bumping this and, for a new kind,
  * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006).
  */
-export const ENGINE_VERSION = 6
+export const ENGINE_VERSION = 7
 const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VERSION }, (_, i) => i + 1)
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
@@ -32,6 +34,10 @@ export type LogHeader = {
 }
 
 export type DuelResult = 'a' | 'b' | 'tie'
+
+/** Sort Goal (ADR 0007): stop a title's Duels once its score level is settled, or give every title its own place. */
+export type SortGoal = 'scores' | 'full-ranking'
+const SORT_GOALS: readonly SortGoal[] = ['scores', 'full-ranking']
 
 export type LogEvent =
   /** Titles joining the Pool (the first Pool load, or a sync): they go to the back of the Rough Sort queue. */
@@ -78,6 +84,17 @@ export type LogEvent =
    * Each must be waiting in Rough Sort; titles it doesn't list stay there. Replay never reads AniList scores.
    */
   | { type: 'bands-from-scores'; bands: PerBand<number[]> }
+  /**
+   * The Sort Goal from here on (ADR 0007). A log without one is Full Ranking. A setting, not a user event: Undo
+   * skips it (never cancels it, never stops at it, never cancels it along with a later Undo).
+   */
+  | { type: 'sort-goal-set'; goal: SortGoal }
+  /**
+   * The scoring settings from here on, with the Score Format they are on (ADR 0007): changed on Preview, or
+   * converted after the Score Format changed on AniList (ADR 0003). A log without one uses the scoring settings
+   * saved outside it. Undo skips it, like `sort-goal-set`.
+   */
+  | { type: 'scoring-set'; format: ScoreFormat; settings: ScoringSettings }
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
@@ -87,14 +104,16 @@ type RecordedEvent = Exclude<LogEvent, { type: 'undo' }>
 
 /**
  * How Undo treats an event (ADR 0005): user events can be cancelled; system (sync) events are a barrier that Undo
- * never reaches past; navigation (`band-selected`) is skipped over, neither a step nor a barrier.
+ * never reaches past; navigation (`band-selected`) is skipped over, neither a step nor a barrier, but goes with
+ * a cancelled event before it; settings (ADR 0007) are skipped over and never cancelled at all.
  */
-type UndoRole = 'user' | 'barrier' | 'navigation'
+type UndoRole = 'user' | 'barrier' | 'navigation' | 'setting'
 
 /**
  * One row per event kind: the engine version it came with (a log whose header is older refuses it), its name in
  * that error, and its Undo role. Engine version 2 came with `band-split`, 3 with `band-selected`, 4 with
- * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`), 6 with `bands-from-scores`.
+ * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`), 6 with `bands-from-scores`,
+ * 7 with the Sort Goal and scoring settings (`sort-goal-set`, `scoring-set`, ADR 0007).
  */
 const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; name: string; undoRole: UndoRole } } = {
   'titles-added': { since: 1, name: 'Titles added', undoRole: 'barrier' },
@@ -108,6 +127,8 @@ const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; nam
   'rerank-requested': { since: 5, name: 'Re-rank requested', undoRole: 'user' },
   unforgotten: { since: 5, name: 'Unforgotten', undoRole: 'user' },
   'bands-from-scores': { since: 6, name: 'Bands from scores', undoRole: 'user' },
+  'sort-goal-set': { since: 7, name: 'Sort Goal set', undoRole: 'setting' },
+  'scoring-set': { since: 7, name: 'Scoring settings set', undoRole: 'setting' },
 }
 
 export type Prompt =
@@ -125,11 +146,16 @@ export type Prompt =
       left: number
       right: number
       /**
-       * Where the insertion stands, as Tier indexes into `bands[band].tiers` (the whole Band, also when it is
-       * split): the title belongs somewhere in lo..hi (between Tier lo-1 and Tier hi), and `pivot` is the Tier
-       * it is compared with now.
+       * Full Ranking only (binary insertion; left out under Scores). Where the insertion stands, as Tier indexes
+       * into `bands[band].tiers` (the whole Band, also when it is split): the title belongs somewhere in lo..hi
+       * (between Tier lo-1 and Tier hi), and `pivot` is the Tier it is compared with now.
        */
-      bounds: { lo: number; hi: number; pivot: number }
+      bounds?: { lo: number; hi: number; pivot: number }
+      /**
+       * Scores only: a Refine Duel (GLOSSARY), asked because something moved a level boundary after every score
+       * had been settled once (a settings change, sync, Forgotten, Band move, Re-rank). Display only.
+       */
+      refine?: true
     }
   | { kind: 'all-complete' }
 
@@ -147,13 +173,52 @@ export type BandState = {
    * the whole Band's order.
    */
   tiers: readonly (readonly number[])[]
-  /** Titles in this Band without a place yet, in the order they will be inserted (the first is in progress). */
+  /**
+   * Titles in this Band without a place yet, in the order they will be inserted (the first is in progress). Under
+   * Scores these include titles whose level is settled but whose exact place was never asked (see `standing`).
+   */
   unplaced: readonly number[]
   /** Only present once the Band is split (ADR 0006): Best, Middle, Lowest. */
   subBands?: readonly [SubBandState, SubBandState, SubBandState]
 }
 
 export type Progress = { done: number; total: number }
+
+/**
+ * A Band's or Sub-band's progress: titles that need no more Duels (with a place on Full Ranking, settled on Scores)
+ * out of all its titles. `progress.bands` holds the same per Band.
+ */
+export function progressOf(state: Pick<RankingState, 'standing'>, part: SubBandState): Progress {
+  const total = titlesIn(part)
+  const settled = state.standing?.settled
+  if (!settled) return { done: total - part.unplaced.length, total }
+  let done = 0
+  for (const tier of part.tiers) for (const id of tier) if (settled.has(id)) done++
+  for (const id of part.unplaced) if (settled.has(id)) done++
+  return { done, total }
+}
+
+/** Every title in a Band or Sub-band: in its Tiers and without a place. */
+export function titlesIn(part: { readonly tiers: readonly (readonly unknown[])[]; readonly unplaced: readonly unknown[] }): number {
+  return part.tiers.reduce((sum, tier) => sum + tier.length, 0) + part.unplaced.length
+}
+
+/**
+ * Under Scores (ADR 0007): what the Duels so far say about every title in a Band. Its levels come from `score`;
+ * titles in a Tier and titles without a place alike have a range of positions, and a title is settled when every
+ * position in it gives one level.
+ */
+export type Standing = {
+  /** Titles in a Band, the n the Distribution spreads over (Rough Sort and Forgotten titles not counted). */
+  size: number
+  /**
+   * Every title in a Band, Band by Band from the top (Tiers in order, then titles without a place): the Tier-average
+   * positions (0 = best, among `size`) it can still end up at.
+   */
+  titles: ReadonlyMap<number, PositionRange & { band: BandIndex }>
+  /** The titles whose level, under the log's scoring settings, no further Duel can change. */
+  settled: ReadonlySet<number>
+}
 
 export type RankingState = {
   prompt: Prompt
@@ -162,7 +227,7 @@ export type RankingState = {
   forgotten: readonly number[]
   progress: {
     roughSort: Progress
-    /** Per Band: titles with a place in the Ranking / titles in the Band. */
+    /** Per Band: titles with a place in the Ranking (under Scores: settled titles) / titles in the Band. */
     bands: readonly Progress[]
     /** Over every Band. */
     ranked: Progress
@@ -177,6 +242,18 @@ export type RankingState = {
   /** Whether an Undo appended now would cancel anything. */
   canUndo: boolean
   board: BoardView
+  /**
+   * The latest `sort-goal-set`. Left out when the log has none (an older log, ADR 0007): that means Full Ranking.
+   * (Left out rather than defaulted, so a state compares equal to one replayed before these events existed.)
+   */
+  sortGoal?: SortGoal
+  /**
+   * The latest `scoring-set`. Left out when the log has none: then the scoring settings saved outside the log apply
+   * (older logs, ADR 0007). Its Score Format may differ from AniList's now: see `scoringFor`.
+   */
+  scoring?: SavedScoring
+  /** Only under Scores: each title's possible positions and whether it is settled. */
+  standing?: Standing
 }
 
 /** One title on the Board: `at` is the position of the event that last put it in its Band; `sub` only in a split Band. */
@@ -201,12 +278,28 @@ export class ReplayError extends Error {
   }
 }
 
-/** A new log for a first Pool load: the header plus one `titles-added` event in Rough Sort order. */
-export function startLog(options: { seed: number; userId: number; mediaType: MediaType; ids: readonly number[] }): DuelLog {
-  const { seed, userId, mediaType, ids } = options
+/**
+ * A new log for a first Pool load: the header plus one `titles-added` event in Rough Sort order. Given the user's
+ * Score Format, the log starts on Scores with that format's default scoring settings on the whole Score Step
+ * (ADR 0007), so it never depends on settings saved outside it. The settings come first: Scores needs them.
+ */
+export function startLog(options: {
+  seed: number
+  userId: number
+  mediaType: MediaType
+  ids: readonly number[]
+  scoreFormat?: ScoreFormat
+}): DuelLog {
+  const { seed, userId, mediaType, ids, scoreFormat } = options
+  const settings: LogEvent[] = scoreFormat
+    ? [
+        { type: 'scoring-set', format: scoreFormat, settings: defaultSettings(scoreFormat, 'whole') },
+        { type: 'sort-goal-set', goal: 'scores' },
+      ]
+    : []
   return {
     header: { format: LOG_FORMAT_VERSION, engine: ENGINE_VERSION, seed, userId, mediaType },
-    events: [{ type: 'titles-added', ids: [...ids] }],
+    events: [...settings, { type: 'titles-added', ids: [...ids] }],
   }
 }
 
@@ -265,22 +358,41 @@ type Machine = {
   placedAt: Map<number, number>
   /** Whether any title has had its Band chosen by hand (assigned in Rough Sort, or moved): no Rough Sort from Scores after that. */
   placedByHand: boolean
+  sortGoal: SortGoal | null
+  scoring: SavedScoring | null
+  seed: number
+  /**
+   * Under Scores only: the layout and each Segment's knowledge, worked out once and dropped after an event that may
+   * change them (nothing in between changes a Segment). `layout` undefined = not worked out yet. Never read on Full
+   * Ranking, so it is not kept up to date there.
+   */
+  scoresCache: { layout?: ScoresLayout; knowledge: Map<Segment, SegmentKnowledge> }
+  /** The Segment the event being applied answered a Duel in (null for any other event). */
+  answeredIn: Segment | null
+  /** Whether every score was settled on Scores at some point: Duels on Scores after that are Refine Duels. */
+  settledOnce: boolean
 }
 
 type Place = { band: BandIndex; sub?: SubBandIndex }
 type Resume = { focus: BandIndex | null; finished: BandIndex | null }
 
-/** The open interval of Tier indexes an insertion may still land in: between Tier lo-1 and Tier hi. */
-function interval(segment: Segment, insertion: Insertion): { lo: number; hi: number } {
+/**
+ * `intervalOf` (levelSelect.ts) for one insertion of a Segment, finding Tiers by `indexOf`. Written out rather than
+ * passing a closure: Full Ranking calls it after every event of every replay.
+ */
+function insertionInterval(segment: Segment, insertion: Insertion): { lo: number; hi: number } {
   const lo = insertion.above ? segment.tiers.indexOf(insertion.above) + 1 : 0
   const hi = insertion.below ? segment.tiers.indexOf(insertion.below) : segment.tiers.length
   return { lo, hi }
 }
 
-/** Places every front insertion that needs no more Duels (an empty interval), in queue order. */
-function settle(segment: Segment): void {
+/**
+ * Full Ranking: gives a place to every front insertion whose interval is empty (it needs no more Duels), in queue
+ * order. Stops at the first front insertion that still needs a Duel.
+ */
+function placeEmptyFronts(segment: Segment): void {
   for (let front = segment.queue[0]; front; front = segment.queue[0]) {
-    const { lo, hi } = interval(segment, front)
+    const { lo, hi } = insertionInterval(segment, front)
     if (lo < hi) return
     segment.queue.shift()
     segment.tiers.splice(lo, 0, { members: [front.id] })
@@ -335,7 +447,7 @@ function resolveUndo(events: readonly LogEvent[]): { effective: RecordedEvent[];
       undoable = []
       navigation = []
     } else if (role === 'navigation') navigation.push(i)
-    else undoable.push(i)
+    else if (role === 'user') undoable.push(i)
   })
   const effective = events.filter(
     (event, i): event is RecordedEvent => event.type !== 'undo' && !cancelled.has(i),
@@ -348,7 +460,7 @@ export function answeredDuels(log: DuelLog): number {
   return resolveUndo(log.events).effective.filter((event) => event.type === 'duel-answered').length
 }
 
-function apply(machine: Machine, seed: number, event: RecordedEvent): void {
+function apply(machine: Machine, event: RecordedEvent): void {
   const rule = EVENT_RULES[event.type]
   requireEngine(machine, rule.since, rule.name)
   switch (event.type) {
@@ -387,14 +499,15 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       const a = work?.insertion.id
       const b = pivot?.members[0]
       if (!work || !pivot || !((event.a === a && event.b === b) || (event.a === b && event.b === a))) {
-        const prompt = nextPrompt(machine, seed)
+        const prompt = nextPrompt(machine)
         const expected = prompt.kind === 'duel' ? `${prompt.a} vs ${prompt.b}` : prompt.kind
         throw new ReplayError(`Duel answer for ${event.a} vs ${event.b}, but the engine prompts ${expected}`)
       }
       const { segment, insertion } = work
       machine.focus = work.band
+      machine.answeredIn = segment
       if (event.result === 'tie') {
-        segment.queue.shift()
+        segment.queue.splice(segment.queue.indexOf(insertion), 1)
         pivot.members.push(insertion.id)
         return
       }
@@ -415,7 +528,7 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
       return
     case 'band-selected':
       if (!BANDS.includes(event.band)) throw new ReplayError(`There is no Band ${String(event.band)}`)
-      if (machine.roughSortQueue.length === 0 && hasWork(machine.bands[event.band])) {
+      if (machine.roughSortQueue.length === 0 && hasWork(machine, event.band)) {
         machine.focus = event.band
         machine.finished = null
         machine.detour = null
@@ -451,6 +564,24 @@ function apply(machine: Machine, seed: number, event: RecordedEvent): void {
     case 'bands-from-scores':
       bandsFromScores(machine, event)
       return
+    case 'sort-goal-set':
+      if (!SORT_GOALS.includes(event.goal)) throw new ReplayError(`There is no Sort Goal ${String(event.goal)}`)
+      if (event.goal === 'scores' && machine.scoring?.settings.step !== 'whole') {
+        throw new ReplayError('Scores needs scoring settings on the whole Score Step first')
+      }
+      machine.sortGoal = event.goal
+      return
+    case 'scoring-set': {
+      const scoring = parseSavedScoring({ format: event.format, settings: event.settings })
+      if (!scoring || scoring.settings.step !== event.settings?.step) {
+        throw new ReplayError(`Scoring settings ${JSON.stringify(event.settings)} don't fit Score Format ${String(event.format)}`)
+      }
+      if (onScores(machine) && scoring.settings.step !== 'whole') {
+        throw new ReplayError('Scores always uses the whole Score Step')
+      }
+      machine.scoring = scoring
+      return
+    }
   }
 }
 
@@ -510,16 +641,106 @@ function startDetour(machine: Machine, id: number, place: Place, resume: Resume)
   machine.finished = null
 }
 
-/** The Segment the detour title waits at the front of, or null once it is placed (or gone). */
+/**
+ * The Segment the detour title waits in, or null once it is placed (or gone). Full Ranking: it waits at the front
+ * of the queue until it has its place. Scores: it is worked on until its level is settled.
+ */
 function detourSegment(machine: Machine): Segment | null {
   const detour = machine.detour
   if (!detour || !placeStillFits(machine, detour)) return null
   const segment = machine.bands[detour.band][detour.sub ?? 0]
-  return segment.queue[0]?.id === detour.id ? segment : null
+  const layout = scoresLayout(machine)
+  if (!layout) return segment.queue[0]?.id === detour.id ? segment : null
+  const at = segment.queue.findIndex((insertion) => insertion.id === detour.id)
+  return at >= 0 && !knowledge(machine, layout, segment).standing.queueSettled[at] ? segment : null
 }
 
-function hasWork(segments: readonly Segment[]): boolean {
-  return segments.some((segment) => segment.queue.length > 0)
+/** Whether a Band has Duels left: a title without a place (Full Ranking), or an unsettled title (Scores). */
+function hasWork(machine: Machine, band: BandIndex): boolean {
+  const layout = scoresLayout(machine)
+  const segments = machine.bands[band]
+  if (!layout) return segments.some((segment) => segment.queue.length > 0)
+  return segments.some((segment) => knowledge(machine, layout, segment).standing.unsettled)
+}
+
+/** Under Scores (ADR 0007): where each Segment sits in the whole Ranking and how positions turn into levels. */
+type ScoresLayout = {
+  size: number
+  offsets: Map<Segment, number>
+  levelAt: (position: number) => number
+  priority: (id: number) => number
+}
+
+/** Whether the log is on the Scores Sort Goal now (ADR 0007). Full Ranking skips all the Scores work. */
+function onScores(machine: Machine): machine is Machine & { sortGoal: 'scores'; scoring: SavedScoring } {
+  // `sort-goal-set 'scores'` is refused without scoring settings, so on Scores they are always there.
+  return machine.sortGoal === 'scores' && machine.scoring !== null
+}
+
+/** The Scores layout now, or null on Full Ranking. */
+function scoresLayout(machine: Machine): ScoresLayout | null {
+  if (!onScores(machine)) return null
+  machine.scoresCache.layout ??= layoutNow(machine)
+  return machine.scoresCache.layout
+}
+
+function knowledge(machine: Machine, layout: ScoresLayout, segment: Segment): SegmentKnowledge {
+  let known = machine.scoresCache.knowledge.get(segment)
+  if (!known) {
+    known = knowledgeOf(segment, levelContext(layout, segment))
+    machine.scoresCache.knowledge.set(segment, known)
+  }
+  return known
+}
+
+function layoutNow(machine: Machine & { scoring: SavedScoring }): ScoresLayout {
+  const offsets = new Map<Segment, number>()
+  let size = 0
+  for (const segment of machine.segments) {
+    offsets.set(segment, size)
+    size += segment.tiers.reduce((n, tier) => n + tier.members.length, 0) + segment.queue.length
+  }
+  const { format, settings } = machine.scoring
+  const seed = machine.seed
+  // Positions are whole or half (Tier averages): remembered by twice the position.
+  const levels = new Map<number, number>()
+  return {
+    size,
+    offsets,
+    levelAt: (position) => {
+      let level = levels.get(position * 2)
+      if (level === undefined) {
+        level = levelAt(format, settings, position, size)
+        levels.set(position * 2, level)
+      }
+      return level
+    },
+    // Which titles are sorted first: from the seed and the id only, so replay asks the same Duels.
+    priority: (id) => sideHash(seed, id, 0x5c0e5),
+  }
+}
+
+function levelContext(layout: ScoresLayout, segment: Segment): LevelContext {
+  return { offset: layout.offsets.get(segment) ?? 0, levelAt: layout.levelAt, priority: layout.priority }
+}
+
+/**
+ * Scores: places every insertion whose interval is empty (it sits between two adjacent Tiers), in queue order.
+ * Only one title of a gap becomes a Tier this way: the next one then has that Tier in its interval.
+ */
+function placeEmptyIntervals(segment: Segment): void {
+  let indexOf = tierIndex(segment)
+  for (let i = 0; i < segment.queue.length; ) {
+    const insertion = segment.queue[i]
+    const { lo, hi } = intervalOf(insertion, segment.tiers.length, indexOf)
+    if (lo < hi) {
+      i++
+      continue
+    }
+    segment.queue.splice(i, 1)
+    segment.tiers.splice(lo, 0, { members: [insertion.id] })
+    indexOf = tierIndex(segment)
+  }
 }
 
 /**
@@ -536,7 +757,7 @@ function refocus(machine: Machine): void {
     machine.focus = null
     machine.finished = null
     machine.detour = null
-  } else if (machine.focus !== null && !hasWork(machine.bands[machine.focus])) {
+  } else if (machine.focus !== null && !hasWork(machine, machine.focus)) {
     machine.finished = machine.focus
     machine.focus = null
   }
@@ -659,35 +880,46 @@ function sideHash(seed: number, low: number, high: number): number {
   return h >>> 0
 }
 
-/** The insertion being worked on, where it is, and where it may still land (see `current`). */
+/** The insertion being worked on, where it is, and the Tier it is compared with now (see `current`). */
 type Work = {
   band: BandIndex
   sub: SubBandIndex | undefined
   segment: Segment
   insertion: Insertion
-  lo: number
-  hi: number
+  /** The pivot, as a Tier index inside its Segment. */
   pivot: number
+  /** Full Ranking only: where the insertion may still land, as Tier indexes inside its Segment. */
+  interval: { lo: number; hi: number } | null
+  /** How many of the Band's Tiers come before the Segment. */
   offset: number
 }
 
 /**
  * The insertion Duels work on now: in the focused Band if there is one, else Band by Band from the top; inside a
  * split Band Best → Middle → Lowest (so a chosen split Band starts at its first Sub-band with titles to place).
- * lo / hi / pivot are Tier indexes inside its Segment; `offset` is how many of the Band's Tiers come before it.
+ * Full Ranking inserts the front title by binary insertion; Scores asks the level-targeted Duel (ADR 0007).
  */
 function current(machine: Machine): Work | null {
   const detour = detourSegment(machine)
   const bands = machine.detour && detour ? [machine.detour.band] : machine.focus === null ? BANDS : [machine.focus]
+  const layout = scoresLayout(machine)
   for (const band of bands) {
     const segments = machine.bands[band]
     let offset = 0
     for (let s = 0; s < segments.length; s++) {
       const segment = segments[s]
-      const insertion = segment.queue[0]
-      if (insertion && (!detour || segment === detour)) {
-        const { lo, hi } = interval(segment, insertion)
-        return { band, sub: subOfSegment(segments, s), segment, insertion, lo, hi, pivot: Math.floor((lo + hi) / 2), offset }
+      if (!detour || segment === detour) {
+        if (layout) {
+          const duel = nextLevelDuel(knowledge(machine, layout, segment), detour ? machine.detour?.id : undefined)
+          if (duel) {
+            const insertion = segment.queue[duel.insertion]
+            return { band, sub: subOfSegment(segments, s), segment, insertion, pivot: duel.tier, interval: null, offset }
+          }
+        } else if (segment.queue[0]) {
+          const interval = insertionInterval(segment, segment.queue[0])
+          const pivot = Math.floor((interval.lo + interval.hi) / 2)
+          return { band, sub: subOfSegment(segments, s), segment, insertion: segment.queue[0], pivot, interval, offset }
+        }
       }
       offset += segment.tiers.length
     }
@@ -696,18 +928,41 @@ function current(machine: Machine): Work | null {
 }
 
 /** The next prompt: Rough Sort first, then Duels Band by Band from the top. */
-function nextPrompt(machine: Machine, seed: number): Prompt {
+function nextPrompt(machine: Machine): Prompt {
   const roughSort = machine.roughSortQueue[0]
   if (roughSort !== undefined) return { kind: 'rough-sort', id: roughSort }
   const work = current(machine)
   if (!work) return { kind: 'all-complete' }
-  const { band, sub, segment, insertion, lo, hi, pivot, offset } = work
+  const { band, sub, segment, insertion, pivot, interval, offset } = work
   const b = segment.tiers[pivot].members[0]
   const low = Math.min(insertion.id, b)
   const high = Math.max(insertion.id, b)
-  const [left, right] = sideHash(seed, low, high) & 1 ? [high, low] : [low, high]
-  const bounds = { lo: lo + offset, hi: hi + offset, pivot: pivot + offset }
-  return withSub({ kind: 'duel', band, a: insertion.id, b, left, right, bounds }, sub)
+  const [left, right] = sideHash(machine.seed, low, high) & 1 ? [high, low] : [low, high]
+  const duel = { kind: 'duel' as const, band, a: insertion.id, b, left, right }
+  if (!interval) return withSub(machine.settledOnce ? { ...duel, refine: true as const } : duel, sub)
+  return withSub({ ...duel, bounds: { lo: interval.lo + offset, hi: interval.hi + offset, pivot: pivot + offset } }, sub)
+}
+
+/** Under Scores: every title's possible positions, and which are settled. */
+function standingNow(machine: Machine, layout: ScoresLayout): Standing {
+  const titles = new Map<number, PositionRange & { band: BandIndex }>()
+  const settled = new Set<number>()
+  machine.bands.forEach((segments, band) => {
+    for (const segment of segments) {
+      const { standing } = knowledge(machine, layout, segment)
+      segment.tiers.forEach((tier, t) => {
+        for (const id of tier.members) {
+          titles.set(id, { band: band as BandIndex, ...standing.tiers[t] })
+          if (standing.tierSettled[t]) settled.add(id)
+        }
+      })
+      segment.queue.forEach((insertion, u) => {
+        titles.set(insertion.id, { band: band as BandIndex, ...standing.queue[u] })
+        if (standing.queueSettled[u]) settled.add(insertion.id)
+      })
+    }
+  })
+  return { size: layout.size, titles, settled }
 }
 
 /** Rebuilds the derived state from the log. Throws ReplayError if the log can't be trusted. */
@@ -732,14 +987,37 @@ export function replay(log: DuelLog): RankingState {
     step: 0,
     placedAt: new Map(),
     placedByHand: false,
+    sortGoal: null,
+    scoring: null,
+    seed,
+    scoresCache: { knowledge: new Map() },
+    answeredIn: null,
+    settledOnce: false,
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (let step = 0; step < effective.length; step++) {
     machine.step = step
-    apply(machine, seed, effective[step])
-    machine.segments.forEach(settle)
+    const event = effective[step]
+    machine.answeredIn = null
+    apply(machine, event)
+    const answeredIn = machine.answeredIn
+    if (!onScores(machine)) machine.segments.forEach(placeEmptyFronts)
+    else if (answeredIn) {
+      placeEmptyIntervals(answeredIn)
+      // A Duel answer changes only its own Segment: no title joins or leaves, so the layout still holds.
+      machine.scoresCache.knowledge.delete(answeredIn)
+    } else {
+      machine.segments.forEach(placeEmptyIntervals)
+      machine.scoresCache = { knowledge: new Map() }
+    }
     refocus(machine)
+    // A focused Band always has work, so only a Ranking with no focus can be all settled. An empty one doesn't count.
+    if (!machine.settledOnce && onScores(machine) && machine.roughSortQueue.length === 0 && machine.focus === null) {
+      machine.settledOnce = scoresLayout(machine)!.size > 0 && BANDS.every((band) => !hasWork(machine, band))
+    }
   }
+  const layout = scoresLayout(machine)
+  const standing = layout ? standingNow(machine, layout) : null
   const bands = machine.bands.map((segments): BandState => {
     const parts = segments.map((segment) => ({
       tiers: segment.tiers.map((tier) => [...tier.members]),
@@ -750,12 +1028,9 @@ export function replay(log: DuelLog): RankingState {
   })
   const work = machine.roughSortQueue.length === 0 && machine.focus === null ? current(machine) : null
   const bandChoice = work ? { finished: machine.finished, next: work.band } : null
-  const bandProgress = bands.map((band) => {
-    const done = band.tiers.reduce((sum, tier) => sum + tier.length, 0)
-    return { done, total: done + band.unplaced.length }
-  })
+  const bandProgress = bands.map((band) => progressOf(standing ? { standing } : {}, band))
   return {
-    prompt: nextPrompt(machine, seed),
+    prompt: nextPrompt(machine),
     bands,
     forgotten: machine.forgotten,
     progress: {
@@ -769,6 +1044,9 @@ export function replay(log: DuelLog): RankingState {
     bandChoice,
     canUndo,
     board: new LazyBoard(!effective.some((event) => event.type === 'duel-answered'), machine.bands, machine.placedAt),
+    ...(machine.sortGoal && { sortGoal: machine.sortGoal }),
+    ...(machine.scoring && { scoring: machine.scoring }),
+    ...(standing && { standing }),
   }
 }
 
