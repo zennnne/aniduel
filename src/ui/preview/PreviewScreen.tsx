@@ -19,6 +19,7 @@ import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
+import { unsettledSummary } from './unsettledCard.ts'
 import './preview.css'
 import { count, titleName } from '../meta.ts'
 
@@ -230,7 +231,7 @@ export function PreviewScreen(props: {
             ⚠
           </span>
           <span className="small strong grow">
-            {count(unsettled.length, 'title')} not settled after your settings change · about {count(refine, 'Refine Duel')} ·{' '}
+            {unsettledSummary(unsettled.length, refine)} ·{' '}
             <button className="link small" onClick={() => setShowUnsettled(!showUnsettled)}>
               {showUnsettled ? 'hide' : 'show'}
             </button>
