@@ -41,6 +41,8 @@ export type ImportDeps = {
   oldScores: ReadonlyMap<number, number> | null
   /** A title's name as Preview shows it in this title language; on Scores it orders the titles on one level (ADR 0007). */
   name: (id: number, language: TitleLanguage) => string
+  /** Resume ran its fresh `Viewer` check and put the settings in the log: Preview may open again (ADR 0003). */
+  onViewerChecked: () => void
   setNotice: (notice: Notice) => void
   /** Whether the Import screen is showing, and how to go to a screen. */
   onImportScreen: boolean
@@ -189,6 +191,7 @@ export function useImport(deps: ImportDeps) {
       const { settings, event } = scoringFor(replayed, loadScoringSettings(deps.storage, key), fresh.scoreFormat)
       const state = (event && deps.append(event)) || replayed
       const log = deps.latestLog() ?? before
+      deps.onViewerChecked()
       const decision = resumeImport(savedState, {
         hash: planHash(log, { format: fresh.scoreFormat, settings }, ticks),
         format: fresh.scoreFormat,

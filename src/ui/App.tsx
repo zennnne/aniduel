@@ -120,6 +120,8 @@ export function App() {
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
   const [openingPreview, setOpeningPreview] = useState(false)
+  // ADR 0003: Preview only after a fresh Viewer check in this Ranking session (openPreview, or an Import resume).
+  const [previewChecked, setPreviewChecked] = useState(false)
   // A fix started from Preview (#11): its Duels run on the Ranking screen, then Preview opens again.
   const [previewFix, setPreviewFix] = useState<{ id: number; verb: string } | null>(null)
   // "Go to Duels →" on Preview's unsettled card (#29): once every score is settled again, Preview opens again.
@@ -163,6 +165,7 @@ export function App() {
     append: duelLog.append,
     oldScores: pool ? oldScores : null,
     name: (id, language) => titleName(entries.get(id), id, language),
+    onViewerChecked: () => setPreviewChecked(true),
     setNotice,
     onImportScreen: screen === 'import',
     goTo,
@@ -220,6 +223,7 @@ export function App() {
     setSplitView(null)
     setSkippedSplits([])
     setLastCheckContinued(false)
+    setPreviewChecked(false)
     imports.open(key)
     setPreviewFix(null)
     setRefining(false)
@@ -249,6 +253,7 @@ export function App() {
     setViewer(null)
     setLists({})
     setStatuses(DEFAULT_STATUSES)
+    setPreviewChecked(false)
     duelLog.show(null)
     setSavedBroken(false)
     setSplitView(null)
@@ -503,6 +508,7 @@ export function App() {
             message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[fresh.scoreFormat]}. Best / Worst were converted. Check them before importing.`,
           })
         }
+        setPreviewChecked(true)
         goTo('preview')
       },
       (e: unknown) => {
@@ -683,7 +689,7 @@ export function App() {
   // Refine Duels left by a settings change keep Preview open: its settled titles can still be imported (#29).
   // Its scoring settings are the log's own (ADR 0007), put there on the Score Format AniList reports by `openPreview`.
   const scoring = ranking?.scoring && viewer && ranking.scoring.format === viewer.scoreFormat ? ranking.scoring.settings : null
-  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && scoring && pool
+  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && previewChecked && scoring && pool
 
   /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
