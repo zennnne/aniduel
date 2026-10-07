@@ -137,10 +137,10 @@ export function App() {
 
   const list = lists[mediaType]
   // A new Ranking starts on Scores with the Score Format's defaults (ADR 0007): its estimate is for that.
-  const newScale = viewer ? viewer.scoreFormat : null
+  const viewerFormat = viewer ? viewer.scoreFormat : null
   const pool = useMemo(
-    () => (list ? buildPool(list, statuses, newScale ? { format: newScale, settings: defaultSettings(newScale, 'whole') } : undefined) : null),
-    [list, statuses, newScale],
+    () => (list ? buildPool(list, statuses, viewerFormat ? { format: viewerFormat, settings: defaultSettings(viewerFormat, 'whole') } : undefined) : null),
+    [list, statuses, viewerFormat],
   )
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])

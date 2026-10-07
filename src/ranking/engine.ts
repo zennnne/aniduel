@@ -189,14 +189,18 @@ export type Progress = { done: number; total: number }
  * out of all its titles. `progress.bands` holds the same per Band.
  */
 export function progressOf(state: Pick<RankingState, 'standing'>, part: SubBandState): Progress {
-  const placed = part.tiers.reduce((sum, tier) => sum + tier.length, 0)
-  const total = placed + part.unplaced.length
+  const total = titlesIn(part)
   const settled = state.standing?.settled
-  if (!settled) return { done: placed, total }
+  if (!settled) return { done: total - part.unplaced.length, total }
   let done = 0
   for (const tier of part.tiers) for (const id of tier) if (settled.has(id)) done++
   for (const id of part.unplaced) if (settled.has(id)) done++
   return { done, total }
+}
+
+/** Every title in a Band or Sub-band: in its Tiers and without a place. */
+export function titlesIn(part: { readonly tiers: readonly (readonly unknown[])[]; readonly unplaced: readonly unknown[] }): number {
+  return part.tiers.reduce((sum, tier) => sum + tier.length, 0) + part.unplaced.length
 }
 
 /**
@@ -572,7 +576,7 @@ function apply(machine: Machine, event: RecordedEvent): void {
       if (!scoring || scoring.settings.step !== event.settings?.step) {
         throw new ReplayError(`Scoring settings ${JSON.stringify(event.settings)} don't fit Score Format ${String(event.format)}`)
       }
-      if (machine.sortGoal === 'scores' && scoring.settings.step !== 'whole') {
+      if (onScores(machine) && scoring.settings.step !== 'whole') {
         throw new ReplayError('Scores always uses the whole Score Step')
       }
       machine.scoring = scoring

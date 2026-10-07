@@ -2,6 +2,7 @@ import { useEffect, useEffectEvent, useState } from 'react'
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
 import { BANDS, SUB_BANDS, progressOf, type BandIndex, type RankingState } from '../../ranking/engine.ts'
 import { duelsLeftIn } from '../../ranking/estimate.ts'
+import { isScores } from '../../ranking/sortGoal.ts'
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
@@ -96,7 +97,7 @@ export function BandChoiceScreen(props: {
     <div className="bc">
       <div className="h1">Which Band next?</div>
       <div className="sub">
-        {done}/{total} {state.standing ? 'settled' : 'placed'} · about {count(toGo, 'Duel')} to go
+        {done}/{total} {isScores(state) ? 'settled' : 'placed'} · about {count(toGo, 'Duel')} to go
       </div>
       <div className="bc-total">
         <span className="small">Total</span>

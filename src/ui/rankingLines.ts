@@ -1,5 +1,5 @@
+import { compareNames } from '../names.ts'
 import type { BandIndex, RankingState } from '../ranking/engine.ts'
-import { compareNames } from '../ranking/preview.ts'
 import { formatLevel, levelGroups } from '../ranking/scoring.ts'
 
 /** One line of a Band's Ranking as shown on the Band choice, Complete and sidebar. */
