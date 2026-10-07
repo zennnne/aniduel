@@ -259,7 +259,7 @@ export type RankingState = {
 /** One title on the Board: `at` is the position of the event that last put it in its Band; `sub` only in a split Band. */
 export type BoardTitle = { id: number; at: number; sub?: SubBandIndex }
 
-/** The Board (#31): every title that has a Band, by Band. Display only, it never changes what the log replays to. */
+/** The Board: every title that has a Band, by Band. Display only, it never changes what the log replays to. */
 export type BoardView = {
   /** Open while no Duel answer is in effect: during Rough Sort and right after it. */
   open: boolean
@@ -821,7 +821,7 @@ function splitBand(machine: Machine, event: Extract<LogEvent, { type: 'band-spli
 
 /**
  * Rough Sort from Scores (ADR 0008): every listed title leaves the Rough Sort queue for the back of its Band's
- * queue. Only valid while no title has had its Band chosen by hand (#31): it is offered when a Ranking starts.
+ * queue. Only valid while no title has had its Band chosen by hand (ADR 0008): it is offered when a Ranking starts.
  */
 function bandsFromScores(machine: Machine, event: Extract<LogEvent, { type: 'bands-from-scores' }>): void {
   if (machine.placedByHand) {

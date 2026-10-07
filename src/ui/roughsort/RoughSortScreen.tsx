@@ -11,7 +11,7 @@ import './roughsort.css'
  * Rough Sort = "Ladder" (issue #4): the title on the left, five Band buttons on the right
  * (Loved on top), with Don't remember / Undo / AniList underneath. Keys 1-5, 0, Backspace.
  * A split Band opens a second tap under its button: Best / Middle / Lowest (Q / W / E; Esc or Backspace goes back).
- * Under them, the Board pill (key B) opens the Board (#33).
+ * Under them, the Board pill (key B) opens the Board.
  */
 export function RoughSortScreen(props: {
   state: RankingState

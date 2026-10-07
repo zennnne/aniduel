@@ -1,4 +1,4 @@
-// The Board as the last check after Rough Sort (#34, ADR 0008).
+// The Board as the last check after Rough Sort (ADR 0008).
 import type { RankingState } from '../../ranking/engine.ts'
 
 /**

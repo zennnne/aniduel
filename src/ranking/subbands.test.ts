@@ -283,7 +283,7 @@ describe('a golden log with a Band split', () => {
       bandChoice: null,
       canUndo: true,
     }
-    expect(replay(golden)).toEqual({ ...expected, board: expect.anything() }) // the Board is display only (#33)
-    expect(replay(golden)).toEqual({ ...expected, board: expect.anything() }) // the Board is display only (#33)
+    expect(replay(golden)).toEqual({ ...expected, board: expect.anything() }) // the Board is display only
+    expect(replay(golden)).toEqual({ ...expected, board: expect.anything() }) // the Board is display only
   })
 })

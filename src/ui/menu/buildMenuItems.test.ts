@@ -1,4 +1,4 @@
-// The menu's Board entry (#34): only while the Board is open, i.e. before the first Duel answer.
+// The menu's Board entry: only while the Board is open, i.e. before the first Duel answer.
 import { describe, expect, it } from 'vitest'
 import { replay, startLog, type BandIndex, type DuelLog, type LogEvent } from '../../ranking/engine.ts'
 import { buildMenuItems, type MenuActions } from './buildMenuItems.ts'

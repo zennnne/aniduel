@@ -1,4 +1,4 @@
-/* The Board (#31, #32 prototype decisions): five columns, Loved leftmost; on mobile one column plus a Band rail. */
+/* The Board: five columns, Loved leftmost; on mobile one column plus a Band rail. */
 .bd {
   flex: 1;
   min-height: 0;

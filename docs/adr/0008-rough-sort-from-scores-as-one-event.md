@@ -7,6 +7,7 @@ Users who already scored most of their list want to rescale it, not tap 200 cove
 - **Offered at the start of every new Ranking**, with "X of Y titles have a score" and the drawbacks: titles in different Bands are never compared, so a wrong Band has to be fixed on the Board. Below 80% scored, a red warning says it isn't recommended. If every score is the same (SD = 0), it isn't offered. Before confirming, the user sees how many titles each Band would get.
 - **Cut by z-score of the old score**, using the mean and SD of the user's scored titles in the Pool: z ≥ +1.5 Loved, +0.5..+1.5 Liked, −0.5..+0.5 Okay, −1.5..−0.5 Meh, ≤ −1.5 Hated. Equal scores get equal z, so they always share a Band. Score Formats with few levels (3 smileys, 5 stars) may fill only some Bands, and that's allowed.
 - **One event.** `bands from scores` stores the Band of every title it placed, by id. Replay never reads AniList scores, so a later score change or sync can't change the result.
+- **Only before any hand Band choice.** Replay refuses the event once any title's Band was chosen by hand in Rough Sort. Filling the rest of a manual Rough Sort from scores is not supported: it is a start, not a shortcut halfway through.
 - **Undo** cancels it as one step, like `Band split` (ADR 0006).
 - **Engine version is bumped** (ADR 0005). An older app refuses a log that contains the event.
 

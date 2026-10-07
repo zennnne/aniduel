@@ -59,7 +59,7 @@ function Cover({ entry }: { entry: ListEntry | undefined }) {
 type Gesture = { id: number; x: number; y: number; touch: boolean; timer?: number; dragging: boolean }
 
 /**
- * The Board (#31, #32 prototype decisions): every title that has a Band, in five columns with Loved leftmost (on
+ * The Board: every title that has a Band, in five columns with Loved leftmost (on
  * mobile one column plus a rail of Band blocks). Drag a title to another Band; a split Band asks for the Sub-band
  * (drop zones on desktop, a Q / W / E dialog otherwise). Search hides titles whose name doesn't match.
  */
@@ -106,7 +106,7 @@ export function BoardScreen(props: {
 
   /**
    * A drop on a split Band without a Sub-band (a mobile rail block, or a desktop column outside the zones) asks
-   * which Sub-band, its own Band included, so a title can move to another Sub-band of it (#32). The same Band and
+   * which Sub-band, its own Band included, so a title can move to another Sub-band of it. The same Band and
    * Sub-band, or the same unsplit Band, does nothing.
    */
   function drop(id: number, band: BandIndex, sub: SubBandIndex | undefined) {

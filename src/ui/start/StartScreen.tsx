@@ -136,7 +136,7 @@ function Collage({ covers, viewer }: { covers: readonly Cover[]; viewer: Viewer 
 
 function PoolSetup(form: PoolForm) {
   const { viewer, mediaType, statuses, pool } = form
-  // The switch of the Rough Sort from Scores card: off by default; starting with it off declines (#32).
+  // The switch of the Rough Sort from Scores card: off by default; starting with it off declines.
   const [fromScores, setFromScores] = useState(false)
   const plan = form.scoresPlan?.offerable ? form.scoresPlan : null
   const chosen = new Set(statuses)
@@ -279,7 +279,7 @@ function GoalInfo({ extraDuels }: { extraDuels: number | null }) {
 }
 
 /**
- * The Rough Sort from Scores offer (ADR 0008, decided on #32): a switch card under the estimate. When on, it shows
+ * The Rough Sort from Scores offer (ADR 0008): a switch card under the estimate. When on, it shows
  * the per-Band preview, a "no score" row for titles still sorted by hand, the drawback, and below 80% scored a red
  * warning (the subtitle says "not recommended" even while off).
  */

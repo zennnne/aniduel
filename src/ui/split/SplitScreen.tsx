@@ -225,7 +225,7 @@ export function SplitScreen(props: {
   onSkip: () => void
   /** "Start Duels" once split. */
   onClose: () => void
-  /** What closing leads to: Duels, or the last-check Board first (#34), when the button just says "Continue". */
+  /** What closing leads to: Duels, or the last-check Board first, when the button just says "Continue". */
   nextStep?: 'duels' | 'last-check'
 }) {
   const { state, band, entries, titleLanguage, onSplit, onSkip, onClose, nextStep = 'duels' } = props

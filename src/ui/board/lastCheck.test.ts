@@ -1,4 +1,4 @@
-// The last-check Board after Rough Sort (#34): when it shows instead of the Band choice.
+// The last-check Board after Rough Sort: when it shows instead of the Band choice.
 import { describe, expect, it } from 'vitest'
 import { replay, startLog, type BandIndex, type DuelLog, type LogEvent } from '../../ranking/engine.ts'
 import { lastCheckDue } from './lastCheck.ts'

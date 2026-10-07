@@ -1,4 +1,4 @@
-// The Board (#31, #33): open before the first Duel answer, Bands listed most recent first.
+// The Board: open before the first Duel answer, Bands listed most recent first.
 import { describe, expect, it } from 'vitest'
 import { replay, startLog, type BandIndex, type DuelLog, type LogEvent, type SubBandIndex } from './engine.ts'
 

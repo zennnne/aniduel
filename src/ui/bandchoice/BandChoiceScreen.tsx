@@ -50,7 +50,7 @@ export function BandChoiceScreen(props: {
   next: BandIndex
   onChoose: (band: BandIndex) => void
   onUndo: () => void
-  /** Opens the last-check Board again (#34); left out once a Duel is answered. */
+  /** Opens the last-check Board again; left out once a Duel is answered. */
   onBoard?: () => void
 }) {
   const { state, entries, titleLanguage, finished, next, onChoose, onUndo, onBoard } = props

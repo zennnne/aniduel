@@ -263,7 +263,7 @@
   }
 }
 
-/* Rough Sort from Scores offer (ADR 0008, #32): a switch card under the estimate. */
+/* Rough Sort from Scores offer (ADR 0008): a switch card under the estimate. */
 .offer {
   border: 1px solid var(--fg2);
   border-radius: 14px;

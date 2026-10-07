@@ -85,7 +85,7 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       run: actions.saveBackup,
     })
   }
-  // The Board is open only before the first Duel answer (#34): after that, Move in the Duel screen changes a Band.
+  // The Board is open only before the first Duel answer: after that, Move in the Duel screen changes a Band.
   if (ranking?.board.open) {
     items.push({
       id: 'board',

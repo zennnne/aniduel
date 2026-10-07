@@ -64,8 +64,8 @@ import { useDuelLog } from './useDuelLog.ts'
 
 /**
  * 'bands' = the Band choice, opened by going Back from a Duel or from the menu. 'board' = the Board, opened from
- * Rough Sort while it is open (#33); otherwise the Ranking screen shows. The last-check Board after Rough Sort
- * (#34) is not a screen of its own: the Ranking screen shows it until the user continues.
+ * Rough Sort while it is open; otherwise the Ranking screen shows. The last-check Board after Rough Sort
+ * is not a screen of its own: the Ranking screen shows it until the user continues.
  */
 type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import'
 const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import']
@@ -115,7 +115,7 @@ export function App() {
   const [splitView, setSplitView] = useState<{ band: BandIndex } | null>(null)
   // Bands whose split offer was turned down ("Keep it as it is") in this session.
   const [skippedSplits, setSkippedSplits] = useState<readonly BandIndex[]>([])
-  // The user pressed Continue on the last-check Board (#34). Session UI state only, never a log event.
+  // The user pressed Continue on the last-check Board. Session UI state only, never a log event.
   const [lastCheckContinued, setLastCheckContinued] = useState(false)
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
@@ -325,7 +325,7 @@ export function App() {
     ranking?.prompt.kind === 'duel' && log && autoOfferDue(log) ? offers.find((band) => !skippedSplits.includes(band)) : undefined
   const splitBand = splitView?.band ?? autoOffer ?? null
 
-  // Back in Rough Sort (Undo, or a sync before the first Duel): finishing it shows the last check again (#34).
+  // Back in Rough Sort (Undo, or a sync before the first Duel): finishing it shows the last check again.
   if (lastCheckContinued && ranking?.prompt.kind === 'rough-sort') setLastCheckContinued(false)
   // Rough Sort → split offer → last check → Band choice → Duels.
   const lastCheck = ranking ? lastCheckDue(ranking, lastCheckContinued) : false
@@ -712,7 +712,7 @@ export function App() {
             setSplitView(null)
             showToast(<>Skipped. {BAND_UI[band].label} stays one Band</>)
           }}
-          // The last check comes before any Duel (#34), so the Band choice comes after it, not straight away.
+          // The last check comes before any Duel, so the Band choice comes after it, not straight away.
           nextStep={lastCheck ? 'last-check' : 'duels'}
           onClose={() => {
             setSplitView(null)
