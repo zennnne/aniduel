@@ -164,6 +164,7 @@ export function App() {
     latestLog: duelLog.latest,
     append: duelLog.append,
     oldScores: pool ? oldScores : null,
+    name: (id) => titleName(entries.get(id), id, titleLanguage ?? 'ROMAJI'),
     setScoring,
     setNotice,
     onImportScreen: screen === 'import',
