@@ -1,11 +1,11 @@
 // Persistence: localStorage keys for a user's saved progress, keyed by AniList user id and Media Type.
 // Every key belonging to one user starts with `aniduel/progress/<userId>/`, so logout can delete them all.
-import type { ListStatus, MediaType, ScoreFormat } from '../anilist/types.ts'
+import type { ListStatus, MediaType } from '../anilist/types.ts'
 import { parseImportState, type ImportState } from '../import/runner.ts'
 import { OFFERED_STATUSES } from '../pool/pool.ts'
 import type { DuelLog } from '../ranking/engine.ts'
 import type { TickOverrides } from '../ranking/preview.ts'
-import { parseSavedScoring, settingsFor, type SavedScoring, type ScoringSettings } from '../ranking/scoring.ts'
+import { parseSavedScoring, type SavedScoring } from '../ranking/scoring.ts'
 
 export type ProgressKey = { userId: number; mediaType: MediaType; part: string }
 
@@ -107,20 +107,6 @@ export function loadScoringSettings(storage: Storage, key: RankingKey): SavedSco
   } catch {
     return null
   }
-}
-
-/**
- * Best / worst / Distribution for the Score Format AniList reports now. Settings chosen in another Score Format
- * are converted and saved under the new one (ADR 0003); `converted` says so, for the "check them" notice.
- */
-export function loadScoringFor(
-  storage: Storage,
-  key: RankingKey,
-  format: ScoreFormat,
-): { settings: ScoringSettings; converted: boolean } {
-  const result = settingsFor(loadScoringSettings(storage, key), format)
-  if (result.converted) saveScoringSettings(storage, key, { format, settings: result.settings })
-  return result
 }
 
 const IMPORT_PART = 'import'
