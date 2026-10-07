@@ -70,6 +70,31 @@ describe('which Bands are offered a split', () => {
     expect(splitOffers(replay({ ...log, events: [...log.events, split] }))).toEqual([])
   })
 
+  describe('on Scores (US29)', () => {
+    /** Like `afterRoughSort`, on Scores with 3 smileys: few levels, so a whole Band can be settled with no Duel. */
+    const onScores = (counts: number[]): DuelLog => {
+      const fr = afterRoughSort(counts)
+      const ids = fr.events.flatMap((event) => (event.type === 'titles-added' ? event.ids : []))
+      const log = startLog({ seed: 1, userId: 1, mediaType: 'ANIME', ids, scoreFormat: 'POINT_3' })
+      return { ...log, events: [...log.events, ...fr.events.filter((event) => event.type === 'band-assigned')] }
+    }
+
+    it('counts only titles not settled yet: a big Band that is all settled is not offered', () => {
+      // Loved's 95 titles all sit on the top smiley of 395, so they are settled with 94 of them still unplaced.
+      const state = replay(onScores([95, 0, 0, 0, 300]))
+      expect(state.bands[0].unplaced.length).toBe(94)
+      expect(state.progress.bands[0]).toEqual({ done: 95, total: 95 })
+      expect(splitOffers(state)).toEqual([4])
+    })
+
+    it('is not offered again after a sync once the big Band is settled', () => {
+      const log = onScores([95, 0, 0, 0, 300])
+      const synced = replay({ ...log, events: [...log.events, { type: 'titles-added', ids: [1000] }, { type: 'band-assigned', id: 1000, band: 4 }] })
+      expect(autoOfferDue({ ...log, events: [...log.events, { type: 'titles-added', ids: [1000] }] })).toBe(true)
+      expect(splitOffers(synced)).toEqual([4])
+    })
+  })
+
   it('estimates the offer with a ¼ / ½ / ¼ split of the unplaced titles and of the ranked ones', () => {
     // 95 in Loved: 1 placed, 94 unplaced. Default cuts put the single Tier in Middle.
     const band = replay(afterRoughSort([95, 0, 0, 0, 0])).bands[0]

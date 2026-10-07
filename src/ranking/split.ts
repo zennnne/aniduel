@@ -1,8 +1,8 @@
 // Splitting an oversized Band into Sub-bands (ADR 0006): when to offer it, and what it saves.
 // Pure functions over RankingState (and the log, for when to offer); the split itself is the engine's `band-split` event.
-import { BANDS, type BandIndex, type BandState, type DuelLog, type RankingState } from './engine.ts'
+import { BANDS, progressOf, type BandIndex, type BandState, type DuelLog, type RankingState } from './engine.ts'
 
-/** A split is offered for a Band with at least this many titles without a place yet. */
+/** A split is offered for a Band with at least this many titles that still need Duels (see `titlesToSort`). */
 export const SPLIT_OFFER_THRESHOLD = 90
 /** Below this estimate, pressing Done on the Split screen asks "Keep sorting" / "Finish anyway". */
 export const LOW_SAVINGS = 100
@@ -69,9 +69,18 @@ export function defaultCuts(tierSizes: readonly number[]): [number, number] {
   return [snapToTierEdge(tierSizes, titles / 4), snapToTierEdge(tierSizes, (titles * 3) / 4)]
 }
 
-/** Bands offered a split now: not split yet, with at least SPLIT_OFFER_THRESHOLD unplaced titles. */
+/**
+ * The titles of a Band that still need Duels: without a place on Full Ranking, not settled on Scores (where `unplaced`
+ * also holds settled titles that never needed an exact place).
+ */
+export function titlesToSort(state: RankingState, band: BandIndex): number {
+  const { done, total } = progressOf(state, state.bands[band])
+  return total - done
+}
+
+/** Bands offered a split now: not split yet, with at least SPLIT_OFFER_THRESHOLD titles that still need Duels. */
 export function splitOffers(state: RankingState): BandIndex[] {
-  return BANDS.filter((band) => !state.bands[band].subBands && state.bands[band].unplaced.length >= SPLIT_OFFER_THRESHOLD)
+  return BANDS.filter((band) => !state.bands[band].subBands && titlesToSort(state, band) >= SPLIT_OFFER_THRESHOLD)
 }
 
 /** The offer's estimate for a Band: its unplaced titles split ¼ / ½ / ¼ and its ranked titles cut at the default cuts. */
