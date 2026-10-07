@@ -13,6 +13,18 @@ Rebuild your AniList scores from scratch by comparing titles from your own list 
 5. **Preview** — choose the best and worst score, the **Distribution** (Linear or Bell) and the **Score Step** (fine, or human steps like every 0.5 / every 5; Scores always uses whole points). See every title's old and new score, move or **Re-rank** titles, and tick which ones to write. Under Scores, titles are grouped by score level and only settled titles can be ticked.
 6. **Import** — write the chosen scores back to your AniList list (throttled, resumable, retries on rate limits).
 
+### Scores or Full Ranking?
+
+| | **Scores** (default) | **Full Ranking** |
+| --- | --- | --- |
+| Duels stop when | every title's score is settled | every title has its own place |
+| Titles with the same score | grouped, no order among them (sorted by name) | each in its own place, or a Tier if you called them equal |
+| Score Step | whole points only (every 1 on 10 points with decimals, every 10 on 100 points) | fine (every level) or human (every 0.5 / every 5) |
+| Duels needed | about 30–40% fewer than Full Ranking (200 titles, whole points) | about 1,000 for 200 titles |
+| Changing best/worst or Distribution later | costs Refine Duels (roughly 50–120) before the affected titles can be imported | free: the order is already complete |
+
+Pick **Scores** if you just want new scores on AniList. Pick **Full Ranking** if you also want an exact order, a finer Score Step, or to experiment with the score settings freely. Switching keeps every answer; switching to Full Ranking first shows about how many more Duels it will take.
+
 Progress is saved in your browser. Use **Backup** / **Restore** to move a Ranking to another browser. The Pool syncs with AniList when you come back, so added or removed titles are picked up.
 
 See [GLOSSARY.md](GLOSSARY.md) for the exact meaning of each term.
