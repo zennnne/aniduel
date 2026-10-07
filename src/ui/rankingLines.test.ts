@@ -1,0 +1,59 @@
+// The Ranking as lines on the Band choice, Complete and sidebar (#25, #27): by Tier on Full Ranking, by score level
+// with names sorted on Scores.
+import { describe, expect, it } from 'vitest'
+import { replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
+import { rankingOf } from '../ranking/testRanking.ts'
+import { rankingLines } from './rankingLines.ts'
+
+const NAMES: Record<number, string> = { 1: 'Zeta', 2: 'alpha', 3: 'Mu', 4: 'beta 10', 5: 'beta 9', 6: 'Ébène', 7: 'Solo' }
+const name = (id: number) => NAMES[id]
+
+/**
+ * A Scores Ranking played to the end: `bands[b]` lists Band b's titles best first, all different. Scored linearly
+ * from 10 down to 9 on 10 points, so the top half of the Ranking gets 10 and the bottom half 9.
+ */
+function scoresRanking(bands: number[][]): RankingState {
+  const ids = bands.flat()
+  const value = new Map(ids.map((id, i) => [id, -i]))
+  let log: DuelLog = startLog({ seed: 1, userId: 7, mediaType: 'ANIME', ids, scoreFormat: 'POINT_10' })
+  const add = (e: LogEvent) => (log = { ...log, events: [...log.events, e] })
+  add({ type: 'scoring-set', format: 'POINT_10', settings: { distribution: 'linear', step: 'whole', best: 10, worst: 9 } })
+  bands.forEach((titles, band) => titles.forEach((id) => add({ type: 'band-assigned', id, band: band as BandIndex })))
+  for (let s = replay(log); s.prompt.kind !== 'all-complete'; s = replay(log)) {
+    const p = s.prompt
+    if (p.kind !== 'duel') throw new Error(`unexpected ${p.kind}`)
+    add({ type: 'duel-answered', a: p.a, b: p.b, result: value.get(p.a)! > value.get(p.b)! ? 'a' : 'b' })
+  }
+  return replay(log)
+}
+
+describe('ranking lines on Scores', () => {
+  it('group a Band by score level, best first, each level sorted by name', () => {
+    const state = scoresRanking([[1, 2, 3, 4, 5, 6]])
+    expect(rankingLines(state, 0, name)).toEqual([
+      // Case and accents are ignored, numbers go in numeric order.
+      { key: 10, mark: '10', ids: [2, 3, 1], note: 'same score · no order' },
+      { key: 9, mark: '9', ids: [5, 4, 6], note: 'same score · no order' },
+    ])
+  })
+
+  it('give a title alone on its level a line with no note, and an empty Band no lines', () => {
+    const state = scoresRanking([[1, 2, 3], [], [], [], [7]])
+    expect(rankingLines(state, 4, name)).toEqual([{ key: 9, mark: '9', ids: [7], note: null }])
+    expect(rankingLines(state, 2, name)).toEqual([])
+  })
+})
+
+describe('ranking lines on Full Ranking', () => {
+  it('stay one line per Tier, numbered by place in the whole Ranking, titles in the order they joined', () => {
+    const state = rankingOf([[[1], [3, 2]], [], [[6], [5]], [], []])
+    expect(rankingLines(state, 0, name)).toEqual([
+      { key: 1, mark: '1', ids: [1], note: null },
+      { key: 3, mark: '2', ids: [3, 2], note: 'Tier · same score' },
+    ])
+    expect(rankingLines(state, 2, name)).toEqual([
+      { key: 6, mark: '3', ids: [6], note: null },
+      { key: 5, mark: '4', ids: [5], note: null },
+    ])
+  })
+})
