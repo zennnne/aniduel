@@ -108,6 +108,10 @@ _Avoid_: Onboarding, quick add, backfill, import
 A title shown in Catch-up that the user left unmarked. It isn't suggested again for 30 days.
 _Avoid_: Skipped, dismissed, not seen
 
+**Starting era**:
+Roughly when the user started watching anime, asked by Catch-up only while their list is near empty. It picks the popular titles in the first batches, is stored locally per user, and can be changed until the list grows past the threshold.
+_Avoid_: Era answer, start year, age
+
 **Media Type**:
 Anime or Manga. Each Pool, and so each Ranking, contains only one Media Type.
 _Avoid_: Category, kind
