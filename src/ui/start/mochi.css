@@ -1,0 +1,246 @@
+/* Catch-up's entry (#52, decisions on #37): a mochi melted over the Start card's top-right corner, holding a sign. */
+.pwrap {
+  position: relative;
+  width: 100%;
+  max-width: 440px;
+}
+.mochi {
+  --mochi: #ffb3c8;
+  --mochi-cheek: #ff7fa3;
+  --critter-line: #4a3b52;
+  position: absolute;
+  z-index: 2;
+  top: -58px;
+  right: -30px;
+  width: 140px;
+  height: 140px;
+  transform: scale(0.8);
+  transform-origin: 110px 58px;
+  /* Only the body, sign and paws take taps: the box around them leaves the card underneath usable. */
+  pointer-events: none;
+  cursor: pointer;
+}
+:root[data-theme='dark'] .mochi {
+  --mochi: #ffa6c0;
+  --critter-line: #2b2d42;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .mochi {
+    --mochi: #ffa6c0;
+    --critter-line: #2b2d42;
+  }
+}
+.mochi svg.body path,
+.mochi .sign,
+.mochi .paws {
+  pointer-events: auto;
+}
+.mochi:disabled {
+  cursor: default;
+}
+.mochi .ink {
+  stroke: var(--critter-line);
+  stroke-width: 2.4;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mochi .ink.thin {
+  stroke-width: 2;
+}
+.mochi .ink.fill-mochi {
+  fill: var(--mochi);
+}
+.mochi .inkf {
+  fill: var(--critter-line);
+}
+.mochi .cheek {
+  fill: var(--mochi-cheek);
+  opacity: 0.7;
+}
+.mochi .tear {
+  fill: #7cc8f2;
+}
+.mochi svg.body {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transition: transform 0.2s;
+  transform-origin: 60% 80%;
+}
+.mochi:not(:disabled):hover svg.body {
+  transform: scale(1.05, 0.95);
+}
+.mochi .face {
+  display: none;
+}
+.mochi[data-face='ok'] .face.ok,
+.mochi[data-face='sad'] .face.sad,
+.mochi[data-face='sleep'] .face.sleep {
+  display: inline;
+}
+.mochi .sign {
+  position: absolute;
+  right: 38px;
+  top: 50px;
+  min-width: 96px;
+  text-align: center;
+  background: var(--fg);
+  color: var(--tx-strong);
+  border: 2px solid var(--band-ink);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 900;
+  padding: 5px 10px;
+  box-shadow: 0 3px 8px #0002;
+  white-space: nowrap;
+  transform: rotate(4deg);
+  overflow: hidden;
+}
+.mochi .sign em {
+  font-style: normal;
+  color: var(--blue);
+}
+.mochi .sign .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--blue) 28%, var(--fg));
+  transition: width 0.3s;
+}
+.mochi .sign b {
+  position: relative;
+}
+.mochi .sign.saving b,
+.mochi .sign.failed b {
+  font-size: 11px;
+}
+.mochi .sign.failed {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.mochi .sign.asleep {
+  color: var(--tx);
+  font-size: 11px;
+}
+.mochi .paws {
+  position: absolute;
+  right: 48px;
+  top: 45px;
+  z-index: 1;
+}
+.mochi .zzz {
+  position: absolute;
+  right: 8px;
+  top: -6px;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--tx);
+  animation: mochi-float 2s ease-in-out infinite;
+}
+/* The speech bubble: right next to the face, its tail pointing at the mochi. */
+.mochi .bubble {
+  position: absolute;
+  right: 142px;
+  top: 4px;
+  background: var(--nav);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.35;
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: 15px;
+  width: max-content;
+  max-width: 250px;
+  box-shadow: 0 6px 20px #0005;
+  opacity: 0;
+  transform: translateX(4px);
+  transition: 0.18s;
+  pointer-events: none;
+}
+.mochi .bubble::after {
+  content: '';
+  position: absolute;
+  right: -9px;
+  top: 16px;
+  border: 9px solid transparent;
+  border-right: 0;
+  border-left-color: var(--nav);
+}
+:root[data-theme='dark'] .mochi .bubble {
+  background: #2b3a52;
+}
+:root[data-theme='dark'] .mochi .bubble::after {
+  border-left-color: #2b3a52;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .mochi .bubble {
+    background: #2b3a52;
+  }
+  :root:not([data-theme='light']) .mochi .bubble::after {
+    border-left-color: #2b3a52;
+  }
+}
+.mochi:hover .bubble,
+.mochi:focus-visible .bubble,
+.mochi.near-empty .bubble {
+  opacity: 1;
+  transform: none;
+}
+.mochi.near-empty svg.body {
+  animation: mochi-squish 1.6s ease-in-out infinite;
+}
+.mochi.near-empty .sign {
+  animation: mochi-wiggle 1.2s ease-in-out infinite;
+}
+@keyframes mochi-squish {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05, 0.93);
+  }
+}
+@keyframes mochi-wiggle {
+  0%,
+  100% {
+    transform: rotate(4deg);
+  }
+  50% {
+    transform: rotate(-5deg);
+  }
+}
+@keyframes mochi-float {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  50% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mochi .zzz,
+  .mochi.near-empty svg.body,
+  .mochi.near-empty .sign {
+    animation: none;
+  }
+}
+@media (max-width: 720px) {
+  /* Stays inside the screen, and the card's top row moves down out from under the melted lip. */
+  .mochi {
+    right: -16px;
+  }
+  .pwrap:has(.mochi) .panel {
+    padding-top: 40px;
+  }
+  .mochi .bubble {
+    font-size: 13px;
+    max-width: 170px;
+  }
+}
