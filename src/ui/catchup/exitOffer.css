@@ -1,0 +1,14 @@
+/* The exit offer (#52): a green pill in Catch-up's header. It doesn't pulse. */
+.cu-exit {
+  background: var(--m-completed);
+  color: #fff;
+  font-weight: 900;
+  font-size: 13px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  box-shadow: 0 3px 10px var(--shadow);
+  white-space: nowrap;
+}
+.cu-exit:hover {
+  filter: brightness(1.06);
+}

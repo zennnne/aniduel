@@ -3,7 +3,7 @@ import type { ScoreFormat } from '../anilist/types.ts'
 import type { DuelLog } from '../ranking/engine.ts'
 import type { PendingWrite, TickOverrides } from '../ranking/preview.ts'
 import type { SavedScoring } from '../ranking/scoring.ts'
-import { newImport, type ImportState } from './runner.ts'
+import { newImport, type ImportState } from './importState.ts'
 
 /**
  * A short hash (FNV-1a, 32 bit) of the Duel log, scoring settings and the user's tick changes. Any answer, setting

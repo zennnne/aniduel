@@ -1,16 +1,15 @@
 import { useRef, useState } from 'react'
 import type { AniListGateway } from '../../anilist/gateway.ts'
-import type { TitleLanguage, Viewer } from '../../anilist/types.ts'
+import type { MediaType, TitleLanguage, Viewer } from '../../anilist/types.ts'
 import { planHash, resumeImport } from '../../import/plan.ts'
-import { browserClock, importSummary, newImport, runImport, type ImportState, type RunnerStatus } from '../../import/runner.ts'
+import { importOf, importSummary, newImport, type ImportState } from '../../import/importState.ts'
 import {
-  deleteImportState,
   deleteTickOverrides,
-  loadImportState,
   loadScoringSettings,
   loadTickOverrides,
-  saveImportState,
+  loadWriteQueue,
   saveTickOverrides,
+  saveWriteQueue,
   type RankingKey,
 } from '../../persistence/progress.ts'
 import { replay, type DuelLog, type LogEvent, type RankingState } from '../../ranking/engine.ts'
@@ -18,15 +17,18 @@ import { importPlan, previewOpen, previewRows, type PendingWrite, type TickOverr
 import { score, scoringFor, type ScoringSettings } from '../../ranking/scoring.ts'
 import { SCORE_FORMAT_LABEL } from '../preview/scoreFormat.ts'
 import type { Notice } from '../Shell.tsx'
+import { isStatusWrite, type RunnerStatus, type WriteQueue } from '../../writes/writeQueue.ts'
 import type { ImportStage } from './ImportScreen.tsx'
 
-/** The Import screen: the plan with each write's status, what the Runner is doing, and which step is showing. */
+/** The Import screen: the plan with each write's status, what the write queue is doing, and which step is showing. */
 export type ImportView = { stage: ImportStage; state: ImportState; status: RunnerStatus | null; writtenBefore: number | null }
 
 /** What the Import needs from the app around it. Read fresh on every render, like any props. */
 export type ImportDeps = {
   storage: Storage
   gateway: AniListGateway | null
+  /** The user's write queue: the Import's scores are written in line with Catch-up's statuses. */
+  queue: WriteQueue | null
   viewer: Viewer | null
   setViewer: (viewer: Viewer) => void
   /** The open Ranking's user and Media Type; null before login. */
@@ -52,6 +54,8 @@ export type ImportDeps = {
   onWritten: (key: RankingKey, written: ReadonlyMap<number, number>) => void
 }
 
+const MEDIA_TYPES: readonly MediaType[] = ['ANIME', 'MANGA']
+
 /** A saved Import that still has titles to write or retry. */
 function unfinished(state: ImportState | null): ImportState | null {
   if (!state) return null
@@ -60,7 +64,7 @@ function unfinished(state: ImportState | null): ImportState | null {
 }
 
 /**
- * Import (#10): the ticks chosen on Preview, the plan and its confirmation, the Runner writing it, and resuming an
+ * Import (#10): the ticks chosen on Preview, the plan and its confirmation, the write queue writing it, and resuming an
  * Import that was cut off. Ticks and the Import's progress are saved per user and Media Type.
  */
 export function useImport(deps: ImportDeps) {
@@ -69,19 +73,23 @@ export function useImport(deps: ImportDeps) {
   const [saved, setSaved] = useState<ImportState | null>(null)
   // Import ticks the user changed on Preview (the default is "ticked if the score changes"), saved (#1 US52).
   const [ticks, setTicks] = useState<TickOverrides>(new Map())
-  const running = useRef<AbortController | null>(null)
+  // Stops watching the Import being written, if any.
+  const watching = useRef<(() => void) | null>(null)
 
-  /** Ends the running Import, if any. Its progress is already saved; the run's ending no longer touches the screen. */
+  /** Stops the Import being written, if any. Its progress is already saved; the queue no longer touches the screen. */
   function detach() {
-    running.current?.abort()
-    running.current = null
+    watching.current?.()
+    watching.current = null
   }
 
   /** Loads what is saved for another Ranking (login, Media Type switch, Restore, Start over). */
   function open(key: RankingKey) {
     detach()
+    // As before the queue was shared: an Import being written stops, to be resumed from its banner.
+    for (const mediaType of MEDIA_TYPES) deps.queue?.holdImport(mediaType)
     setView(null)
-    setSaved(unfinished(loadImportState(deps.storage, key)))
+    const queued = deps.queue?.snapshot().state ?? loadWriteQueue(deps.storage, key.userId)
+    setSaved(unfinished(queued && importOf(queued, key.mediaType)))
     setTicks(loadTickOverrides(deps.storage, key))
   }
 
@@ -93,15 +101,28 @@ export function useImport(deps: ImportDeps) {
     setTicks(new Map())
   }
 
+  /** Takes the Media Type's Import out of the write queue (or out of what is saved, before the queue is up). */
+  function dropImport(key: RankingKey) {
+    if (deps.queue) {
+      deps.queue.dropImport(key.mediaType)
+      return
+    }
+    const queued = loadWriteQueue(deps.storage, key.userId)
+    if (!queued) return
+    const writes = queued.writes.filter((w) => isStatusWrite(w) || w.mediaType !== key.mediaType)
+    const imports = queued.imports.filter((i) => i.mediaType !== key.mediaType)
+    saveWriteQueue(deps.storage, key.userId, writes.length > 0 ? { imports, writes } : null)
+  }
+
   /** Start over: the saved Import and ticks belong to the Ranking that is thrown away. */
   function discard(key: RankingKey) {
-    deleteImportState(deps.storage, key)
+    dropImport(key)
     deleteTickOverrides(deps.storage, key)
   }
 
   /** Scores planned in an old Score Format can't be written (ADR 0003). */
   function dropForFormatChange(key: RankingKey) {
-    deleteImportState(deps.storage, key)
+    dropImport(key)
     setSaved(null)
   }
 
@@ -132,46 +153,36 @@ export function useImport(deps: ImportDeps) {
     deps.goTo('import')
   }
 
-  /** Saves the plan and writes it; every write's status is saved as it happens, so a cut-off Import can resume. */
-  async function write(state: ImportState) {
-    const { gateway, key, storage } = deps
-    if (!gateway || !key) return
+  /**
+   * Puts the plan in the write queue and shows it being written; the queue saves every write's status, so a cut-off
+   * Import can resume. The Import ends when nothing of it is left to write, when it is stopped, or when the queue stops.
+   */
+  function write(state: ImportState) {
+    const { queue, key } = deps
+    if (!queue || !key) return
     detach()
-    const stop = new AbortController()
-    running.current = stop
-    saveImportState(storage, key, state)
     setSaved(null)
     setView({ stage: 'running', state, status: null, writtenBefore: null })
-    const show = (next: ImportState, status: RunnerStatus | null) => {
-      if (running.current === stop) setView((v) => v && { ...v, state: next, status: status ?? v.status })
+    const unsubscribe = queue.subscribe((snapshot) => {
+      const current = importOf(snapshot.state, key.mediaType)
+      if (!current) return finish(state) // dropped meanwhile
+      setView((v) => v && { ...v, state: current, status: snapshot.status ?? v.status })
+      const stopped = !snapshot.released.includes(key.mediaType) || !snapshot.running
+      if (importSummary(current).left === 0 || stopped) finish(current)
+    })
+    watching.current = unsubscribe
+
+    function finish(final: ImportState) {
+      if (watching.current !== unsubscribe) return // another Media Type, a logout or a newer Import took over
+      detach()
+      const { left, failed } = importSummary(final)
+      if (left + failed === 0) queue?.dropImport(key!.mediaType)
+      setSaved(unfinished(final))
+      setView((v) => v && { ...v, state: final, stage: left > 0 ? 'stopped' : 'done' })
+      deps.onWritten(key!, new Map(final.writes.filter((w) => w.status === 'done').map((w) => [w.mediaId, w.scoreRaw])))
     }
-    let final = state
-    try {
-      final = await runImport(
-        {
-          gateway,
-          clock: browserClock,
-          userId: key.userId,
-          mediaType: key.mediaType,
-          save: (s) => {
-            final = s
-            saveImportState(storage, key, s)
-            show(s, null)
-          },
-        },
-        state,
-        { signal: stop.signal, onStatus: (status, s) => show(s, status) },
-      )
-    } catch (e) {
-      deps.onGatewayError(e)
-    }
-    if (running.current !== stop) return // another Media Type, a logout or a newer run took over
-    running.current = null
-    const { left, failed } = importSummary(final)
-    if (left + failed === 0) deleteImportState(storage, key)
-    setSaved(unfinished(final))
-    setView((v) => v && { ...v, state: final, stage: left > 0 ? 'stopped' : 'done' })
-    deps.onWritten(key, new Map(final.writes.filter((w) => w.status === 'done').map((w) => [w.mediaId, w.scoreRaw])))
+
+    queue.writeImport(key.mediaType, state)
   }
 
   /**
@@ -198,7 +209,7 @@ export function useImport(deps: ImportDeps) {
         plan: () => currentPlan(state, fresh, settings),
       })
       const drop = (message: string) => {
-        deleteImportState(deps.storage, key)
+        dropImport(key)
         setSaved(null)
         setView(null)
         deps.setNotice({ tone: 'info', message })
@@ -210,7 +221,7 @@ export function useImport(deps: ImportDeps) {
           return
         case 'continue':
           if (!deps.onImportScreen) deps.goTo('import')
-          void write(decision.state)
+          write(decision.state)
           return
         case 'confirm-again':
           if (decision.state.writes.length === 0) {
@@ -249,8 +260,8 @@ export function useImport(deps: ImportDeps) {
     plan,
     write,
     resume,
-    /** The Stop button: the run ends after the current write; its ending still updates the screen. */
-    stop: () => running.current?.abort(),
+    /** The Stop button: no more of the Import is written (a write already sent still lands); Resume carries on. */
+    stop: () => deps.key && deps.queue?.holdImport(deps.key.mediaType),
     notice,
   }
 }

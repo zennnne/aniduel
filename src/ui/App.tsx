@@ -5,7 +5,9 @@ import type { Cover, ListEntry, ListStatus, MediaType, TitleLanguage, Viewer } f
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
-import { retryFailed } from '../import/runner.ts'
+import { browserClock } from '../clock.ts'
+import { retryFailed } from '../import/importState.ts'
+import { createRequestLimiter } from '../writes/limiter.ts'
 import {
   deleteDuelLog,
   loadDuelLog,
@@ -37,7 +39,16 @@ import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/sc
 import { goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
+import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
+import { createPassedStore } from '../catchup/passed.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
+import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
+import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
+import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
+import { StartingEraChip, StartingEraQuestion } from './catchup/StartingEraQuestion.tsx'
+import { ClearPassedDialog } from './catchup/ClearPassedDialog.tsx'
+import { ExitOfferButton } from './catchup/ExitOfferButton.tsx'
+import { useCatchUp } from './catchup/useCatchUp.ts'
 import { BoardScreen } from './board/BoardScreen.tsx'
 import { lastCheckDue } from './board/lastCheck.ts'
 import { SplitScreen } from './split/SplitScreen.tsx'
@@ -52,6 +63,7 @@ import { buildMenuItems } from './menu/buildMenuItems.ts'
 import { RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
 import { ImportScreen } from './import/ImportScreen.tsx'
 import { useImport } from './import/useImport.ts'
+import { useWriteQueue } from './useWriteQueue.ts'
 import { MEDIA_LABEL, count, titleName } from './meta.ts'
 import { PreviewScreen } from './preview/PreviewScreen.tsx'
 import { SCORE_FORMAT_LABEL } from './preview/scoreFormat.ts'
@@ -67,10 +79,10 @@ import { useDuelLog } from './useDuelLog.ts'
  * Rough Sort while it is open; otherwise the Ranking screen shows. The last-check Board after Rough Sort
  * is not a screen of its own: the Ranking screen shows it until the user continues.
  */
-type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import'
-const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import']
+type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import' | 'catchup'
+const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import', 'catchup']
 
-type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking'
+type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed'
 
 const TOAST_MS = 4000
 
@@ -132,6 +144,15 @@ export function App() {
   const [newGoal, setNewGoal] = useState<SortGoal>('scores')
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
+  // The write queue's requests and Catch-up's reads take turns in one limiter, so together they keep to AniList's rate limit.
+  const limiter = useMemo(() => (token ? createRequestLimiter(browserClock) : null), [token])
+  const candidateSource = useMemo(
+    () => (token && limiter ? aniListCandidateSource({ fetch: window.fetch.bind(window), token, clock: browserClock, limiter }) : null),
+    [token, limiter],
+  )
+  const viewerId = viewer?.id ?? null
+  // One write queue for Import's scores and Catch-up's statuses.
+  const writes = useWriteQueue({ storage: localStorage, gateway, userId: viewerId, limiter, onError: handleGatewayError })
   // The open Ranking's user and Media Type: the key everything saved for it lives under.
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
@@ -158,6 +179,7 @@ export function App() {
   const imports = useImport({
     storage: localStorage,
     gateway,
+    queue: writes.queue,
     viewer,
     setViewer,
     key: rankingKey,
@@ -177,6 +199,20 @@ export function App() {
         if (!current) return prev
         return { ...prev, [key.mediaType]: current.map((e) => (written.has(e.mediaId) ? { ...e, oldScore100: written.get(e.mediaId)! } : e)) }
       }),
+  })
+
+  const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(localStorage, viewerId)), [viewerId])
+  const catchUp = useCatchUp({
+    storage: localStorage,
+    passedStore,
+    gateway,
+    queue: writes.queue,
+    queueSnapshot: writes.snapshot,
+    source: candidateSource,
+    viewer,
+    onGatewayError: handleGatewayError,
+    // Titles Catch-up added can join the anime Pool: read the list again, which syncs a saved Ranking.
+    onWritten: () => refreshList('ANIME'),
   })
 
   const needTrending = !token && trending.length === 0
@@ -248,6 +284,8 @@ export function App() {
   }
 
   function endSession(deleteProgress: boolean) {
+    writes.stop() // before the user's progress is deleted, so nothing written after is saved again
+    catchUp.close()
     logout(localStorage, { userId: viewer?.id ?? null, deleteProgress })
     setToken(null)
     setViewer(null)
@@ -304,6 +342,19 @@ export function App() {
     const summary = syncPool(type, fetched, statuses)
     if (summary) showToast(summary)
   })
+
+  /** Reads an already-loaded list again (after Catch-up wrote to it), syncing a saved Ranking like a first fetch. */
+  function refreshList(type: MediaType) {
+    if (!gateway || !viewer || !lists[type]) return
+    gateway.mediaList({ userId: viewer.id, type, statuses: OFFERED_STATUSES }).then(
+      (fetched) => {
+        setLists((prev) => ({ ...prev, [type]: fetched }))
+        const summary = syncPool(type, fetched, statuses)
+        if (summary) showToast(summary)
+      },
+      () => {}, // the next list read catches up
+    )
+  }
 
   useEffect(() => {
     if (!gateway || !viewer || lists[mediaType]) return
@@ -620,10 +671,26 @@ export function App() {
     if (!openRanking({ userId: viewer.id, mediaType: type }, inRankingNow) && inRankingNow) goTo('start')
   }
 
+  /** Catch-up, from the menu or the mochi on Start: anime only, whichever Ranking is open. */
+  function openCatchUp() {
+    if (screen !== 'catchup') goTo('catchup')
+    catchUp.open()
+  }
+
+  /** Leaving Catch-up through its exit offer: back to Start on anime, to pick a Sort Goal and rank. */
+  function takeExitOffer(offer: ExitOffer) {
+    switch (offer.target) {
+      case 'sort-goal':
+        switchMediaType('ANIME')
+        goTo('start')
+    }
+  }
+
   const hasProgress = Boolean(log) || savedBroken
+  const passedHidden = passedStore?.hiddenCount(browserClock.now()) ?? 0
   const menuItems = viewer
     ? buildMenuItems(
-        { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers },
+        { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers, passedHidden },
         {
           switchMediaType: (type) => {
             switchMediaType(type)
@@ -646,6 +713,8 @@ export function App() {
           toggleTheme,
           logout: () => setDialog('logout'),
           switchSortGoal: requestSortGoal,
+          openCatchUp,
+          clearPassed: () => setDialog('clear-passed'),
         },
       )
     : []
@@ -677,8 +746,15 @@ export function App() {
         onLogout: () => setDialog('logout'),
         onStartRoughSort: savedBroken ? undefined : startOrContinue,
         onRestore: () => setDialog('restore'),
+        catchUp: {
+          sign: startSign(mediaType, catchUp.queue),
+          watched: mediaType === 'ANIME' && list ? watchedCount(list) : null,
+          nearEmpty: mediaType === 'ANIME' && list ? isNearEmpty(list) : false,
+          onOpen: openCatchUp,
+        },
       }
     : null
+  const offer = exitOffer({ added: catchUp.added })
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
@@ -831,7 +907,35 @@ export function App() {
         ) : undefined
       }
     >
-      {inRanking && inImport ? (
+      {screen === 'catchup' && viewer ? (
+        <CatchUpScreen
+          view={catchUp.view}
+          queue={catchUp.queue}
+          batchExtra={
+            catchUp.startingEraLabel !== null && (
+              <StartingEraChip label={catchUp.startingEraLabel} onChange={catchUp.changeStartingEra} />
+            )
+          }
+          eraQuestion={
+            catchUp.view.phase === 'era' && (
+              <StartingEraQuestion
+                popular={catchUp.view.popular}
+                answer={catchUp.view.answer}
+                titleLanguage={viewer.titleLanguage}
+                onAnswer={catchUp.answerStartingEra}
+              />
+            )
+          }
+          titleLanguage={viewer.titleLanguage}
+          onBack={() => window.history.back()}
+          onReload={catchUp.open}
+          onCycle={catchUp.cycle}
+          onMark={catchUp.mark}
+          onSave={catchUp.saveAndNext}
+          onRetryWrites={catchUp.retryWrites}
+          headerAction={offer && <ExitOfferButton offer={offer} onTake={takeExitOffer} />}
+        />
+      ) : inRanking && inImport ? (
         <ImportScreen
           stage={importView.stage}
           state={importView.state}
@@ -917,6 +1021,17 @@ export function App() {
           onConfirm={() => {
             setDialog(null)
             applySortGoal('full-ranking')
+          }}
+        />
+      )}
+      {dialog === 'clear-passed' && (
+        <ClearPassedDialog
+          hidden={passedHidden}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            catchUp.clearPassed()
+            showToast('Catch-up’s Passed list is cleared')
           }}
         />
       )}

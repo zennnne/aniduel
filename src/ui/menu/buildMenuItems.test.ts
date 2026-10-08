@@ -26,6 +26,8 @@ const actions: MenuActions = {
   toggleTheme: noop,
   logout: noop,
   switchSortGoal: noop,
+  openCatchUp: noop,
+  clearPassed: noop,
 }
 
 const ids = (log: DuelLog) =>
@@ -103,5 +105,62 @@ describe('the split offer in the menu', () => {
     expect(splitItem({ ...log, events: [...log.events, ...hated.map((id) => assign(id, 4))] }).description).toBe(
       '100 titles not settled: Best / Middle / Lowest cuts the Duels',
     )
+  })
+})
+
+describe('Catch-up in the menu', () => {
+  const items = (mediaType: 'ANIME' | 'MANGA', hasLog: boolean, openCatchUp = noop) =>
+    buildMenuItems(
+      { mediaType, statuses: ['COMPLETED'], hasLog, hasProgress: hasLog, ranking: null, choosingBand: false, splitOffers: [] },
+      { ...actions, openCatchUp },
+    )
+
+  it('is always offered, with or without a Ranking, and says it is for anime', () => {
+    for (const item of [...items('ANIME', false), ...items('MANGA', true)].filter((i) => i.id === 'catch-up')) {
+      expect(item.title).toBe('Catch-up')
+      expect(item.description).toMatch(/anime/i)
+    }
+    expect(items('ANIME', false).filter((i) => i.id === 'catch-up')).toHaveLength(1)
+    expect(items('MANGA', true).filter((i) => i.id === 'catch-up')).toHaveLength(1)
+  })
+
+  it('opens Catch-up', () => {
+    let opened = 0
+    items('ANIME', true, () => opened++)
+      .find((i) => i.id === 'catch-up')!
+      .run()
+    expect(opened).toBe(1)
+  })
+})
+
+// #50: clearing Catch-up's Passed list, next to Backup / Restore (#37 UI decisions).
+describe('Clear Passed in the menu', () => {
+  const items = (passedHidden: number, clearPassed = noop) =>
+    buildMenuItems(
+      { mediaType: 'MANGA', statuses: ['COMPLETED'], hasLog: false, hasProgress: false, ranking: null, choosingBand: false, splitOffers: [], passedHidden },
+      { ...actions, clearPassed },
+    )
+
+  it('is offered with how many titles are hidden, whichever Media Type is open', () => {
+    const item = items(17).find((i) => i.id === 'clear-passed')!
+    expect(item.title).toBe('Clear Catch-up’s Passed list')
+    expect(item.description).toMatch(/^17 titles hidden/)
+  })
+
+  it('sits right after Restore from Backup', () => {
+    const ids = items(2).map((i) => i.id)
+    expect(ids[ids.indexOf('restore') + 1]).toBe('clear-passed')
+  })
+
+  it('is not offered when nothing is hidden', () => {
+    expect(items(0).map((i) => i.id)).not.toContain('clear-passed')
+  })
+
+  it('asks to clear', () => {
+    let asked = 0
+    items(3, () => asked++)
+      .find((i) => i.id === 'clear-passed')!
+      .run()
+    expect(asked).toBe(1)
   })
 })

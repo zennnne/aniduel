@@ -21,6 +21,8 @@ export type MenuContext = {
   choosingBand: boolean
   /** Bands that qualify for a split now (ADR 0006). */
   splitOffers: readonly BandIndex[]
+  /** Titles Catch-up hides now because they were Passed within 30 days (#50). */
+  passedHidden?: number
 }
 
 export type MenuActions = {
@@ -37,6 +39,10 @@ export type MenuActions = {
   logout: () => void
   /** Switch the open Ranking to this Sort Goal (#28): Full Ranking asks first, Scores switches at once. */
   switchSortGoal: (goal: SortGoal) => void
+  /** Catch-up (anime only), whichever Media Type the open Ranking is. */
+  openCatchUp: () => void
+  /** Asks before emptying Catch-up's Passed history. */
+  clearPassed: () => void
 }
 
 /** The one list behind the account menu and the Ctrl+K palette, for a logged-in user. */
@@ -127,6 +133,17 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
     description: 'Load a Backup file from another browser',
     run: actions.restore,
   })
+  // Next to Backup / Restore, as decided for #37: it throws away something saved in this browser.
+  if (context.passedHidden) {
+    items.push({
+      id: 'clear-passed',
+      group: 'This Ranking',
+      icon: '⌫',
+      title: 'Clear Catch-up’s Passed list',
+      description: `${context.passedHidden} ${context.passedHidden === 1 ? 'title' : 'titles'} hidden · they come back in the next batch`,
+      run: actions.clearPassed,
+    })
+  }
   if (context.hasProgress) {
     items.push({
       id: 'start-over',
@@ -139,6 +156,14 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
     })
   }
   items.push(
+    {
+      id: 'catch-up',
+      group: 'App',
+      icon: '+',
+      title: 'Catch-up',
+      description: 'Add anime you’ve already watched, 20 at a time',
+      run: actions.openCatchUp,
+    },
     {
       id: 'theme',
       group: 'App',

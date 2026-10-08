@@ -1,15 +1,17 @@
 import { describe, expect, it } from 'vitest'
+import { importOf } from '../import/importState.ts'
 import { replay, startLog } from '../ranking/engine.ts'
+import type { WriteQueueState } from '../writes/writeQueue.ts'
 import {
   deleteDuelLog,
-  deleteImportState,
   deleteSavedProgress,
   deleteTickOverrides,
   loadTickOverrides,
   saveTickOverrides,
   loadDuelLog,
-  loadImportState,
-  saveImportState,
+  loadWriteQueue,
+  progressStorageKey,
+  saveWriteQueue,
   loadLastMediaType,
   loadPoolSettings,
   loadScoringSettings,
@@ -110,8 +112,8 @@ describe('Scoring settings', () => {
   })
 })
 
-describe('Import state', () => {
-  const state = {
+describe('Write queue', () => {
+  const importState = {
     hash: 'abc',
     format: 'POINT_10' as const,
     writes: [
@@ -120,34 +122,53 @@ describe('Import state', () => {
       { mediaId: 3, scoreRaw: 30, oldScore100: 80, status: 'pending' as const },
     ],
   }
+  const queue: WriteQueueState = {
+    imports: [{ mediaType: 'MANGA', hash: 'abc', format: 'POINT_10' }],
+    writes: [
+      ...importState.writes.map((w) => ({ ...w, mediaType: 'MANGA' as const })),
+      { mediaType: 'ANIME', mediaId: 11, listStatus: 'COMPLETED', name: 'Anime 11', status: 'pending' },
+    ],
+  }
 
-  it('keeps the status of each write for each Media Type, so a resumed Import knows what is done', () => {
+  it('keeps one queue per user, Import scores and Catch-up statuses together', () => {
     const storage = memoryStorage()
-    expect(loadImportState(storage, anime)).toBeNull()
-    saveImportState(storage, anime, state)
-    expect(loadImportState(storage, anime)).toEqual(state)
-    expect(loadImportState(storage, { userId: 7, mediaType: 'MANGA' })).toBeNull()
+    expect(loadWriteQueue(storage, 7)).toBeNull()
+    saveWriteQueue(storage, 7, queue)
+    expect(loadWriteQueue(storage, 7)).toEqual(queue)
+    expect(loadWriteQueue(storage, 8)).toBeNull()
   })
 
-  it('is gone after it is deleted, and with the rest of the user progress on logout', () => {
+  it('is gone once nothing is left to keep, and with the rest of the user progress on logout', () => {
     const storage = memoryStorage()
-    saveImportState(storage, anime, state)
-    deleteImportState(storage, anime)
-    expect(loadImportState(storage, anime)).toBeNull()
+    saveWriteQueue(storage, 7, queue)
+    saveWriteQueue(storage, 7, null)
+    expect(loadWriteQueue(storage, 7)).toBeNull()
 
-    saveImportState(storage, anime, state)
+    saveWriteQueue(storage, 7, queue)
     deleteSavedProgress(storage, 7)
-    expect(loadImportState(storage, anime)).toBeNull()
+    expect(loadWriteQueue(storage, 7)).toBeNull()
   })
 
-  it('ignores a saved Import it does not understand', () => {
+  it('ignores a saved queue it does not understand', () => {
     const storage = memoryStorage()
-    saveImportState(storage, anime, state)
+    saveWriteQueue(storage, 7, queue)
     const key = storage.key(0)!
-    for (const bad of ['nope', '{"hash":"a","format":"POINT_10"}', '{"hash":"a","format":"POINT_7","writes":[]}', '{"hash":"a","format":"POINT_10","writes":[{"mediaId":1,"scoreRaw":90,"oldScore100":0,"status":"maybe"}]}']) {
+    for (const bad of ['nope', '{"imports":[]}', '{"imports":[],"writes":[{"mediaType":"ANIME","mediaId":1,"scoreRaw":90,"oldScore100":0,"status":"pending"}]}']) {
       storage.setItem(key, bad)
-      expect(loadImportState(storage, anime)).toBeNull()
+      expect(loadWriteQueue(storage, 7)).toBeNull()
     }
+  })
+
+  it('carries over an unfinished Import saved before the queue was shared, and lets go of the old copy on the next save', () => {
+    const storage = memoryStorage()
+    storage.setItem(progressStorageKey({ ...anime, part: 'import' }), JSON.stringify(importState))
+
+    const carried = loadWriteQueue(storage, 7)
+    expect(carried && importOf(carried, 'ANIME')).toEqual(importState)
+
+    saveWriteQueue(storage, 7, carried)
+    expect(storage.getItem(progressStorageKey({ ...anime, part: 'import' }))).toBeNull()
+    expect(loadWriteQueue(storage, 7)).toEqual(carried)
   })
 })
 
