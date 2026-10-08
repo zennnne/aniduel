@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CatchUpMedia } from '../anilist/candidates.ts'
-import { cycleMark, firstBatch, markCounts, saveBatch, setMark, type CatchUpBatch } from './batch.ts'
+import { cycleMark, firstBatch, markCounts, saveBatch, setMark, withQueuedWrites, type CatchUpBatch } from './batch.ts'
 
 const NOW = Date.UTC(2026, 9, 8)
 
@@ -138,5 +138,25 @@ describe('Catch-up batch: Save & next', () => {
 
     expect(second.history.get(ids(first)[0])).toBe(NOW)
     expect(ids(third.next).filter((id) => ids(first).includes(id) || ids(second.next).includes(id))).toEqual([])
+  })
+})
+
+describe('Catch-up batch: after a reload', () => {
+  it('counts titles still in the write queue as on the list, so they are not suggested again', () => {
+    const queued = [
+      { mediaId: 1000, listStatus: 'COMPLETED' as const, status: 'pending' as const },
+      { mediaId: 1001, listStatus: 'DROPPED' as const, status: 'failed' as const },
+      { mediaId: 1002, listStatus: 'PLANNING' as const, status: 'skipped' as const }, // AniList has its own status
+      { mediaId: 100, listStatus: 'DROPPED' as const, status: 'done' as const }, // already on the list as read
+    ]
+
+    const merged = withQueuedWrites(list, queued, filler(5))
+
+    expect(merged.filter((e) => e.mediaId >= 1000)).toEqual([
+      { mediaId: 1000, status: 'COMPLETED', year: 2015, format: 'TV' },
+      { mediaId: 1001, status: 'DROPPED', year: 2015, format: 'TV' },
+    ])
+    expect(merged.find((e) => e.mediaId === 100)?.status).toBe('COMPLETED')
+    expect(ids(firstBatch({ list: merged, media: filler(40), passed: new Map(), now: NOW, seed: 1 }))).not.toContain(1000)
   })
 })

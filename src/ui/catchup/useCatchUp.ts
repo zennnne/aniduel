@@ -1,7 +1,16 @@
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { AniListError, type AniListGateway } from '../../anilist/gateway.ts'
 import type { ListStatus, Viewer } from '../../anilist/types.ts'
-import { cycleMark, firstBatch, saveBatch, setMark, type CatchUpBatch, type CatchUpEntry, type CatchUpMark } from '../../catchup/batch.ts'
+import {
+  cycleMark,
+  firstBatch,
+  saveBatch,
+  setMark,
+  withQueuedWrites,
+  type CatchUpBatch,
+  type CatchUpEntry,
+  type CatchUpMark,
+} from '../../catchup/batch.ts'
 import { createCandidatePool, type CandidatePool, type CandidateSource } from '../../catchup/candidatePool.ts'
 import { createCatchUpQueue, type CatchUpQueue, type QueueSnapshot } from '../../catchup/queue.ts'
 import { browserClock } from '../../import/runner.ts'
@@ -109,12 +118,16 @@ export function useCatchUp(deps: CatchUpDeps) {
     setView({ phase: 'loading' })
     try {
       const entries = await gateway.mediaList({ userId: viewer.id, type: 'ANIME', statuses: ALL_STATUSES })
-      const list: CatchUpEntry[] = entries.map(({ mediaId, status, year, format }) => ({ mediaId, status, year, format }))
+      const read: CatchUpEntry[] = entries.map(({ mediaId, status, year, format }) => ({ mediaId, status, year, format }))
+      // Titles marked earlier whose writes haven't reached AniList yet are on the list all the same.
+      const queued = queue.current?.snapshot().state?.writes ?? []
       const pool = createCandidatePool(source)
-      const updating = pool.update(list)
-      session.current = { list, pool, history: new Map(), updating }
+      const updating = pool.update(withQueuedWrites(read, queued, []))
+      session.current = { list: read, pool, history: new Map(), updating }
       await updating
       if (session.current?.pool !== pool) return // logged out meanwhile
+      const list = withQueuedWrites(read, queued, pool.media())
+      session.current.list = list
       setView({
         phase: 'ready',
         batch: firstBatch({ list, media: pool.media(), passed: passed(), now: browserClock.now(), seed: newSeed() }),

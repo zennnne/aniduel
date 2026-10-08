@@ -2,7 +2,7 @@
 // current batch and hands every change back through these functions.
 import type { CatchUpMedia } from '../anilist/candidates.ts'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
-import type { StatusWrite } from '../import/runner.ts'
+import type { QueuedWrite, StatusWrite } from '../import/runner.ts'
 import { suggestCatchUp, type Suggestion } from './suggest.ts'
 
 /** What a title can be marked in Catch-up. Unmarked means Passed. */
@@ -107,4 +107,21 @@ export function saveBatch(batch: CatchUpBatch, input: BatchInput): SavedBatch {
     marks: new Map(),
   }
   return { writes, passed, list, history, next }
+}
+
+/**
+ * The list as read from AniList, plus the titles still in the write queue (pending, or failed and waiting for Retry):
+ * they were marked, so they count as on the list. Year and format come from `media` when it has them.
+ */
+export function withQueuedWrites(
+  list: readonly CatchUpEntry[],
+  queued: ReadonlyArray<QueuedWrite<StatusWrite>>,
+  media: readonly CatchUpMedia[],
+): CatchUpEntry[] {
+  const listed = new Set(list.map((e) => e.mediaId))
+  const known = new Map(media.map((m) => [m.id, m]))
+  const added = queued
+    .filter((w) => (w.status === 'pending' || w.status === 'failed') && !listed.has(w.mediaId))
+    .map((w) => ({ mediaId: w.mediaId, status: w.listStatus, year: known.get(w.mediaId)?.year ?? null, format: known.get(w.mediaId)?.format ?? null }))
+  return [...list, ...added]
 }
