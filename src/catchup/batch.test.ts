@@ -1,0 +1,142 @@
+import { describe, expect, it } from 'vitest'
+import type { CatchUpMedia } from '../anilist/candidates.ts'
+import { cycleMark, firstBatch, markCounts, saveBatch, setMark, type CatchUpBatch } from './batch.ts'
+
+const NOW = Date.UTC(2026, 9, 8)
+
+function anime(id: number, overrides: Partial<CatchUpMedia> = {}): CatchUpMedia {
+  return {
+    id,
+    title: { romaji: `Anime ${id}`, english: null, native: null },
+    coverUrl: null,
+    coverColor: null,
+    year: 2015,
+    format: 'TV',
+    status: 'FINISHED',
+    watched: 10_000,
+    tags: [],
+    relations: [],
+    recommendations: [],
+    ...overrides,
+  }
+}
+
+/** Twelve watched titles (ids 100..111), so the list is past the cold-start threshold. */
+const list = Array.from({ length: 12 }, (_, i) => ({ mediaId: 100 + i, status: 'COMPLETED' as const, year: 2015, format: 'TV' }))
+
+/** Popular titles unrelated to anything (ids 1000..). */
+const filler = (count: number) => Array.from({ length: count }, (_, i) => anime(1000 + i, { watched: 5_000 + i }))
+
+const ids = (batch: CatchUpBatch) => batch.suggestions.map((s) => s.media.id)
+
+function start(media: CatchUpMedia[]) {
+  return firstBatch({ list, media, passed: new Map(), now: NOW, seed: 1 })
+}
+
+describe('Catch-up batch: marks', () => {
+  it('starts as batch 1 with 20 unmarked titles', () => {
+    const batch = start(filler(40))
+
+    expect(batch.number).toBe(1)
+    expect(batch.suggestions).toHaveLength(20)
+    expect(markCounts(batch)).toEqual({ completed: 0, dropped: 0, planning: 0, passed: 20 })
+  })
+
+  it('cycles a tapped title Completed → Dropped → Planning → none', () => {
+    let batch = start(filler(40))
+    const id = ids(batch)[0]
+    const seen: Array<string | undefined> = []
+    for (let i = 0; i < 4; i++) {
+      batch = cycleMark(batch, id)
+      seen.push(batch.marks.get(id))
+    }
+
+    expect(seen).toEqual(['COMPLETED', 'DROPPED', 'PLANNING', undefined])
+  })
+
+  it('sets or clears a mark directly from the ⋯ menu', () => {
+    let batch = start(filler(40))
+    const [a, b] = ids(batch)
+    batch = setMark(batch, a, 'PLANNING')
+    batch = setMark(batch, b, 'DROPPED')
+    batch = setMark(batch, b, null)
+
+    expect([...batch.marks]).toEqual([[a, 'PLANNING']])
+    expect(markCounts(batch)).toEqual({ completed: 0, dropped: 0, planning: 1, passed: 19 })
+  })
+
+  it('ignores a title that is not in the batch', () => {
+    const batch = start(filler(40))
+
+    expect(cycleMark(batch, 99_999).marks.size).toBe(0)
+  })
+})
+
+describe('Catch-up batch: Save & next', () => {
+  it('writes the last mark of each marked title, and nothing for the unmarked ones', () => {
+    let batch = start(filler(40))
+    const [a, b, c] = ids(batch)
+    batch = cycleMark(batch, a) // Completed
+    batch = cycleMark(cycleMark(batch, b), b) // Dropped
+    batch = setMark(batch, c, 'COMPLETED')
+    batch = setMark(batch, c, 'PLANNING') // changed before saving
+
+    const saved = saveBatch(batch, { list, media: filler(40), passed: new Map(), now: NOW, seed: 2 })
+
+    expect(saved.writes).toEqual([
+      { mediaId: a, listStatus: 'COMPLETED' },
+      { mediaId: b, listStatus: 'DROPPED' },
+      { mediaId: c, listStatus: 'PLANNING' },
+    ])
+    expect(saved.passed).toHaveLength(17)
+    expect(saved.passed).not.toContain(a)
+  })
+
+  it('shows the next batch at once: numbered on, unmarked, and with none of the titles just shown', () => {
+    let batch = start(filler(60))
+    batch = cycleMark(batch, ids(batch)[0])
+
+    const { next } = saveBatch(batch, { list, media: filler(60), passed: new Map(), now: NOW, seed: 2 })
+
+    expect(next.number).toBe(2)
+    expect(next.marks.size).toBe(0)
+    expect(next.suggestions).toHaveLength(20)
+    expect(ids(next).filter((id) => ids(batch).includes(id))).toEqual([])
+  })
+
+  it('counts marked titles as on the list for the next batch: a sequel of a title just Completed comes first', () => {
+    const marked = anime(500, { watched: 1_000_000, relations: [{ type: 'SEQUEL', mediaId: 501 }] })
+    const sequel = anime(501, { watched: 1 })
+    const media = [marked, sequel, ...filler(40)]
+    let batch = start(media)
+    expect(ids(batch)).toContain(500)
+    expect(ids(batch)).not.toContain(501) // the least popular, and a sequel of nothing watched yet
+
+    batch = cycleMark(batch, 500)
+    const { next, list: updated } = saveBatch(batch, { list, media, passed: new Map(), now: NOW, seed: 2 })
+
+    expect(updated).toContainEqual({ mediaId: 500, status: 'COMPLETED', year: 2015, format: 'TV' })
+    expect(ids(next)[0]).toBe(501)
+  })
+
+  it('keeps titles marked Planning out of later batches without counting them as watched', () => {
+    const planned = anime(500, { watched: 1_000_000, relations: [{ type: 'SEQUEL', mediaId: 501 }] })
+    const media = [planned, anime(501, { watched: 1 }), ...filler(40)]
+    const batch = setMark(start(media), 500, 'PLANNING')
+
+    const { next } = saveBatch(batch, { list, media, passed: new Map(), now: NOW, seed: 2 })
+
+    expect(ids(next)).not.toContain(500)
+    expect(ids(next)[0]).not.toBe(501)
+  })
+
+  it('adds the titles left unmarked to the Passed history it hands back, so later batches skip them too', () => {
+    const media = filler(70)
+    const first = start(media)
+    const second = saveBatch(first, { list, media, passed: new Map(), now: NOW, seed: 2 })
+    const third = saveBatch(second.next, { list: second.list, media, passed: second.history, now: NOW, seed: 3 })
+
+    expect(second.history.get(ids(first)[0])).toBe(NOW)
+    expect(ids(third.next).filter((id) => ids(first).includes(id) || ids(second.next).includes(id))).toEqual([])
+  })
+})
