@@ -89,7 +89,13 @@ function toCatchUpMedia(raw: RawCandidate): CatchUpMedia {
   }
 }
 
-type Deps = { fetch: typeof fetch; token: string | null; onRateLimit?: (rateLimit: RateLimit) => void }
+type Deps = {
+  fetch: typeof fetch
+  token: string | null
+  onRateLimit?: (rateLimit: RateLimit) => void
+  /** Awaited before every request, e.g. to keep to the rate limit. */
+  beforeRequest?: () => Promise<void>
+}
 
 function rateLimitHeaders(deps: Deps) {
   return (headers: Headers) =>
@@ -110,6 +116,7 @@ export async function fetchCatchUpMedia(
   const unique = [...new Set(ids)]
   const media: CatchUpMedia[] = []
   for (let i = 0; i < unique.length; i += CANDIDATES_PER_REQUEST) {
+    await deps.beforeRequest?.()
     const data = await request<{ Page: { media: RawCandidate[] } }>(
       deps,
       CANDIDATE_QUERY,
@@ -133,6 +140,7 @@ export async function fetchPopularAnime(deps: Deps, era: Era | null, pages: numb
   // FuzzyDateInt is YYYYMMDD and both bounds are exclusive.
   const range = era ? { from: (era.from - 1) * 10000 + 1231, to: (era.to + 1) * 10000 } : {}
   for (let page = 1; page <= pages; page++) {
+    await deps.beforeRequest?.()
     const data = await request<{ Page: { media: RawCandidate[] } }>(
       deps,
       POPULAR_QUERY,

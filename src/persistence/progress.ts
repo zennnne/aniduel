@@ -1,11 +1,12 @@
 // Persistence: localStorage keys for a user's saved progress, keyed by AniList user id and Media Type.
 // Every key belonging to one user starts with `aniduel/progress/<userId>/`, so logout can delete them all.
 import type { ListStatus, MediaType } from '../anilist/types.ts'
-import { isStatusWrite, parseImportState, parseWriteQueue, type ImportState, type StatusWrite } from '../import/runner.ts'
+import { parseImportState } from '../import/importState.ts'
 import { OFFERED_STATUSES } from '../pool/pool.ts'
 import type { DuelLog } from '../ranking/engine.ts'
 import type { TickOverrides } from '../ranking/preview.ts'
 import { parseSavedScoring, type SavedScoring } from '../ranking/scoring.ts'
+import { parseWriteQueueState, type WriteQueueState } from '../writes/writeQueue.ts'
 
 export type ProgressKey = { userId: number; mediaType: MediaType; part: string }
 
@@ -17,6 +18,11 @@ function userPrefix(userId: number): string {
 
 export function progressStorageKey({ userId, mediaType, part }: ProgressKey): string {
   return `${userPrefix(userId)}${mediaType}/${part}`
+}
+
+/** A part saved under the user's anime progress (Catch-up is anime only), so logout deletes it with the rest. */
+export function animeProgressKey(userId: number, part: string): ProgressKey {
+  return { userId, mediaType: 'ANIME', part }
 }
 
 export function saveProgressPart(storage: Storage, key: ProgressKey, value: string): void {
@@ -109,56 +115,45 @@ export function loadScoringSettings(storage: Storage, key: RankingKey): SavedSco
   }
 }
 
-const IMPORT_PART = 'import'
+/** Where an Import was saved on its own, per Media Type, before Import and Catch-up shared one write queue. */
+const LEGACY_IMPORT_PART = 'import'
+const MEDIA_TYPES: readonly MediaType[] = ['ANIME', 'MANGA']
 
-/** Saves the Import plan, its hash and the status of each write. Called after every write. */
-export function saveImportState(storage: Storage, key: RankingKey, state: ImportState): void {
-  saveProgressPart(storage, { ...key, part: IMPORT_PART }, JSON.stringify(state))
+function writeQueueKey(userId: number): string {
+  return `${userPrefix(userId)}write-queue`
 }
 
-/** The saved Import, or null if none or unreadable. */
-export function loadImportState(storage: Storage, key: RankingKey): ImportState | null {
-  const raw = loadProgressPart(storage, { ...key, part: IMPORT_PART })
-  if (raw === null) return null
+/** Saves the user's write queue (Import scores and Catch-up statuses), after every write; null deletes it. */
+export function saveWriteQueue(storage: Storage, userId: number, state: WriteQueueState | null): void {
+  if (state === null) storage.removeItem(writeQueueKey(userId))
+  else storage.setItem(writeQueueKey(userId), JSON.stringify(state))
+  for (const mediaType of MEDIA_TYPES) storage.removeItem(progressStorageKey({ userId, mediaType, part: LEGACY_IMPORT_PART }))
+}
+
+/**
+ * The user's saved write queue, or null if none or unreadable. Without one, an Import saved the old way is carried
+ * over into a queue (it is deleted at the next save).
+ */
+export function loadWriteQueue(storage: Storage, userId: number): WriteQueueState | null {
+  const raw = storage.getItem(writeQueueKey(userId))
+  if (raw !== null) return parseJson(raw, parseWriteQueueState)
+  const state: WriteQueueState = { imports: [], writes: [] }
+  for (const mediaType of MEDIA_TYPES) {
+    const legacy = loadProgressPart(storage, { userId, mediaType, part: LEGACY_IMPORT_PART })
+    const saved = legacy === null ? null : parseJson(legacy, parseImportState)
+    if (!saved) continue
+    state.imports.push({ mediaType, hash: saved.hash, format: saved.format })
+    state.writes.push(...saved.writes.map((w) => ({ ...w, mediaType })))
+  }
+  return state.imports.length > 0 ? state : null
+}
+
+function parseJson<T>(raw: string, parse: (value: unknown) => T | null): T | null {
   try {
-    return parseImportState(JSON.parse(raw))
+    return parse(JSON.parse(raw))
   } catch {
     return null
   }
-}
-
-export function deleteImportState(storage: Storage, key: RankingKey): void {
-  storage.removeItem(progressStorageKey({ ...key, part: IMPORT_PART }))
-}
-
-const CATCH_UP_QUEUE_PART = 'catchup-queue'
-
-/** A Catch-up status write, with the title's name for the failure bar. */
-export type NamedStatusWrite = StatusWrite & { name: string }
-
-/** Catch-up is anime only, so its write queue is saved under the user's anime progress. */
-const catchUpKey = (userId: number) => ({ userId, mediaType: 'ANIME' as const, part: CATCH_UP_QUEUE_PART })
-
-/** Saves Catch-up's write queue (every saved page's status writes). Called after every write. */
-export function saveCatchUpQueue(storage: Storage, userId: number, state: ImportState<NamedStatusWrite>): void {
-  saveProgressPart(storage, catchUpKey(userId), JSON.stringify(state))
-}
-
-/** The saved Catch-up write queue, or null if none or unreadable. */
-export function loadCatchUpQueue(storage: Storage, userId: number): ImportState<NamedStatusWrite> | null {
-  const raw = loadProgressPart(storage, catchUpKey(userId))
-  if (raw === null) return null
-  try {
-    const state = parseWriteQueue(JSON.parse(raw))
-    const named = state?.writes.every((w) => isStatusWrite(w) && typeof (w as Partial<NamedStatusWrite>).name === 'string')
-    return named ? (state as ImportState<NamedStatusWrite>) : null
-  } catch {
-    return null
-  }
-}
-
-export function deleteCatchUpQueue(storage: Storage, userId: number): void {
-  storage.removeItem(progressStorageKey(catchUpKey(userId)))
 }
 
 const TICKS_PART = 'import-ticks'

@@ -4,7 +4,8 @@
 import { fetchCatchUpMedia, fetchPopularAnime, type CatchUpMedia } from '../../src/anilist/candidates.ts'
 import { AniListError, request } from '../../src/anilist/gateway.ts'
 import type { ListStatus } from '../../src/anilist/types.ts'
-import { eraYears } from '../../src/catchup/candidatePool.ts'
+import { eraYears } from '../../src/catchup/suggestionCandidates.ts'
+import { isWatched } from '../../src/catchup/watched.ts'
 import { BATCH_SIZE, DEFAULT_WEIGHTS, suggestCatchUp, type CatchUpWeights } from '../../src/catchup/suggest.ts'
 
 export const VARIANTS: ReadonlyArray<{ name: string; weights: CatchUpWeights }> = [
@@ -77,7 +78,7 @@ export function holdout(
   seed: number,
   share = HOLDOUT_SHARE,
 ): { visible: EvalEntry[]; hidden: Set<number> } {
-  const watched = list.filter((e) => e.status !== 'PLANNING').sort((a, b) => a.mediaId - b.mediaId)
+  const watched = list.filter(isWatched).sort((a, b) => a.mediaId - b.mediaId)
   const next = random(seed)
   const shuffled = watched.map((e) => ({ e, key: next() })).sort((a, b) => a.key - b.key)
   const hidden = new Set(shuffled.slice(0, Math.round(watched.length * share)).map(({ e }) => e.mediaId))
@@ -131,7 +132,7 @@ export type UserResult = {
   watched: number
   hidden: number
   candidates: number
-  /** Hidden titles anywhere in the candidate pool: the most any variant could hit (capped at the batch size). */
+  /** Hidden titles anywhere among the suggestion candidates: the most any variant could hit (capped at the batch size). */
   reachable: number
   hits: Record<string, number>
 }
@@ -145,7 +146,7 @@ export async function evaluateUser(
 ): Promise<UserResult> {
   const list = await fetchPublicList(fetchFn, userName)
   const { visible, hidden } = holdout(list, seed)
-  const watchedIds = visible.filter((e) => e.status !== 'PLANNING').map((e) => e.mediaId)
+  const watchedIds = visible.filter(isWatched).map((e) => e.mediaId)
   const onVisibleList = new Set(visible.map((e) => e.mediaId))
   deps.log(`${userName}: ${list.length} entries, ${watchedIds.length + hidden.size} watched, ${hidden.size} hidden`)
 
@@ -185,7 +186,7 @@ export function scoreVariants(
   const candidates = media.filter((m) => !onVisibleList.has(m.id))
   return {
     userName,
-    watched: visible.filter((e) => e.status !== 'PLANNING').length + hidden.size,
+    watched: visible.filter(isWatched).length + hidden.size,
     hidden: hidden.size,
     candidates: candidates.length,
     reachable: Math.min(BATCH_SIZE, candidates.filter((m) => hidden.has(m.id)).length),
@@ -235,7 +236,7 @@ export async function runEval(deps: EvalDeps, userNames: readonly string[], seed
       `- **${v.name}**: relations ${v.weights.relations} / recommendations ${v.weights.recommendations} / popularity ${v.weights.popularity} / tags ${v.weights.tags}`,
   )
   return [
-    `Hidden titles in the batch of ${BATCH_SIZE} (hit rate = hits / ${BATCH_SIZE}). ${HOLDOUT_SHARE * 100}% of each watched list hidden, seed ${seed}. Reachable = hidden titles present in the candidate pool at all.`,
+    `Hidden titles in the batch of ${BATCH_SIZE} (hit rate = hits / ${BATCH_SIZE}). ${HOLDOUT_SHARE * 100}% of each watched list hidden, seed ${seed}. Reachable = hidden titles present among the suggestion candidates at all.`,
     '',
     markdownTable(results),
     '',

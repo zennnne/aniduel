@@ -1,7 +1,7 @@
 // Starting era (#51): roughly when the user started watching anime, asked by Catch-up while the list is near empty.
 // Stored per user under their anime progress, so logout deletes it with the rest.
 import type { Era } from '../anilist/candidates.ts'
-import { loadProgressPart, saveProgressPart } from '../persistence/progress.ts'
+import { animeProgressKey, loadProgressPart, saveProgressPart } from '../persistence/progress.ts'
 
 /** A year, or null for "Skip — show all-time favourites". */
 export type StartingEraAnswer = number | null
@@ -19,7 +19,7 @@ export const DEFAULT_STARTING_YEAR = 2012
 /** How far either side of the answered year counts as "around" it. */
 const AROUND_YEARS = 2
 
-const key = (userId: number) => ({ userId, mediaType: 'ANIME' as const, part: 'catchup-starting-era' })
+const key = (userId: number) => animeProgressKey(userId, 'catchup-starting-era')
 
 export function createStartingEraStore(storage: Storage, userId: number): StartingEraStore {
   return {

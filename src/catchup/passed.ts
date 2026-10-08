@@ -1,9 +1,9 @@
 // Catch-up's Passed history (#50): titles left unmarked when a batch was saved, with when. Kept per user in this
 // browser's storage, under the user's anime progress, so logout deletes it with the rest.
-import { loadProgressPart, progressStorageKey, saveProgressPart } from '../persistence/progress.ts'
+import { animeProgressKey, loadProgressPart, progressStorageKey, saveProgressPart } from '../persistence/progress.ts'
 import { PASSED_HIDE_MS } from './suggest.ts'
 
-const key = (userId: number) => ({ userId, mediaType: 'ANIME' as const, part: 'catchup-passed' })
+const key = (userId: number) => animeProgressKey(userId, 'catchup-passed')
 
 const hidden = (at: number, now: number) => now - at < PASSED_HIDE_MS
 

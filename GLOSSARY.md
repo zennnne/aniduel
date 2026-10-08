@@ -108,6 +108,10 @@ _Avoid_: Onboarding, quick add, backfill, import
 A title shown in Catch-up that the user left unmarked. It isn't suggested again for 30 days.
 _Avoid_: Skipped, dismissed, not seen
 
+**Watched**:
+A title on the user's list with any status except Planning, however it was scored. Catch-up suggests from watched titles and counts them for the near-empty list.
+_Avoid_: Seen, finished
+
 **Starting era**:
 Roughly when the user started watching anime, asked by Catch-up only while their list is near empty. It picks the popular titles in the first batches, is stored locally per user, and can be changed until the list grows past the threshold.
 _Avoid_: Era answer, start year, age
