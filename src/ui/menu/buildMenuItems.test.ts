@@ -133,7 +133,7 @@ describe('Catch-up in the menu', () => {
   })
 })
 
-// #50: clearing Catch-up's Passed list, next to Catch-up.
+// #50: clearing Catch-up's Passed list, next to Backup / Restore (#37 UI decisions).
 describe('Clear Passed in the menu', () => {
   const items = (passedHidden: number, clearPassed = noop) =>
     buildMenuItems(
@@ -145,6 +145,11 @@ describe('Clear Passed in the menu', () => {
     const item = items(17).find((i) => i.id === 'clear-passed')!
     expect(item.title).toBe('Clear Catch-up’s Passed list')
     expect(item.description).toMatch(/^17 titles hidden/)
+  })
+
+  it('sits right after Restore from Backup', () => {
+    const ids = items(2).map((i) => i.id)
+    expect(ids[ids.indexOf('restore') + 1]).toBe('clear-passed')
   })
 
   it('is not offered when nothing is hidden', () => {

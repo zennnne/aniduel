@@ -133,6 +133,17 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
     description: 'Load a Backup file from another browser',
     run: actions.restore,
   })
+  // Next to Backup / Restore, as decided for #37: it throws away something saved in this browser.
+  if (context.passedHidden) {
+    items.push({
+      id: 'clear-passed',
+      group: 'This Ranking',
+      icon: '⌫',
+      title: 'Clear Catch-up’s Passed list',
+      description: `${context.passedHidden} ${context.passedHidden === 1 ? 'title' : 'titles'} hidden · they come back in the next batch`,
+      run: actions.clearPassed,
+    })
+  }
   if (context.hasProgress) {
     items.push({
       id: 'start-over',
@@ -153,18 +164,6 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       description: 'Add anime you’ve already watched, 20 at a time',
       run: actions.openCatchUp,
     },
-  )
-  if (context.passedHidden) {
-    items.push({
-      id: 'clear-passed',
-      group: 'App',
-      icon: '⌫',
-      title: 'Clear Catch-up’s Passed list',
-      description: `${context.passedHidden} ${context.passedHidden === 1 ? 'title' : 'titles'} hidden · they come back in the next batch`,
-      run: actions.clearPassed,
-    })
-  }
-  items.push(
     {
       id: 'theme',
       group: 'App',
