@@ -241,6 +241,30 @@ describe('AniList Gateway: saving a score', () => {
   })
 })
 
+describe('AniList Gateway: saving a list status', () => {
+  it('sends SaveMediaListEntry with only the mediaId and status, which adds a title not yet on the list', async () => {
+    const { fetch, calls } = fakeFetch({ json: { data: { SaveMediaListEntry: { mediaId: 9 } } } })
+    const gateway = createAniListGateway({ fetch, token: 't' })
+
+    await gateway.saveStatus(9, 'DROPPED')
+
+    expect(calls[0].body.query).toContain('SaveMediaListEntry(mediaId: $mediaId, status: $status)')
+    expect(calls[0].body.variables).toEqual({ mediaId: 9, status: 'DROPPED' })
+  })
+
+  it('reports a 429 as rate-limited and keeps its reset header', async () => {
+    const { fetch } = fakeFetch({
+      status: 429,
+      json: { errors: [{ message: 'Too Many Requests.', status: 429 }] },
+      headers: { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1760000060' },
+    })
+    const gateway = createAniListGateway({ fetch, token: 't' })
+
+    await expect(gateway.saveStatus(9, 'COMPLETED')).rejects.toMatchObject({ kind: 'rate-limited' })
+    expect(gateway.rateLimit()).toEqual({ remaining: 0, resetAt: 1760000060 })
+  })
+})
+
 describe('AniList Gateway: trending covers', () => {
   it('asks for trending non-adult anime without a token', async () => {
     const { fetch, calls } = fakeFetch({
