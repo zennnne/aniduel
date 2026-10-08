@@ -27,6 +27,7 @@ const actions: MenuActions = {
   logout: noop,
   switchSortGoal: noop,
   openCatchUp: noop,
+  clearPassed: noop,
 }
 
 const ids = (log: DuelLog) =>
@@ -129,5 +130,32 @@ describe('Catch-up in the menu', () => {
       .find((i) => i.id === 'catch-up')!
       .run()
     expect(opened).toBe(1)
+  })
+})
+
+// #50: clearing Catch-up's Passed list, next to Catch-up.
+describe('Clear Passed in the menu', () => {
+  const items = (passedHidden: number, clearPassed = noop) =>
+    buildMenuItems(
+      { mediaType: 'MANGA', statuses: ['COMPLETED'], hasLog: false, hasProgress: false, ranking: null, choosingBand: false, splitOffers: [], passedHidden },
+      { ...actions, clearPassed },
+    )
+
+  it('is offered with how many titles are hidden, whichever Media Type is open', () => {
+    const item = items(17).find((i) => i.id === 'clear-passed')!
+    expect(item.title).toBe('Clear Catch-up’s Passed list')
+    expect(item.description).toMatch(/^17 titles hidden/)
+  })
+
+  it('is not offered when nothing is hidden', () => {
+    expect(items(0).map((i) => i.id)).not.toContain('clear-passed')
+  })
+
+  it('asks to clear', () => {
+    let asked = 0
+    items(3, () => asked++)
+      .find((i) => i.id === 'clear-passed')!
+      .run()
+    expect(asked).toBe(1)
   })
 })

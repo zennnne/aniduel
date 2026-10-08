@@ -21,6 +21,8 @@ export type MenuContext = {
   choosingBand: boolean
   /** Bands that qualify for a split now (ADR 0006). */
   splitOffers: readonly BandIndex[]
+  /** Titles Catch-up hides now because they were Passed within 30 days (#50). */
+  passedHidden?: number
 }
 
 export type MenuActions = {
@@ -39,6 +41,8 @@ export type MenuActions = {
   switchSortGoal: (goal: SortGoal) => void
   /** Catch-up (anime only), whichever Media Type the open Ranking is. */
   openCatchUp: () => void
+  /** Asks before emptying Catch-up's Passed history. */
+  clearPassed: () => void
 }
 
 /** The one list behind the account menu and the Ctrl+K palette, for a logged-in user. */
@@ -149,6 +153,18 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       description: 'Add anime you’ve already watched, 20 at a time',
       run: actions.openCatchUp,
     },
+  )
+  if (context.passedHidden) {
+    items.push({
+      id: 'clear-passed',
+      group: 'App',
+      icon: '⌫',
+      title: 'Clear Catch-up’s Passed list',
+      description: `${context.passedHidden} ${context.passedHidden === 1 ? 'title' : 'titles'} hidden · they come back in the next batch`,
+      run: actions.clearPassed,
+    })
+  }
+  items.push(
     {
       id: 'theme',
       group: 'App',

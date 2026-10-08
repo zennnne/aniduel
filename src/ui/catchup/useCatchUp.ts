@@ -33,6 +33,7 @@ export type CatchUpView =
 export type PassedStore = {
   history(): ReadonlyMap<number, number>
   record(ids: readonly number[], at: number): void
+  clear(): void
 }
 
 export type CatchUpDeps = {
@@ -172,6 +173,12 @@ export function useCatchUp(deps: CatchUpDeps) {
     )
   }
 
+  /** Clear Passed: titles Passed before, in earlier visits or this one, may be suggested from the next batch. */
+  function clearPassed() {
+    deps.passedStore?.clear()
+    if (session.current) session.current.history = new Map()
+  }
+
   /** Logout: the queue stops and lets go of what it saved, before the user's progress is deleted. */
   function close() {
     queue.current?.stop()
@@ -189,6 +196,7 @@ export function useCatchUp(deps: CatchUpDeps) {
     mark: (id: number, mark: CatchUpMark | null) => change((b) => setMark(b, id, mark)),
     saveAndNext,
     retryWrites: () => queue.current?.retry(),
+    clearPassed,
     close,
   }
 }
