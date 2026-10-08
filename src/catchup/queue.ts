@@ -44,9 +44,12 @@ export type CatchUpQueue = {
   add(writes: readonly CatchUpWrite[]): void
   /** Puts the failed writes back in line and writes them. */
   retry(): void
-  /** Writes what a reload left unwritten. Failed writes wait for Retry. */
+  /** Writes what a reload left unwritten, and reports the saved queue either way. Failed writes wait for Retry. */
   resume(): void
-  /** Stops after the current write (logout); what is written so far is saved. */
+  /**
+   * Stops after the current write and lets go of the saved queue (logout, or another user): nothing more is saved or
+   * reported. What was saved before resumes next time; a write that was in flight is recognised then by its status.
+   */
   stop(): void
   snapshot(): QueueSnapshot
   /** Resolves once no run is going. */
@@ -67,11 +70,13 @@ export function createCatchUpQueue(deps: CatchUpQueueDeps): CatchUpQueue {
   let run: RunningImport<CatchUpWrite> | null = null
   let stop: AbortController | null = null
   let done: Promise<void> = Promise.resolve()
+  let detached = false
 
   const snapshot = (): QueueSnapshot => ({ state, running: run !== null, status })
   const changed = () => deps.onChange(snapshot())
 
   function save(next: CatchUpQueueState) {
+    if (detached) return
     state = next
     const { left, failed } = importSummary(next)
     if (left + failed === 0 && run === null) deleteCatchUpQueue(deps.storage, deps.userId)
@@ -88,6 +93,7 @@ export function createCatchUpQueue(deps: CatchUpQueueDeps): CatchUpQueue {
       {
         signal: abort.signal,
         onStatus: (next) => {
+          if (detached) return
           status = next
           changed()
         },
@@ -99,7 +105,7 @@ export function createCatchUpQueue(deps: CatchUpQueueDeps): CatchUpQueue {
       () => ended(handle),
       (error: unknown) => {
         ended(handle)
-        deps.onError(error)
+        if (!detached) deps.onError(error)
       },
     )
   }
@@ -109,26 +115,29 @@ export function createCatchUpQueue(deps: CatchUpQueueDeps): CatchUpQueue {
     run = null
     stop = null
     status = null
+    if (detached) return
     if (state) save(state)
     deps.onSettled?.(state ? state.writes.filter((w) => w.status === 'done').map((w) => w.mediaId) : [])
   }
 
   return {
     add(writes) {
-      if (writes.length === 0) return
+      if (writes.length === 0 || detached) return
       if (run?.append(writes)) return
       const base = state ? withoutFinished(state) : newImport<CatchUpWrite>([], QUEUE_FROM)
       start(appendWrites(base, writes))
     },
     retry() {
-      if (!state || run) return
+      if (!state || run || detached) return
       start(retryFailed(withoutFinished(state)))
     },
     resume() {
-      if (!state || run || importSummary(state).left === 0) return
-      start(state)
+      if (run || detached) return
+      if (state && importSummary(state).left > 0) start(state)
+      else changed()
     },
     stop() {
+      detached = true
       stop?.abort()
     },
     snapshot,

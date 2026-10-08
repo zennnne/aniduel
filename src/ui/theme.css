@@ -27,6 +27,10 @@
   --sub-lowest: hsl(345 100% 90%);
   --good: #3fae5a;
   --bad: #f27d7d;
+  /* Catch-up marks */
+  --m-completed: #3fae5a;
+  --m-dropped: #e05555;
+  --m-planning: #f2a03d;
 
   /* Immersive screens (Rough Sort, Duel) sit on a dark blurred backdrop in both themes. */
   --ok: #7bd88f;

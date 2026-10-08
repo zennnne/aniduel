@@ -164,12 +164,32 @@ describe('Catch-up write queue', () => {
     expect(setup(fakeGateway(), storage).queue.snapshot().state).toBeNull()
   })
 
-  it('does nothing on resume when nothing is left to write', async () => {
-    const { queue, aniList } = setup()
-
-    queue.resume()
+  it('lets go of the saved queue on stop: nothing written after it is saved', async () => {
+    const storage = memoryStorage()
+    const { queue } = setup(fakeGateway(), storage)
+    queue.add([write(1), write(2), write(3)])
+    queue.stop()
+    storage.clear() // logout deleted the user's progress
     await queue.idle()
 
-    expect(aniList.listReads()).toBe(0)
+    expect(storage.length).toBe(0)
+  })
+
+  it('only reports the saved queue on resume when nothing is left to write', async () => {
+    const storage = memoryStorage()
+    const aniList = fakeGateway(new Map([[1, 'network']]))
+    await (async () => {
+      const { queue } = setup(aniList, storage)
+      queue.add([write(1)])
+      await queue.idle()
+    })()
+    const reads = aniList.listReads()
+
+    const reloaded = setup(aniList, storage)
+    reloaded.queue.resume()
+    await reloaded.queue.idle()
+
+    expect(aniList.listReads()).toBe(reads)
+    expect(reloaded.snapshots.map((s) => s.state && queueProgress(s.state).failed.length)).toEqual([1])
   })
 })
