@@ -2,7 +2,7 @@
 // current batch and hands every change back through these functions.
 import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
-import type { QueuedWrite, StatusWrite } from '../import/runner.ts'
+import type { QueuedWrite, StatusWrite } from '../writes/writeQueue.ts'
 import { suggestCatchUp, type Suggestion } from './suggest.ts'
 
 /** What a title can be marked in Catch-up. Unmarked means Passed. */

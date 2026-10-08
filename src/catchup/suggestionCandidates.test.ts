@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
 import { AniListError } from '../anilist/gateway.ts'
 import type { ListStatus } from '../anilist/types.ts'
-import type { Clock } from '../import/runner.ts'
-import { createSuggestionCandidates, eraYears, retryRateLimited, type CandidateSource } from './suggestionCandidates.ts'
+import type { Clock } from '../clock.ts'
+import { createRequestLimiter } from '../writes/limiter.ts'
+import { aniListCandidateSource, createSuggestionCandidates, eraYears, retryRateLimited, type CandidateSource } from './suggestionCandidates.ts'
 
 function anime(id: number, overrides: Partial<CatchUpMedia> = {}): CatchUpMedia {
   return {
@@ -173,5 +174,32 @@ describe('reading through the rate limit', () => {
 
     await expect(retryRateLimited(request, { clock, resetAt: () => null })).rejects.toMatchObject({ kind: 'unreachable' })
     expect(clock.sleeps).toEqual([60_000])
+  })
+})
+
+describe('reading from AniList', () => {
+  /** A fake `fetch` answering every candidate query with no media, recording when each request arrived. */
+  function fakeFetch(clock: Clock) {
+    const at: number[] = []
+    const fetch = async () => {
+      at.push(clock.now())
+      return new Response(JSON.stringify({ data: { Page: { media: [] } } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }
+    return { fetch: fetch as unknown as typeof globalThis.fetch, at }
+  }
+
+  it('takes a turn for every read, so reads and the write queue’s requests stay under one per-minute limit together', async () => {
+    const start = 1_760_000_000_000
+    let now = start
+    const clock: Clock = { now: () => now, sleep: async (ms) => void (now += ms) }
+    const limiter = createRequestLimiter(clock, 3)
+    await limiter.turn() // a write the queue just sent
+    const { fetch, at } = fakeFetch(clock)
+    const source = aniListCandidateSource({ fetch, token: 't', clock, limiter })
+
+    await source.media(Array.from({ length: 100 }, (_, i) => i + 1)) // 2 requests of 50
+    await source.popular(null) // 2 pages
+
+    expect(at.map((t) => t - start)).toEqual([0, 0, 60_000, 60_000])
   })
 })

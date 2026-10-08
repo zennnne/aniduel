@@ -1,5 +1,5 @@
 // Preview (pure): old vs new score for every ranked Pool title, which titles are ticked for Import,
-// and the Import plan the Import Runner writes.
+// and the Import plan the write queue writes.
 import type { ScoreFormat } from '../anilist/types.ts'
 import { compareNames } from '../names.ts'
 import { BANDS, type BandIndex, type Prompt, type RankingState } from './engine.ts'
@@ -98,7 +98,7 @@ export function isTicked(row: PreviewRow, overrides: TickOverrides): row is Sett
   return row.settled && (overrides.get(row.id) ?? row.changed)
 }
 
-/** One pending write for the Import Runner. `oldScore100` lets a resumed Import skip titles changed on AniList since. */
+/** One pending score write for the write queue. `oldScore100` lets a resumed Import skip titles changed on AniList since. */
 export type PendingWrite = { mediaId: number; scoreRaw: number; oldScore100: number }
 
 /**

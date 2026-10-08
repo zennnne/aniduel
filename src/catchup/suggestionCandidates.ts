@@ -11,7 +11,8 @@ import {
 import { AniListError } from '../anilist/gateway.ts'
 import type { ListStatus } from '../anilist/types.ts'
 import { isWatched } from './watched.ts'
-import { DEFAULT_RESET_WAIT_MS, type Clock } from '../import/runner.ts'
+import type { Clock } from '../clock.ts'
+import { DEFAULT_RESET_WAIT_MS, type RequestLimiter } from '../writes/limiter.ts'
 
 /** Where the suggestion candidates are read anime from: AniList, or a fake in tests. */
 export type CandidateSource = {
@@ -124,10 +125,19 @@ export async function retryRateLimited<T>(
 /** Pages of 50 popular titles loaded for the era. */
 const POPULAR_PAGES = 2
 
-/** The suggestion candidates' reads from AniList, 50 ids a request, each request waiting out the rate limit. */
-export function aniListCandidateSource(deps: { fetch: typeof fetch; token: string; clock: Clock }): CandidateSource {
+/**
+ * The suggestion candidates' reads from AniList, 50 ids a request. Each request takes its turn in `limiter` (shared with
+ * the write queue) and waits out a 429.
+ */
+export function aniListCandidateSource(deps: { fetch: typeof fetch; token: string; clock: Clock; limiter: RequestLimiter }): CandidateSource {
   let resetAt: number | null = null
-  const read = { fetch: deps.fetch, token: deps.token, onRateLimit: (r: { resetAt: number | null }) => (resetAt = r.resetAt) }
+  const read = {
+    fetch: deps.fetch,
+    token: deps.token,
+    onRateLimit: (r: { resetAt: number | null }) => (resetAt = r.resetAt),
+    // Each read waits its turn with the write queue's requests.
+    beforeRequest: () => deps.limiter.turn(),
+  }
   const retry = <T>(request: () => Promise<T>) => retryRateLimited(request, { clock: deps.clock, resetAt: () => resetAt })
   return {
     async media(ids) {

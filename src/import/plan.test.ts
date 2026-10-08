@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { startLog, type DuelLog } from '../ranking/engine.ts'
 import type { SavedScoring } from '../ranking/scoring.ts'
 import { planHash, resumeImport } from './plan.ts'
-import { newImport, type ImportState } from './runner.ts'
+import { newImport, type ImportState } from './importState.ts'
 
 const log: DuelLog = startLog({ seed: 1, userId: 1, mediaType: 'ANIME', ids: [1, 2, 3] })
 const scoring: SavedScoring = { format: 'POINT_100', settings: { distribution: 'linear', step: 'fine', best: 95, worst: 30 } }

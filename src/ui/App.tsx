@@ -5,8 +5,9 @@ import type { Cover, ListEntry, ListStatus, MediaType, TitleLanguage, Viewer } f
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
-import { sharedWriteLane } from '../import/lane.ts'
-import { browserClock, retryFailed } from '../import/runner.ts'
+import { browserClock } from '../clock.ts'
+import { retryFailed } from '../import/importState.ts'
+import { createRequestLimiter } from '../writes/limiter.ts'
 import {
   deleteDuelLog,
   loadDuelLog,
@@ -62,6 +63,7 @@ import { buildMenuItems } from './menu/buildMenuItems.ts'
 import { RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
 import { ImportScreen } from './import/ImportScreen.tsx'
 import { useImport } from './import/useImport.ts'
+import { useWriteQueue } from './useWriteQueue.ts'
 import { MEDIA_LABEL, count, titleName } from './meta.ts'
 import { PreviewScreen } from './preview/PreviewScreen.tsx'
 import { SCORE_FORMAT_LABEL } from './preview/scoreFormat.ts'
@@ -142,12 +144,15 @@ export function App() {
   const [newGoal, setNewGoal] = useState<SortGoal>('scores')
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
-  // Import and Catch-up write through one lane, so together they keep to AniList's rate limit.
-  const writeGateway = useMemo(() => (gateway ? sharedWriteLane(gateway, browserClock) : null), [gateway])
+  // The write queue's requests and Catch-up's reads take turns in one limiter, so together they keep to AniList's rate limit.
+  const limiter = useMemo(() => (token ? createRequestLimiter(browserClock) : null), [token])
   const candidateSource = useMemo(
-    () => (token ? aniListCandidateSource({ fetch: window.fetch.bind(window), token, clock: browserClock }) : null),
-    [token],
+    () => (token && limiter ? aniListCandidateSource({ fetch: window.fetch.bind(window), token, clock: browserClock, limiter }) : null),
+    [token, limiter],
   )
+  const viewerId = viewer?.id ?? null
+  // One write queue for Import's scores and Catch-up's statuses.
+  const writes = useWriteQueue({ storage: localStorage, gateway, userId: viewerId, limiter, onError: handleGatewayError })
   // The open Ranking's user and Media Type: the key everything saved for it lives under.
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
@@ -173,7 +178,8 @@ export function App() {
 
   const imports = useImport({
     storage: localStorage,
-    gateway: writeGateway,
+    gateway,
+    queue: writes.queue,
     viewer,
     setViewer,
     key: rankingKey,
@@ -195,12 +201,13 @@ export function App() {
       }),
   })
 
-  const viewerId = viewer?.id ?? null
   const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(localStorage, viewerId)), [viewerId])
   const catchUp = useCatchUp({
     storage: localStorage,
     passedStore,
-    gateway: writeGateway,
+    gateway,
+    queue: writes.queue,
+    queueSnapshot: writes.snapshot,
     source: candidateSource,
     viewer,
     onGatewayError: handleGatewayError,
@@ -277,6 +284,7 @@ export function App() {
   }
 
   function endSession(deleteProgress: boolean) {
+    writes.stop() // before the user's progress is deleted, so nothing written after is saved again
     catchUp.close()
     logout(localStorage, { userId: viewer?.id ?? null, deleteProgress })
     setToken(null)

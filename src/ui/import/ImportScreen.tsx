@@ -1,14 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import {
-  WRITE_SPACING_MS,
-  formatDuration,
-  importSummary,
-  skippedWrites,
-  timeLeftMs,
-  type ImportState,
-  type RunnerStatus,
-} from '../../import/runner.ts'
+import { formatDuration, importSummary, skippedWrites, timeLeftMs, type ImportState } from '../../import/importState.ts'
+import { WRITE_SPACING_MS, type RunnerStatus } from '../../writes/writeQueue.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
 import { count, titleName } from '../meta.ts'
 import './import.css'

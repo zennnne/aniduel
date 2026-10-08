@@ -12,7 +12,7 @@ import {
   type CatchUpMark,
 } from '../../catchup/batch.ts'
 import { createSuggestionCandidates, type SuggestionCandidates, type CandidateSource } from '../../catchup/suggestionCandidates.ts'
-import { createCatchUpQueue, type CatchUpQueue, type QueueSnapshot } from '../../catchup/queue.ts'
+import { catchUpSnapshot, settledByRun, type QueueSnapshot } from '../../catchup/queue.ts'
 import {
   createStartingEraStore,
   startingEraLabel,
@@ -21,7 +21,8 @@ import {
 } from '../../catchup/startingEra.ts'
 import { isNearEmpty } from '../../catchup/entry.ts'
 import type { CatchUpMedia } from '../../anilist/candidates.ts'
-import { browserClock } from '../../import/runner.ts'
+import { browserClock } from '../../clock.ts'
+import type { WriteQueue, WriteQueueSnapshot } from '../../writes/writeQueue.ts'
 import { displayTitle } from '../../pool/pool.ts'
 
 const ALL_STATUSES: readonly ListStatus[] = ['CURRENT', 'PLANNING', 'COMPLETED', 'DROPPED', 'PAUSED', 'REPEATING']
@@ -51,18 +52,22 @@ export type PassedStore = {
 
 export type CatchUpDeps = {
   storage: Storage
-  /** Writes go through the shared write lane, so Import and Catch-up keep to one rate limit together. */
+  /** Reads the user's anime list. */
   gateway: AniListGateway | null
+  /** The user's write queue: each saved page's statuses join it, in line with Import's scores. */
+  queue: WriteQueue | null
+  queueSnapshot: WriteQueueSnapshot | null
   /** Reads of anime for the suggestion candidates. */
   source: CandidateSource | null
   viewer: Viewer | null
   passedStore?: PassedStore
   onGatewayError: (error: unknown) => void
-  /** A write run ended with these titles on the user's anime list. */
+  /** A run of the write queue ended with these titles on the user's anime list through Catch-up. */
   onWritten: (mediaIds: number[]) => void
 }
 
 const NO_PASSED: ReadonlyMap<number, number> = new Map()
+const NO_QUEUE: QueueSnapshot = { state: null, running: false, status: null }
 
 function newSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]
@@ -74,10 +79,8 @@ function newSeed(): number {
  */
 export function useCatchUp(deps: CatchUpDeps) {
   const [view, setView] = useState<CatchUpView>({ phase: 'idle' })
-  const [queueSnapshot, setQueueSnapshot] = useState<QueueSnapshot>({ state: null, running: false, status: null })
   // Titles saved with a mark since Catch-up was last opened: the exit offer shows once there is one (#52).
   const [added, setAdded] = useState(0)
-  const queue = useRef<CatchUpQueue | null>(null)
   // The visit's working data: the list as Catch-up knows it (marked titles included), what is loaded about anime,
   // titles shown in this visit, and the candidates update in flight.
   const session = useRef<{
@@ -91,31 +94,17 @@ export function useCatchUp(deps: CatchUpDeps) {
   const popular = useRef<Promise<CatchUpMedia[]> | null>(null)
   // The number of the batch the era chip is replacing.
   const replacedBatch = useRef(1)
-  const userId = deps.viewer?.id ?? null
-  const { gateway } = deps
-
-  const onError = useEffectEvent((error: unknown) => deps.onGatewayError(error))
   const onWritten = useEffectEvent((ids: number[]) => deps.onWritten(ids))
 
-  // One queue per logged-in user; it resumes what a reload left unwritten straight away.
+  // When a run of the write queue ends, the titles it added can join the anime Pool.
+  const lastSnapshot = useRef<WriteQueueSnapshot | null>(null)
+  const { queueSnapshot } = deps
   useEffect(() => {
-    if (!gateway || userId === null) return
-    const q = createCatchUpQueue({
-      gateway,
-      clock: browserClock,
-      storage: deps.storage,
-      userId,
-      onChange: (s) => queue.current === q && setQueueSnapshot(s),
-      onError: (e) => queue.current === q && onError(e),
-      onSettled: (written) => queue.current === q && written.length > 0 && onWritten(written),
-    })
-    queue.current = q
-    q.resume() // also reports what was saved, e.g. failures waiting for Retry
-    return () => {
-      queue.current = null
-      q.stop()
-    }
-  }, [gateway, userId, deps.storage])
+    const before = lastSnapshot.current
+    lastSnapshot.current = queueSnapshot
+    const written = before && queueSnapshot ? settledByRun(before, queueSnapshot) : null
+    if (written && written.length > 0) onWritten(written)
+  }, [queueSnapshot])
 
   const passed = (): ReadonlyMap<number, number> => {
     const stored = deps.passedStore?.history() ?? NO_PASSED
@@ -163,7 +152,7 @@ export function useCatchUp(deps: CatchUpDeps) {
       const entries = await gateway.mediaList({ userId: viewer.id, type: 'ANIME', statuses: ALL_STATUSES })
       const read: CatchUpEntry[] = entries.map(({ mediaId, status, year, format }) => ({ mediaId, status, year, format }))
       // Titles marked earlier whose writes haven't reached AniList yet are on the list all the same.
-      const queued = queue.current?.snapshot().state?.writes ?? []
+      const queued = deps.queue ? (catchUpSnapshot(deps.queue.snapshot()).state?.writes ?? []) : []
       // A near-empty list first asks roughly when the user started watching, once.
       if (isNearEmpty(withQueuedWrites(read, queued, [])) && eraStore()?.answer() === undefined) {
         unanswered.current = { read, queued }
@@ -237,7 +226,10 @@ export function useCatchUp(deps: CatchUpDeps) {
     const saved = saveBatch(view.batch, { ...batchInput(current.list), now, seed: newSeed() })
     const language = deps.viewer.titleLanguage
     const names = new Map(view.batch.suggestions.map((s) => [s.media.id, displayTitle(s.media.title, language)]))
-    queue.current?.add(saved.writes.map((w) => ({ ...w, name: names.get(w.mediaId) ?? `Title #${w.mediaId}` })))
+    deps.queue?.addStatuses(
+      saved.writes.map((w) => ({ ...w, name: names.get(w.mediaId) ?? `Title #${w.mediaId}` })),
+      'ANIME',
+    )
     setAdded((n) => n + saved.writes.length)
     deps.passedStore?.record(saved.passed, now)
     current.list = saved.list
@@ -264,15 +256,12 @@ export function useCatchUp(deps: CatchUpDeps) {
     if (session.current) session.current.history = new Map()
   }
 
-  /** Logout: the queue stops and lets go of what it saved, before the user's progress is deleted. */
+  /** Logout: nothing of this user's visit stays. */
   function close() {
-    queue.current?.stop()
-    queue.current = null
     session.current = null
     unanswered.current = null
     popular.current = null
     setView({ phase: 'idle' })
-    setQueueSnapshot({ state: null, running: false, status: null })
     setAdded(0)
   }
 
@@ -292,7 +281,7 @@ export function useCatchUp(deps: CatchUpDeps) {
     startingEraLabel: answer === undefined ? null : startingEraLabel(answer),
     changeStartingEra,
     answerStartingEra: (answer: StartingEraAnswer) => void answerStartingEra(answer),
-    queue: queueSnapshot,
+    queue: queueSnapshot ? catchUpSnapshot(queueSnapshot) : NO_QUEUE,
     /** Titles saved with a mark in this visit. */
     added,
     /** Opens Catch-up for a new visit; what it shows stays as it was left. */
@@ -303,7 +292,7 @@ export function useCatchUp(deps: CatchUpDeps) {
     cycle: (id: number) => change((b) => cycleMark(b, id)),
     mark: (id: number, mark: CatchUpMark | null) => change((b) => setMark(b, id, mark)),
     saveAndNext,
-    retryWrites: () => queue.current?.retry(),
+    retryWrites: () => deps.queue?.retryStatuses(),
     clearPassed,
     close,
   }

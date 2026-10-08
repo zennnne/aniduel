@@ -1,7 +1,7 @@
 // Catch-up's entry on Start (#52): when the mochi asks for more titles, and what its sign says.
 import { describe, expect, it } from 'vitest'
 import type { ListStatus } from '../anilist/types.ts'
-import type { WriteStatus } from '../import/runner.ts'
+import type { WriteStatus } from '../writes/writeQueue.ts'
 import { isNearEmpty, startSign } from './entry.ts'
 import type { QueueSnapshot } from './queue.ts'
 
@@ -24,7 +24,7 @@ describe('a near-empty list', () => {
 /** A queue snapshot whose writes have these statuses. */
 function queueOf(running: boolean, ...statuses: WriteStatus[]): QueueSnapshot {
   const writes = statuses.map((status, i) => ({ mediaId: i + 1, listStatus: 'COMPLETED' as const, name: `Title ${i + 1}`, status }))
-  return { state: { hash: 'catch-up', format: 'POINT_100', writes }, running, status: null }
+  return { state: { writes }, running, status: null }
 }
 const NOTHING_SAVED: QueueSnapshot = { state: null, running: false, status: null }
 
