@@ -15,6 +15,7 @@ export type CatchUpWeights = {
   tags: number
 }
 
+/** Locked by the holdout eval (#44): 55% of hidden titles in the top 20, against 24% for popularity alone. */
 export const DEFAULT_WEIGHTS: Readonly<CatchUpWeights> = {
   relations: 0.45,
   recommendations: 0.3,
