@@ -39,10 +39,12 @@ import { goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { aniListCandidateSource } from '../catchup/candidatePool.ts'
+import { createPassedStore } from '../catchup/passed.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
 import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
 import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
+import { ClearPassedDialog } from './catchup/ClearPassedDialog.tsx'
 import { ExitOfferButton } from './catchup/ExitOfferButton.tsx'
 import { useCatchUp } from './catchup/useCatchUp.ts'
 import { BoardScreen } from './board/BoardScreen.tsx'
@@ -77,7 +79,7 @@ import { useDuelLog } from './useDuelLog.ts'
 type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import' | 'catchup'
 const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import', 'catchup']
 
-type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking'
+type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed'
 
 const TOAST_MS = 4000
 
@@ -192,8 +194,11 @@ export function App() {
       }),
   })
 
+  const viewerId = viewer?.id ?? null
+  const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(localStorage, viewerId)), [viewerId])
   const catchUp = useCatchUp({
     storage: localStorage,
+    passedStore,
     gateway: writeGateway,
     source: candidateSource,
     viewer,
@@ -673,9 +678,10 @@ export function App() {
   }
 
   const hasProgress = Boolean(log) || savedBroken
+  const passedHidden = passedStore?.hiddenCount(Date.now()) ?? 0
   const menuItems = viewer
     ? buildMenuItems(
-        { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers },
+        { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers, passedHidden },
         {
           switchMediaType: (type) => {
             switchMediaType(type)
@@ -699,6 +705,7 @@ export function App() {
           logout: () => setDialog('logout'),
           switchSortGoal: requestSortGoal,
           openCatchUp,
+          clearPassed: () => setDialog('clear-passed'),
         },
       )
     : []
@@ -990,6 +997,17 @@ export function App() {
           onConfirm={() => {
             setDialog(null)
             applySortGoal('full-ranking')
+          }}
+        />
+      )}
+      {dialog === 'clear-passed' && (
+        <ClearPassedDialog
+          hidden={passedHidden}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            catchUp.clearPassed()
+            showToast('Catch-up’s Passed list is cleared')
           }}
         />
       )}
