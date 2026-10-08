@@ -222,7 +222,7 @@ export function CatchUpScreen(props: {
             <span className="cu-dot c" />
             {counts.completed} Completed <span className="cu-dot d" />
             {counts.dropped} Dropped <span className="cu-dot p" />
-            {counts.planning} Planning <span className="cu-pass">· {counts.passed} Passed</span>
+            {counts.planning} Planning <span className="cu-pass">· {counts.passed} Passed (hidden 30 days)</span>
           </span>
           <span className="grow" />
           <button className="go" onClick={props.onSave}>

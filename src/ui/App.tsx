@@ -39,9 +39,14 @@ import { goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { aniListCandidateSource } from '../catchup/candidatePool.ts'
+import { createPassedStore } from '../catchup/passed.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
+import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
+import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
 import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
 import { StartingEraChip, StartingEraQuestion } from './catchup/StartingEraQuestion.tsx'
+import { ClearPassedDialog } from './catchup/ClearPassedDialog.tsx'
+import { ExitOfferButton } from './catchup/ExitOfferButton.tsx'
 import { useCatchUp } from './catchup/useCatchUp.ts'
 import { BoardScreen } from './board/BoardScreen.tsx'
 import { lastCheckDue } from './board/lastCheck.ts'
@@ -75,7 +80,7 @@ import { useDuelLog } from './useDuelLog.ts'
 type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import' | 'catchup'
 const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import', 'catchup']
 
-type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking'
+type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed'
 
 const TOAST_MS = 4000
 
@@ -190,8 +195,11 @@ export function App() {
       }),
   })
 
+  const viewerId = viewer?.id ?? null
+  const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(localStorage, viewerId)), [viewerId])
   const catchUp = useCatchUp({
     storage: localStorage,
+    passedStore,
     gateway: writeGateway,
     source: candidateSource,
     viewer,
@@ -655,16 +663,26 @@ export function App() {
     if (!openRanking({ userId: viewer.id, mediaType: type }, inRankingNow) && inRankingNow) goTo('start')
   }
 
-  /** Catch-up, from the menu (and later Start): anime only, whichever Ranking is open. */
+  /** Catch-up, from the menu or the mochi on Start: anime only, whichever Ranking is open. */
   function openCatchUp() {
     if (screen !== 'catchup') goTo('catchup')
     catchUp.open()
   }
 
+  /** Leaving Catch-up through its exit offer: back to Start on anime, to pick a Sort Goal and rank. */
+  function takeExitOffer(offer: ExitOffer) {
+    switch (offer.target) {
+      case 'sort-goal':
+        switchMediaType('ANIME')
+        goTo('start')
+    }
+  }
+
   const hasProgress = Boolean(log) || savedBroken
+  const passedHidden = passedStore?.hiddenCount(Date.now()) ?? 0
   const menuItems = viewer
     ? buildMenuItems(
-        { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers },
+        { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers, passedHidden },
         {
           switchMediaType: (type) => {
             switchMediaType(type)
@@ -688,6 +706,7 @@ export function App() {
           logout: () => setDialog('logout'),
           switchSortGoal: requestSortGoal,
           openCatchUp,
+          clearPassed: () => setDialog('clear-passed'),
         },
       )
     : []
@@ -719,8 +738,15 @@ export function App() {
         onLogout: () => setDialog('logout'),
         onStartRoughSort: savedBroken ? undefined : startOrContinue,
         onRestore: () => setDialog('restore'),
+        catchUp: {
+          sign: startSign(mediaType, catchUp.queue),
+          watched: mediaType === 'ANIME' && list ? watchedCount(list) : null,
+          nearEmpty: mediaType === 'ANIME' && list ? isNearEmpty(list) : false,
+          onOpen: openCatchUp,
+        },
       }
     : null
+  const offer = exitOffer({ added: catchUp.added })
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
@@ -899,6 +925,7 @@ export function App() {
           onMark={catchUp.mark}
           onSave={catchUp.saveAndNext}
           onRetryWrites={catchUp.retryWrites}
+          headerAction={offer && <ExitOfferButton offer={offer} onTake={takeExitOffer} />}
         />
       ) : inRanking && inImport ? (
         <ImportScreen
@@ -986,6 +1013,17 @@ export function App() {
           onConfirm={() => {
             setDialog(null)
             applySortGoal('full-ranking')
+          }}
+        />
+      )}
+      {dialog === 'clear-passed' && (
+        <ClearPassedDialog
+          hidden={passedHidden}
+          onCancel={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            catchUp.clearPassed()
+            showToast('Catch-up’s Passed list is cleared')
           }}
         />
       )}

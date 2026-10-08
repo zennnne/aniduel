@@ -19,7 +19,7 @@ import {
   startingEraYears,
   type StartingEraAnswer,
 } from '../../catchup/startingEra.ts'
-import { isColdStart } from '../../catchup/suggest.ts'
+import { isNearEmpty } from '../../catchup/entry.ts'
 import type { CatchUpMedia } from '../../anilist/candidates.ts'
 import { browserClock } from '../../import/runner.ts'
 import { displayTitle } from '../../pool/pool.ts'
@@ -46,6 +46,7 @@ export type CatchUpView =
 export type PassedStore = {
   history(): ReadonlyMap<number, number>
   record(ids: readonly number[], at: number): void
+  clear(): void
 }
 
 export type CatchUpDeps = {
@@ -74,6 +75,8 @@ function newSeed(): number {
 export function useCatchUp(deps: CatchUpDeps) {
   const [view, setView] = useState<CatchUpView>({ phase: 'idle' })
   const [queueSnapshot, setQueueSnapshot] = useState<QueueSnapshot>({ state: null, running: false, status: null })
+  // Titles saved with a mark since Catch-up was last opened: the exit offer shows once there is one (#52).
+  const [added, setAdded] = useState(0)
   const queue = useRef<CatchUpQueue | null>(null)
   // The visit's working data: the list as Catch-up knows it (marked titles included), what is loaded about anime,
   // titles shown in this visit, and the pool update in flight.
@@ -124,7 +127,7 @@ export function useCatchUp(deps: CatchUpDeps) {
   /** The Starting era's years for the suggestions; they use it only while the list is near empty. */
   const startingEra = () => startingEraYears(eraStore()?.answer() ?? null)
   /** What the pool loads popular titles for: the Starting era while the list is near empty, else the list's own era. */
-  const poolEra = (list: readonly CatchUpEntry[]) => (isColdStart(list) ? startingEra() : undefined)
+  const poolEra = (list: readonly CatchUpEntry[]) => (isNearEmpty(list) ? startingEra() : undefined)
 
   /** Shows the Starting era question, with all-time favourites loading for its covers. */
   function askStartingEra() {
@@ -162,7 +165,7 @@ export function useCatchUp(deps: CatchUpDeps) {
       // Titles marked earlier whose writes haven't reached AniList yet are on the list all the same.
       const queued = queue.current?.snapshot().state?.writes ?? []
       // A near-empty list first asks roughly when the user started watching, once.
-      if (isColdStart(withQueuedWrites(read, queued, [])) && eraStore()?.answer() === undefined) {
+      if (isNearEmpty(withQueuedWrites(read, queued, [])) && eraStore()?.answer() === undefined) {
         unanswered.current = { read, queued }
         askStartingEra()
         return
@@ -235,6 +238,7 @@ export function useCatchUp(deps: CatchUpDeps) {
     const language = deps.viewer.titleLanguage
     const names = new Map(view.batch.suggestions.map((s) => [s.media.id, displayTitle(s.media.title, language)]))
     queue.current?.add(saved.writes.map((w) => ({ ...w, name: names.get(w.mediaId) ?? `Title #${w.mediaId}` })))
+    setAdded((n) => n + saved.writes.length)
     deps.passedStore?.record(saved.passed, now)
     current.list = saved.list
     current.history = saved.history
@@ -254,6 +258,12 @@ export function useCatchUp(deps: CatchUpDeps) {
     )
   }
 
+  /** Clear Passed: titles Passed before, in earlier visits or this one, may be suggested from the next batch. */
+  function clearPassed() {
+    deps.passedStore?.clear()
+    if (session.current) session.current.history = new Map()
+  }
+
   /** Logout: the queue stops and lets go of what it saved, before the user's progress is deleted. */
   function close() {
     queue.current?.stop()
@@ -263,10 +273,11 @@ export function useCatchUp(deps: CatchUpDeps) {
     popular.current = null
     setView({ phase: 'idle' })
     setQueueSnapshot({ state: null, running: false, status: null })
+    setAdded(0)
   }
 
   // The era chip beside "Batch N": while the list is near empty, the Starting era can be changed.
-  const answer = view.phase === 'ready' && session.current && isColdStart(session.current.list) ? eraStore()?.answer() : undefined
+  const answer = view.phase === 'ready' && session.current && isNearEmpty(session.current.list) ? eraStore()?.answer() : undefined
 
   /** The era chip: asks the Starting era again; the answer replaces the batch on screen, keeping its number. */
   function changeStartingEra() {
@@ -282,11 +293,18 @@ export function useCatchUp(deps: CatchUpDeps) {
     changeStartingEra,
     answerStartingEra: (answer: StartingEraAnswer) => void answerStartingEra(answer),
     queue: queueSnapshot,
-    open: () => void open(),
+    /** Titles saved with a mark in this visit. */
+    added,
+    /** Opens Catch-up for a new visit; what it shows stays as it was left. */
+    open: () => {
+      setAdded(0)
+      void open()
+    },
     cycle: (id: number) => change((b) => cycleMark(b, id)),
     mark: (id: number, mark: CatchUpMark | null) => change((b) => setMark(b, id, mark)),
     saveAndNext,
     retryWrites: () => queue.current?.retry(),
+    clearPassed,
     close,
   }
 }
