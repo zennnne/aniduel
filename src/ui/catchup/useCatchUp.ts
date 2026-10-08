@@ -61,6 +61,8 @@ function newSeed(): number {
 export function useCatchUp(deps: CatchUpDeps) {
   const [view, setView] = useState<CatchUpView>({ phase: 'idle' })
   const [queueSnapshot, setQueueSnapshot] = useState<QueueSnapshot>({ state: null, running: false, status: null })
+  // Titles saved with a mark since Catch-up was last opened: the exit offer shows once there is one (#52).
+  const [added, setAdded] = useState(0)
   const queue = useRef<CatchUpQueue | null>(null)
   // The visit's working data: the list as Catch-up knows it (marked titles included), what is loaded about anime,
   // titles shown in this visit, and the pool update in flight.
@@ -153,6 +155,7 @@ export function useCatchUp(deps: CatchUpDeps) {
     const language = deps.viewer.titleLanguage
     const names = new Map(view.batch.suggestions.map((s) => [s.media.id, displayTitle(s.media.title, language)]))
     queue.current?.add(saved.writes.map((w) => ({ ...w, name: names.get(w.mediaId) ?? `Title #${w.mediaId}` })))
+    setAdded((n) => n + saved.writes.length)
     deps.passedStore?.record(saved.passed, now)
     current.list = saved.list
     current.history = saved.history
@@ -179,12 +182,19 @@ export function useCatchUp(deps: CatchUpDeps) {
     session.current = null
     setView({ phase: 'idle' })
     setQueueSnapshot({ state: null, running: false, status: null })
+    setAdded(0)
   }
 
   return {
     view,
     queue: queueSnapshot,
-    open: () => void open(),
+    /** Titles saved with a mark in this visit. */
+    added,
+    /** Opens Catch-up for a new visit; what it shows stays as it was left. */
+    open: () => {
+      setAdded(0)
+      void open()
+    },
     cycle: (id: number) => change((b) => cycleMark(b, id)),
     mark: (id: number, mark: CatchUpMark | null) => change((b) => setMark(b, id, mark)),
     saveAndNext,

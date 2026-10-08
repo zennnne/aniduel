@@ -8,6 +8,7 @@ import { Kao } from '../Kao.tsx'
 import { MEDIA_LABEL, pluralWord } from '../meta.ts'
 import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import './start.css'
+import { StartMochi, type StartCatchUp } from './StartMochi.tsx'
 import { statusLabel } from './statusLabel.ts'
 
 
@@ -43,6 +44,8 @@ export type PoolForm = {
   extraDuels: number | null
   /** Opens Restore from Backup (e.g. on a new browser). */
   onRestore?: () => void
+  /** Catch-up's entry: the mochi over the card's corner (#52). */
+  catchUp?: StartCatchUp
 }
 
 /** Start = "Hero split" (issue #4): a cover collage on the left, one card on the right that holds login, then the Pool form. */
@@ -79,19 +82,22 @@ export function StartScreen(props: {
         </div>
       </div>
       <div className="r">
-        <div className="panel">
-          {form ? (
-            <PoolSetup {...form} />
-          ) : (
-            <>
-              <div className="h1">AniDuel!</div>
-              <p>Score your AniList by picking the better of two, again and again.</p>
-              <button className="go" onClick={onLogin} disabled={loggingIn}>
-                <span className="almark">A</span> {loggingIn ? 'Loading…' : 'Log in with AniList'}
-              </button>
-              <Reassure />
-            </>
-          )}
+        <div className="pwrap">
+          <div className="panel">
+            {form ? (
+              <PoolSetup {...form} />
+            ) : (
+              <>
+                <div className="h1">AniDuel!</div>
+                <p>Score your AniList by picking the better of two, again and again.</p>
+                <button className="go" onClick={onLogin} disabled={loggingIn}>
+                  <span className="almark">A</span> {loggingIn ? 'Loading…' : 'Log in with AniList'}
+                </button>
+                <Reassure />
+              </>
+            )}
+          </div>
+          {form?.catchUp && <StartMochi {...form.catchUp} />}
         </div>
       </div>
     </div>

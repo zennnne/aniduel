@@ -40,7 +40,10 @@ import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { aniListCandidateSource } from '../catchup/candidatePool.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
+import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
+import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
 import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
+import { ExitOfferButton } from './catchup/ExitOfferButton.tsx'
 import { useCatchUp } from './catchup/useCatchUp.ts'
 import { BoardScreen } from './board/BoardScreen.tsx'
 import { lastCheckDue } from './board/lastCheck.ts'
@@ -654,10 +657,19 @@ export function App() {
     if (!openRanking({ userId: viewer.id, mediaType: type }, inRankingNow) && inRankingNow) goTo('start')
   }
 
-  /** Catch-up, from the menu (and later Start): anime only, whichever Ranking is open. */
+  /** Catch-up, from the menu or the mochi on Start: anime only, whichever Ranking is open. */
   function openCatchUp() {
     if (screen !== 'catchup') goTo('catchup')
     catchUp.open()
+  }
+
+  /** Leaving Catch-up through its exit offer: back to Start on anime, to pick a Sort Goal and rank. */
+  function takeExitOffer(offer: ExitOffer) {
+    switch (offer.target) {
+      case 'sort-goal':
+        switchMediaType('ANIME')
+        goTo('start')
+    }
   }
 
   const hasProgress = Boolean(log) || savedBroken
@@ -718,8 +730,15 @@ export function App() {
         onLogout: () => setDialog('logout'),
         onStartRoughSort: savedBroken ? undefined : startOrContinue,
         onRestore: () => setDialog('restore'),
+        catchUp: {
+          sign: startSign(mediaType, catchUp.queue),
+          watched: mediaType === 'ANIME' && list ? watchedCount(list) : null,
+          nearEmpty: mediaType === 'ANIME' && list ? isNearEmpty(list) : false,
+          onOpen: openCatchUp,
+        },
       }
     : null
+  const offer = exitOffer({ added: catchUp.added })
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
@@ -883,6 +902,7 @@ export function App() {
           onMark={catchUp.mark}
           onSave={catchUp.saveAndNext}
           onRetryWrites={catchUp.retryWrites}
+          headerAction={offer && <ExitOfferButton offer={offer} onTake={takeExitOffer} />}
         />
       ) : inRanking && inImport ? (
         <ImportScreen
