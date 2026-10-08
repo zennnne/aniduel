@@ -33,3 +33,7 @@ Spike: 200 titles, Linear 10..3, 20–40 runs each, with and without 30% ties. T
 
 - A user on the Scores goal who later changes best/worst or the Distribution pays about 50–120 Refine Duels before those titles can be imported. Full Ranking never pays this.
 - Without a Sub-band split, a lopsided Band only reaches 27–30%, right at the bar. The split offer matters more under Scores.
+
+## Amendment (V3): the default depends on Pool size
+
+The default is now **Full Ranking when the Pool has fewer than 100 titles**, and Scores from 100 up. Below 100 a full sort costs few enough Duels that the extra order is worth it. The default follows the Pool size on Start as the statuses change, until the user picks a Sort Goal themselves. A third Sort Goal, Score New Titles, is added in ADR 0009; it is never the default.

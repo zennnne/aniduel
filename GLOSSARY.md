@@ -33,7 +33,7 @@ A Duel asked under the Scores Sort Goal because something moved a level boundary
 _Avoid_: Re-duel, extra Duel
 
 **Settled**:
-A title is settled when more Duels can no longer change its score under the current settings. Under Scores, only settled titles can be ticked and imported.
+A title is settled when more Duels can no longer change its score under the current settings. Under Scores and Score New Titles, only settled titles can be ticked and imported.
 _Avoid_: Final, locked, done
 
 **Ranking**:
@@ -73,7 +73,7 @@ The smallest gap between the scores a title can get: every level of the Score Fo
 _Avoid_: Precision, rounding, granularity
 
 **Sort Goal**:
-How far the Duels go, chosen by the user: Scores (the default) stops once every title's score is settled, so titles with the same score have no order among themselves; Full Ranking keeps going until every title has its own place. The user can switch either way at any time without losing answers.
+What the Duels aim for, chosen by the user. Scores stops once every title's score is settled, so titles with the same score have no order among themselves; Full Ranking keeps going until every title has its own place. The two share one Pool and the user can switch between them at any time without losing answers. Score New Titles scores only titles without a score, by Duels against Anchors, and can only be chosen when a Ranking starts.
 _Avoid_: Mode, fast mode, quick mode
 
 **Preview**:
@@ -91,6 +91,22 @@ _Avoid_: Export, sync, upload
 **Backup**:
 A file holding one Ranking's Duel log and settings, which the user can Restore in another browser.
 _Avoid_: Export, progress file, save file
+
+**Anchor**:
+A title in the user's list, of any status, that already has an AniList score, used as a fixed reference point when scoring unscored titles. Its score is never changed.
+_Avoid_: Reference, benchmark, scored title
+
+**Suspect Anchor**:
+An Anchor whose Duel results have contradicted its own score at least twice. It stops being used as a reference, and its score is still left untouched.
+_Avoid_: Wrong anchor, outlier
+
+**Catch-up**:
+The screen where a user adds titles they have already seen to their AniList list, a batch of suggestions at a time, by marking each one Completed, Dropped or Planning.
+_Avoid_: Onboarding, quick add, backfill, import
+
+**Passed**:
+A title shown in Catch-up that the user left unmarked. It isn't suggested again for 30 days.
+_Avoid_: Skipped, dismissed, not seen
 
 **Media Type**:
 Anime or Manga. Each Pool, and so each Ranking, contains only one Media Type.
