@@ -31,6 +31,8 @@ export type AniListGateway = {
    * other field of the entry is kept.
    */
   saveScore(mediaId: number, scoreRaw: number): Promise<void>
+  /** Sets one title's list status with `SaveMediaListEntry`, adding the title if it isn't on the list yet. */
+  saveStatus(mediaId: number, status: ListStatus): Promise<void>
   /** Rate-limit headers from the most recent response. */
   rateLimit(): RateLimit
 }
@@ -71,6 +73,12 @@ const MEDIA_LIST_QUERY = `query ($userId: Int, $type: MediaType, $statusIn: [Med
 
 const SAVE_SCORE_MUTATION = `mutation ($mediaId: Int, $scoreRaw: Int) {
   SaveMediaListEntry(mediaId: $mediaId, scoreRaw: $scoreRaw) {
+    mediaId
+  }
+}`
+
+const SAVE_STATUS_MUTATION = `mutation ($mediaId: Int, $status: MediaListStatus) {
+  SaveMediaListEntry(mediaId: $mediaId, status: $status) {
     mediaId
   }
 }`
@@ -242,6 +250,10 @@ export function createAniListGateway(deps: { fetch: typeof fetch; token: string 
 
     async saveScore(mediaId, scoreRaw) {
       await authed<{ SaveMediaListEntry: { mediaId: number } }>(SAVE_SCORE_MUTATION, { mediaId, scoreRaw })
+    },
+
+    async saveStatus(mediaId, status) {
+      await authed<{ SaveMediaListEntry: { mediaId: number } }>(SAVE_STATUS_MUTATION, { mediaId, status })
     },
 
     rateLimit: () => lastRateLimit,
