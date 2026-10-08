@@ -19,6 +19,11 @@ export function progressStorageKey({ userId, mediaType, part }: ProgressKey): st
   return `${userPrefix(userId)}${mediaType}/${part}`
 }
 
+/** A part saved under the user's anime progress (Catch-up is anime only), so logout deletes it with the rest. */
+export function animeProgressKey(userId: number, part: string): ProgressKey {
+  return { userId, mediaType: 'ANIME', part }
+}
+
 export function saveProgressPart(storage: Storage, key: ProgressKey, value: string): void {
   storage.setItem(progressStorageKey(key), value)
 }
@@ -136,8 +141,7 @@ const CATCH_UP_QUEUE_PART = 'catchup-queue'
 /** A Catch-up status write, with the title's name for the failure bar. */
 export type NamedStatusWrite = StatusWrite & { name: string }
 
-/** Catch-up is anime only, so its write queue is saved under the user's anime progress. */
-const catchUpKey = (userId: number) => ({ userId, mediaType: 'ANIME' as const, part: CATCH_UP_QUEUE_PART })
+const catchUpKey = (userId: number) => animeProgressKey(userId, CATCH_UP_QUEUE_PART)
 
 /** Saves Catch-up's write queue (every saved page's status writes). Called after every write. */
 export function saveCatchUpQueue(storage: Storage, userId: number, state: ImportState<NamedStatusWrite>): void {

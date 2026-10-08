@@ -1,4 +1,4 @@
-// Catch-up candidate pool: what is known about the anime the suggestions choose from. It grows as the user's list
+// Catch-up suggestion candidates: what is known about the anime the suggestions choose from. It grows as the user's list
 // grows: the watched titles (seeds), one hop of their relations and recommendations, and popular titles from the
 // user's era. Each update asks AniList only for what it hasn't asked for before.
 import {
@@ -10,9 +10,10 @@ import {
 } from '../anilist/candidates.ts'
 import { AniListError } from '../anilist/gateway.ts'
 import type { ListStatus } from '../anilist/types.ts'
+import { isWatched } from './watched.ts'
 import { DEFAULT_RESET_WAIT_MS, type Clock } from '../import/runner.ts'
 
-/** Where the pool reads anime from: AniList, or a fake in tests. */
+/** Where the suggestion candidates are read anime from: AniList, or a fake in tests. */
 export type CandidateSource = {
   /** Anime by id; ids AniList doesn't return (deleted, adult) are left out. */
   media(ids: readonly number[]): Promise<CatchUpMedia[]>
@@ -20,7 +21,7 @@ export type CandidateSource = {
   popular(era: Era | null): Promise<CatchUpMedia[]>
 }
 
-export type PoolLimits = {
+export type CandidateLimits = {
   /** Watched titles loaded per update; the rest follow on later updates. */
   seeds: number
   /** Relation and recommendation targets loaded per update, the most likely first. */
@@ -28,34 +29,34 @@ export type PoolLimits = {
 }
 
 /** About 20 requests for a first visit: 10 of seeds, 8 of neighbours, 2 of popular titles. */
-export const DEFAULT_LIMITS: Readonly<PoolLimits> = { seeds: 500, neighbours: 400 }
+export const DEFAULT_LIMITS: Readonly<CandidateLimits> = { seeds: 500, neighbours: 400 }
 
 /** A relation target counts as this many recommendation votes (log scale) when choosing what to load. */
 const RELATION_PRIORITY = 100
 
-type PoolEntry = { mediaId: number; status: ListStatus; year: number | null }
+type ListedEntry = { mediaId: number; status: ListStatus; year: number | null }
 
 /** The years the middle 80% of the watched titles started in, or null if none has a year. */
-export function eraYears(list: readonly PoolEntry[]): Era | null {
+export function eraYears(list: readonly ListedEntry[]): Era | null {
   const years = list
-    .filter((e) => e.status !== 'PLANNING' && e.year !== null)
+    .filter((e) => isWatched(e) && e.year !== null)
     .map((e) => e.year!)
     .sort((a, b) => a - b)
   if (years.length === 0) return null
   return { from: years[Math.floor(years.length * 0.1)], to: years[Math.ceil(years.length * 0.9) - 1] }
 }
 
-export type CandidatePool = {
+export type SuggestionCandidates = {
   /**
    * Loads what the list now calls for: watched titles not loaded yet, their neighbours, and popular titles when the
    * era changed. `era` overrides the era read from the list (the Starting era, for a near-empty list).
    */
-  update(list: readonly PoolEntry[], era?: Era | null): Promise<void>
+  update(list: readonly ListedEntry[], era?: Era | null): Promise<void>
   /** Everything loaded so far: seeds and candidates alike, as the suggestion module takes them. */
   media(): CatchUpMedia[]
 }
 
-export function createCandidatePool(source: CandidateSource, limits: PoolLimits = DEFAULT_LIMITS): CandidatePool {
+export function createSuggestionCandidates(source: CandidateSource, limits: CandidateLimits = DEFAULT_LIMITS): SuggestionCandidates {
   const known = new Map<number, CatchUpMedia>()
   const asked = new Set<number>()
   let popularFor: string | null = null
@@ -69,7 +70,7 @@ export function createCandidatePool(source: CandidateSource, limits: PoolLimits 
   return {
     async update(list, eraOverride) {
       const listed = new Set(list.map((e) => e.mediaId))
-      const watched = list.filter((e) => e.status !== 'PLANNING').map((e) => e.mediaId)
+      const watched = list.filter(isWatched).map((e) => e.mediaId)
       await load(watched.filter((id) => !asked.has(id)).slice(0, limits.seeds))
 
       const era = eraOverride !== undefined ? eraOverride : eraYears(list)
@@ -123,7 +124,7 @@ export async function retryRateLimited<T>(
 /** Pages of 50 popular titles loaded for the era. */
 const POPULAR_PAGES = 2
 
-/** The pool's reads from AniList, 50 ids a request, each request waiting out the rate limit. */
+/** The suggestion candidates' reads from AniList, 50 ids a request, each request waiting out the rate limit. */
 export function aniListCandidateSource(deps: { fetch: typeof fetch; token: string; clock: Clock }): CandidateSource {
   let resetAt: number | null = null
   const read = { fetch: deps.fetch, token: deps.token, onRateLimit: (r: { resetAt: number | null }) => (resetAt = r.resetAt) }

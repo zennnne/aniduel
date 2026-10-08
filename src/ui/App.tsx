@@ -38,7 +38,7 @@ import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/sc
 import { goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
-import { aniListCandidateSource } from '../catchup/candidatePool.ts'
+import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
 import { createPassedStore } from '../catchup/passed.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
@@ -679,7 +679,7 @@ export function App() {
   }
 
   const hasProgress = Boolean(log) || savedBroken
-  const passedHidden = passedStore?.hiddenCount(Date.now()) ?? 0
+  const passedHidden = passedStore?.hiddenCount(browserClock.now()) ?? 0
   const menuItems = viewer
     ? buildMenuItems(
         { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers, passedHidden },

@@ -3,8 +3,9 @@
 import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
 import type { ListEntry } from '../anilist/types.ts'
 import { isNearEmpty } from './entry.ts'
+import { isWatched } from './watched.ts'
 
-/** How much each signal counts in a candidate's strength. Placeholders until the holdout eval locks them. */
+/** How much each signal counts in a candidate's strength. */
 export type CatchUpWeights = {
   /** Sequel, prequel and other relation links to watched titles. */
   relations: number
@@ -154,7 +155,7 @@ function random(seed: number): () => number {
 export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
   const weights = input.weights ?? DEFAULT_WEIGHTS
   const listed = new Set(input.list.map((e) => e.mediaId))
-  const watched = new Set(input.list.filter((e) => e.status !== 'PLANNING').map((e) => e.mediaId))
+  const watched = new Set(input.list.filter(isWatched).map((e) => e.mediaId))
   const hidden = (id: number) => {
     const at = input.passed.get(id)
     return at !== undefined && input.now - at < PASSED_HIDE_MS

@@ -11,7 +11,7 @@ import {
   type CatchUpEntry,
   type CatchUpMark,
 } from '../../catchup/batch.ts'
-import { createCandidatePool, type CandidatePool, type CandidateSource } from '../../catchup/candidatePool.ts'
+import { createSuggestionCandidates, type SuggestionCandidates, type CandidateSource } from '../../catchup/suggestionCandidates.ts'
 import { createCatchUpQueue, type CatchUpQueue, type QueueSnapshot } from '../../catchup/queue.ts'
 import {
   createStartingEraStore,
@@ -53,7 +53,7 @@ export type CatchUpDeps = {
   storage: Storage
   /** Writes go through the shared write lane, so Import and Catch-up keep to one rate limit together. */
   gateway: AniListGateway | null
-  /** Reads of anime for the candidate pool. */
+  /** Reads of anime for the suggestion candidates. */
   source: CandidateSource | null
   viewer: Viewer | null
   passedStore?: PassedStore
@@ -69,7 +69,7 @@ function newSeed(): number {
 }
 
 /**
- * Catch-up (#49): the batch on screen and its marks, the candidate pool behind it, and the background write queue.
+ * Catch-up (#49): the batch on screen and its marks, the suggestion candidates behind it, and the background write queue.
  * Lives at App level, so the queue keeps writing (and resumes after a reload) whichever screen shows.
  */
 export function useCatchUp(deps: CatchUpDeps) {
@@ -79,10 +79,10 @@ export function useCatchUp(deps: CatchUpDeps) {
   const [added, setAdded] = useState(0)
   const queue = useRef<CatchUpQueue | null>(null)
   // The visit's working data: the list as Catch-up knows it (marked titles included), what is loaded about anime,
-  // titles shown in this visit, and the pool update in flight.
+  // titles shown in this visit, and the candidates update in flight.
   const session = useRef<{
     list: CatchUpEntry[]
-    pool: CandidatePool
+    candidates: SuggestionCandidates
     history: ReadonlyMap<number, number>
     updating: Promise<void>
   } | null>(null)
@@ -126,8 +126,8 @@ export function useCatchUp(deps: CatchUpDeps) {
   const eraStore = () => (deps.viewer ? createStartingEraStore(deps.storage, deps.viewer.id) : null)
   /** The Starting era's years for the suggestions; they use it only while the list is near empty. */
   const startingEra = () => startingEraYears(eraStore()?.answer() ?? null)
-  /** What the pool loads popular titles for: the Starting era while the list is near empty, else the list's own era. */
-  const poolEra = (list: readonly CatchUpEntry[]) => (isNearEmpty(list) ? startingEra() : undefined)
+  /** What the suggestion candidates load popular titles for: the Starting era while the list is near empty, else the list's own era. */
+  const candidatesEra = (list: readonly CatchUpEntry[]) => (isNearEmpty(list) ? startingEra() : undefined)
 
   /** Shows the Starting era question, with all-time favourites loading for its covers. */
   function askStartingEra() {
@@ -179,19 +179,19 @@ export function useCatchUp(deps: CatchUpDeps) {
   /** Loads the candidates for the list and shows the first batch. */
   async function start(read: CatchUpEntry[], queued: Parameters<typeof withQueuedWrites>[1]) {
     if (!deps.source) return
-    const pool = createCandidatePool(deps.source)
+    const candidates = createSuggestionCandidates(deps.source)
     const known = withQueuedWrites(read, queued, [])
-    const updating = pool.update(known, poolEra(known))
-    session.current = { list: read, pool, history: new Map(), updating }
+    const updating = candidates.update(known, candidatesEra(known))
+    session.current = { list: read, candidates, history: new Map(), updating }
     await updating
-    if (session.current?.pool !== pool) return // logged out meanwhile
-    const list = withQueuedWrites(read, queued, pool.media())
+    if (session.current?.candidates !== candidates) return // logged out meanwhile
+    const list = withQueuedWrites(read, queued, candidates.media())
     session.current.list = list
     setView({ phase: 'ready', batch: firstBatch({ ...batchInput(list), seed: newSeed() }) })
   }
 
   function batchInput(list: readonly CatchUpEntry[]) {
-    const media = session.current?.pool.media() ?? []
+    const media = session.current?.candidates.media() ?? []
     return { list, media, passed: passed(), now: browserClock.now(), startingEra: startingEra() }
   }
 
@@ -211,7 +211,7 @@ export function useCatchUp(deps: CatchUpDeps) {
         if (pending) await start(pending.read, pending.queued)
         return
       }
-      const updating = current.updating.then(() => current.pool.update(current.list, poolEra(current.list)))
+      const updating = current.updating.then(() => current.candidates.update(current.list, candidatesEra(current.list)))
       current.updating = updating.catch(() => {})
       await updating
       if (session.current !== current) return
@@ -228,7 +228,7 @@ export function useCatchUp(deps: CatchUpDeps) {
 
   /**
    * "Save & next 20": the marks join the write queue, the next batch shows at once from what is already loaded, and the
-   * pool loads what the newly marked titles point at, for the batches after it.
+   * suggestion candidates load what the newly marked titles point at, for the batches after it.
    */
   function saveAndNext() {
     const current = session.current
@@ -242,7 +242,7 @@ export function useCatchUp(deps: CatchUpDeps) {
     deps.passedStore?.record(saved.passed, now)
     current.list = saved.list
     current.history = saved.history
-    current.updating = current.updating.then(() => current.pool.update(saved.list, poolEra(saved.list))).catch(() => {})
+    current.updating = current.updating.then(() => current.candidates.update(saved.list, candidatesEra(saved.list))).catch(() => {})
     setView({ phase: 'ready', batch: saved.next })
     // Nothing left in what is loaded: the batch fills once the titles just marked have brought their neighbours.
     if (saved.next.suggestions.length === 0) void current.updating.then(() => refill(current, saved.next.number))
