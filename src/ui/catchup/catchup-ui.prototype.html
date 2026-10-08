@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PROTOTYPE — Catch-up (#42)</title>
+<style>
+:root {
+  --bg: #edf1f5; --fg: #fafafa; --fg2: #e5ebf1; --tx: #5c728a; --tx-strong: #2b2d42;
+  --blue: #3db4f2; --nav: #2b2d42; --on-accent: #fff; --shadow: #0002; --danger: #e05555;
+  --band-loved: #ffb3c8; --band-liked: #ffe08a; --band-ink: #4a3b52;
+  --mochi: #ffb3c8; --mochi-cheek: #ff7fa3; --critter-line: #4a3b52;
+  --m-completed: #3fae5a; --m-dropped: #e05555; --m-planning: #f2a03d;
+}
+:root[data-theme='dark'] {
+  --bg: #0b1622; --fg: #151f2e; --fg2: #1f2a3c; --tx: #9fadbd; --tx-strong: #edf1f5; --nav: #0b1622;
+  --mochi: #ffa6c0; --critter-line: #2b2d42;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: Overpass, system-ui, 'Segoe UI', sans-serif; background: var(--bg); color: var(--tx); font-size: 14px; overflow: hidden; }
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+.small { font-size: 12px; } .fine { opacity: .7; } .link { color: var(--blue); text-decoration: underline; }
+.kao { white-space: nowrap; padding: 2px 7px; border-radius: 999px; color: var(--band-ink); font-weight: 700; display: inline-block; line-height: 1.4; }
+.go { background: var(--blue); color: var(--on-accent); font-weight: 800; padding: 13px 22px; border-radius: 12px; align-self: flex-start; }
+.go:disabled { opacity: .4; cursor: not-allowed; }
+.screen { display: none; height: 100%; }
+body[data-screen='start'] #start { display: grid; } body[data-screen='catchup'] #catchup { display: flex; }
+
+/* ================= Start (fixed design) ================= */
+#start { grid-template-columns: 1.1fr 1fr; position: relative; }
+.l { position: relative; overflow: hidden; display: flex; align-items: flex-end; padding: 40px; }
+.l::after { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 20%, var(--bg) 95%); }
+.collage { position: absolute; inset: -60px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; transform: rotate(-8deg); opacity: .55; align-content: start; }
+.collage i { aspect-ratio: 2/3; border-radius: 6px; display: block; }
+.hero { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 12px; color: var(--tx-strong); }
+.hero .big { font-size: 40px; font-weight: 900; line-height: 1.05; }
+.r { display: flex; align-items: center; justify-content: center; padding: 30px; }
+.theme-toggle { position: absolute; top: 14px; right: 14px; z-index: 5; padding: 6px 10px; border-radius: 6px; background: var(--fg); font-size: 12px; color: var(--tx-strong); }
+.pwrap { position: relative; width: 100%; max-width: 440px; }
+.panel { position: relative; z-index: 1; background: var(--fg); border-radius: 18px; padding: 26px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 10px 40px var(--shadow); }
+.h2 { font-size: 22px; font-weight: 800; color: var(--tx-strong); }
+.userbar { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--tx-strong); }
+.userbar .link { margin-left: auto; }
+.ava { width: 26px; height: 26px; border-radius: 6px; background: linear-gradient(135deg, var(--blue), #c063ff); }
+.seg { display: inline-flex; background: var(--fg2); border-radius: 10px; padding: 3px; align-self: flex-start; }
+.seg button { padding: 7px 18px; border-radius: 8px; font-weight: 700; }
+.seg button.on { background: var(--blue); color: var(--on-accent); }
+.lab2 { font-size: 12px; opacity: .7; margin-bottom: -6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { padding: 7px 12px; border-radius: 999px; background: var(--fg2); font-size: 13px; }
+.chip.on { background: var(--blue); color: var(--on-accent); font-weight: 700; }
+.chip.off { opacity: .45; font-size: 12px; }
+.chip .cnt { opacity: .7; font-size: 11px; }
+.est { font-size: 15px; color: var(--tx-strong); }
+.est .small { display: block; color: var(--tx); margin-top: 2px; }
+.offer { border: 1px solid var(--fg2); border-radius: 14px; padding: 12px; display: flex; gap: 12px; align-items: center; }
+.sw { width: 38px; height: 22px; border-radius: 999px; background: var(--fg2); position: relative; flex-shrink: 0; }
+.sw::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0004; }
+
+/* ---- the mochi: melts over the card's corner, holds the sign in both paws ---- */
+.ink { stroke: var(--critter-line); stroke-width: 2.4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.inkf { fill: var(--critter-line); }
+.front { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.m { position: absolute; top: -58px; right: -30px; width: 140px; height: 140px; cursor: pointer; pointer-events: auto; transform: scale(.8); transform-origin: 110px 58px; }
+.m svg.body { position: absolute; left: 0; top: 0; transition: transform .2s; transform-origin: 60% 80%; }
+.m:hover svg.body { transform: scale(1.05, .95); }
+body[data-s='thin'] .m svg.body { animation: squish 1.6s ease-in-out infinite; }
+@keyframes squish { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05, .93); } }
+.sign { position: absolute; right: 38px; top: 50px; min-width: 96px; text-align: center; background: var(--fg); color: var(--tx-strong); border: 2px solid var(--band-ink); border-radius: 8px; font-size: 13px; font-weight: 900; padding: 5px 10px; box-shadow: 0 3px 8px #0002; white-space: nowrap; transform: rotate(4deg); overflow: hidden; }
+.sign em { font-style: normal; color: var(--blue); }
+.sign .fill { position: absolute; left: 0; top: 0; bottom: 0; background: color-mix(in srgb, var(--blue) 28%, var(--fg)); transition: width .3s; }
+.sign b { position: relative; }
+.sign.saving b, .sign.failed b { font-size: 11px; }
+.sign.failed { border-color: var(--danger); color: var(--danger); }
+.sign.sleep { color: var(--tx); font-size: 11px; }
+body[data-s='thin'] .sign:not(.sleep) { animation: wiggle 1.2s ease-in-out infinite; }
+@keyframes wiggle { 0%, 100% { transform: rotate(4deg); } 50% { transform: rotate(-5deg); } }
+.paws { position: absolute; right: 48px; top: 45px; z-index: 3; }
+.face { display: none; }
+.m[data-face='ok'] .face.ok, .m[data-face='sad'] .face.sad, .m[data-face='sleep'] .face.sleep { display: inline; }
+.zzz { position: absolute; right: 8px; top: -6px; font-size: 11px; font-weight: 900; color: var(--tx); display: none; animation: float 2s ease-in-out infinite; }
+.m[data-face='sleep'] .zzz { display: block; }
+.m[data-face='sleep'] { cursor: default; }
+@keyframes float { 0%, 100% { transform: translateY(0); opacity: .5; } 50% { transform: translateY(-4px); opacity: 1; } }
+/* speech bubble: right next to the face, tail pointing at the mochi */
+.bubble { position: absolute; right: 142px; top: 4px; background: var(--nav); color: #fff; font-size: 15px; line-height: 1.35; padding: 10px 14px; border-radius: 15px; width: max-content; max-width: 250px; box-shadow: 0 6px 20px #0005; opacity: 0; transform: translateX(4px); transition: .18s; pointer-events: none; }
+.bubble::after { content: ''; position: absolute; right: -9px; top: 16px; border: 9px solid transparent; border-right: 0; border-left-color: var(--nav); }
+:root[data-theme='dark'] .bubble { background: #2b3a52; } :root[data-theme='dark'] .bubble::after { border-left-color: #2b3a52; }
+.m:hover .bubble, body[data-s='thin'] .m:not([data-face='sleep']) .bubble { opacity: 1; transform: none; }
+
+/* ================= Catch-up screen ================= */
+#catchup { flex-direction: column; }
+.cu-top { display: flex; align-items: center; gap: 14px; padding: 14px 24px; background: var(--fg); box-shadow: 0 2px 10px var(--shadow); z-index: 2; }
+.cu-top .back { color: var(--tx-strong); font-weight: 800; }
+.cu-top h1 { font-size: 20px; font-weight: 900; color: var(--tx-strong); }
+.cu-top .batch { font-size: 12px; opacity: .8; }
+.cu-top .qs { margin-left: auto; font-size: 12px; font-weight: 800; display: flex; align-items: center; gap: 8px; }
+.cu-top .qs .bar { width: 90px; height: 6px; border-radius: 3px; background: var(--fg2); overflow: hidden; }
+.cu-top .qs .bar i { display: block; height: 100%; background: var(--blue); transition: width .3s; }
+.failbar { display: none; margin: 10px 24px 0; padding: 9px 12px; border-radius: 10px; background: color-mix(in srgb, var(--danger) 12%, var(--fg)); border: 1px solid var(--danger); color: var(--danger); font-size: 13px; font-weight: 700; align-items: center; gap: 10px; }
+body[data-q='failed'] .failbar { display: flex; }
+.failbar button { margin-left: auto; background: var(--danger); color: #fff; padding: 5px 12px; border-radius: 8px; font-size: 12px; }
+#cuBody { flex: 1; overflow: auto; padding: 18px 24px; min-height: 0; }
+.cu-foot { display: flex; align-items: center; gap: 14px; padding: 12px 24px; background: var(--fg); box-shadow: 0 -2px 10px var(--shadow); }
+.cu-foot .sum { font-size: 13px; color: var(--tx-strong); }
+.cu-foot .sum .pass { color: var(--tx); }
+.cu-foot .go { margin-left: auto; padding: 11px 18px; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin: 0 3px 0 8px; vertical-align: 0; }
+.dot.c { background: var(--m-completed); } .dot.d { background: var(--m-dropped); } .dot.p { background: var(--m-planning); }
+
+.cover { position: relative; aspect-ratio: 2/3; border-radius: 8px; overflow: hidden; display: flex; align-items: flex-end; color: #fff; font-weight: 900; font-size: 12px; line-height: 1.15; padding: 7px; text-shadow: 0 1px 3px #0008; }
+.cover::before { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 50%, #0007); }
+.cover span { position: relative; }
+.meta { font-size: 11px; opacity: .8; }
+.ttl { font-size: 12px; font-weight: 800; color: var(--tx-strong); line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ribbon { position: absolute; top: 8px; left: -2px; padding: 3px 9px 3px 7px; border-radius: 0 999px 999px 0; font-size: 11px; font-weight: 900; color: #fff; text-shadow: none; box-shadow: 0 2px 6px #0004; }
+.ribbon.c { background: var(--m-completed); } .ribbon.d { background: var(--m-dropped); } .ribbon.p { background: var(--m-planning); }
+.marked-c { box-shadow: 0 0 0 3px var(--m-completed); } .marked-d { box-shadow: 0 0 0 3px var(--m-dropped); } .marked-p { box-shadow: 0 0 0 3px var(--m-planning); }
+
+/* V1 grid + buttons */
+.g1 { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 16px; }
+.g1 .card { background: var(--fg); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; box-shadow: 0 2px 8px var(--shadow); }
+.g1 .btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.g1 .btns button { font-size: 10px; font-weight: 800; padding: 5px 0; border-radius: 6px; background: var(--fg2); color: var(--tx-strong); }
+.g1 .btns button.on.c { background: var(--m-completed); color: #fff; } .g1 .btns button.on.d { background: var(--m-dropped); color: #fff; } .g1 .btns button.on.p { background: var(--m-planning); color: #fff; }
+
+/* V2 deck */
+.g2 { display: flex; flex-direction: column; align-items: center; gap: 16px; height: 100%; }
+.g2 .big { width: 230px; position: relative; }
+.g2 .big .cover { font-size: 18px; padding: 14px; border-radius: 14px; box-shadow: 0 14px 40px var(--shadow); }
+.g2 .info { text-align: center; } .g2 .info .ttl { font-size: 18px; } .g2 .info .meta { font-size: 13px; }
+.g2 .acts { display: flex; gap: 8px; }
+.g2 .acts button { padding: 10px 16px; border-radius: 10px; font-weight: 800; color: #fff; }
+.g2 .acts .c { background: var(--m-completed); } .g2 .acts .d { background: var(--m-dropped); } .g2 .acts .p { background: var(--m-planning); } .g2 .acts .s { background: var(--fg2); color: var(--tx-strong); }
+.g2 .strip { display: flex; gap: 6px; margin-top: auto; flex-wrap: wrap; justify-content: center; }
+.g2 .strip .cover { width: 34px; padding: 0; border-radius: 4px; cursor: pointer; }
+.g2 .strip .cover.cur { outline: 3px solid var(--blue); outline-offset: 2px; }
+
+/* V3 list rows */
+.g3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 8px 18px; }
+.g3 .row { display: flex; align-items: center; gap: 10px; background: var(--fg); border-radius: 10px; padding: 6px 10px 6px 6px; }
+.g3 .row .cover { width: 38px; padding: 0; border-radius: 5px; flex-shrink: 0; }
+.g3 .row .tx { flex: 1; min-width: 0; }
+.g3 .seg3 { display: inline-flex; background: var(--fg2); border-radius: 8px; padding: 2px; }
+.g3 .seg3 button { font-size: 11px; font-weight: 800; padding: 5px 9px; border-radius: 6px; color: var(--tx-strong); }
+.g3 .seg3 button.on.c { background: var(--m-completed); color: #fff; } .g3 .seg3 button.on.d { background: var(--m-dropped); color: #fff; } .g3 .seg3 button.on.p { background: var(--m-planning); color: #fff; }
+
+/* V4 tap to cycle */
+.g4 .legend { font-size: 12px; margin-bottom: 12px; color: var(--tx-strong); }
+.g4 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+.g4 .tile { cursor: pointer; display: flex; flex-direction: column; gap: 5px; }
+.g4 .tile .cover { transition: transform .12s; }
+.g4 .tile:active .cover { transform: scale(.96); }
+.g4 .tile:not(.has) .cover { filter: saturate(.85); }
+
+/* V5 buckets */
+.g5 { display: grid; grid-template-rows: 1fr auto; gap: 14px; height: 100%; }
+.g5 .pool { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; align-content: start; overflow: auto; }
+.g5 .pool .tile { cursor: grab; display: flex; flex-direction: column; gap: 3px; }
+.g5 .pool .tile.sel .cover { outline: 3px solid var(--blue); outline-offset: 2px; transform: translateY(-4px); }
+.g5 .pool .cover { font-size: 10px; padding: 5px; }
+.g5 .bins { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.g5 .bin { border: 2px dashed; border-radius: 14px; padding: 10px; min-height: 96px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; }
+.g5 .bin.c { border-color: var(--m-completed); } .g5 .bin.d { border-color: var(--m-dropped); } .g5 .bin.p { border-color: var(--m-planning); }
+.g5 .bin.over { background: var(--fg2); }
+.g5 .bin h4 { font-size: 13px; color: var(--tx-strong); }
+.g5 .bin .in { display: flex; flex-wrap: wrap; gap: 4px; }
+.g5 .bin .in .cover { width: 26px; padding: 0; border-radius: 3px; cursor: pointer; }
+
+/* ================= Round 5: Tap-to-cycle tile variants ================= */
+.g4 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; }
+.tile { position: relative; cursor: pointer; display: flex; flex-direction: column; gap: 5px; user-select: none; }
+.tile .cv { position: relative; }
+.tile .cover { transition: transform .12s, filter .15s; }
+.tile:active .cover { transform: scale(.96); }
+/* T3 stamp */
+.tint { position: absolute; inset: 0; border-radius: 8px; opacity: .55; }
+.tint.c { background: var(--m-completed); } .tint.d { background: var(--m-dropped); } .tint.p { background: var(--m-planning); }
+.stamp { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) rotate(-12deg); border: 3px solid #fff; color: #fff; border-radius: 10px; padding: 3px 8px; font-weight: 900; font-size: 13px; text-shadow: 0 1px 3px #0006; white-space: nowrap; }
+/* T2 / T4 menu */
+.pop { position: absolute; z-index: 5; left: 50%; top: 46%; transform: translate(-50%, -50%); background: var(--fg); border-radius: 12px; box-shadow: 0 8px 24px #0005; padding: 5px; display: flex; flex-direction: column; gap: 3px; min-width: 110px; }
+.pop button { text-align: left; padding: 6px 9px; border-radius: 8px; font-size: 12px; font-weight: 800; color: var(--tx-strong); display: flex; align-items: center; gap: 6px; }
+.pop button:hover { background: var(--fg2); }
+.pop button .dot { margin: 0; }
+.more { position: absolute; top: 6px; right: 6px; width: 26px; height: 26px; border-radius: 50%; background: #0008; color: #fff; font-weight: 900; font-size: 14px; line-height: 1; display: flex; align-items: center; justify-content: center; opacity: .0; transition: opacity .15s; }
+.tile:hover .more, .tile.has .more { opacity: 1; }
+.hint { position: absolute; bottom: 34px; left: 6px; right: 6px; text-align: center; font-size: 10px; font-weight: 800; color: #fff; background: #0009; border-radius: 6px; padding: 3px; opacity: 0; transition: opacity .15s; }
+.tile:hover .hint { opacity: 1; }
+/* T5 dots */
+.dots3 { display: flex; gap: 4px; }
+.dots3 button { flex: 1; font-size: 10px; font-weight: 800; padding: 3px 0; border-radius: 999px; border: 1.5px solid var(--fg2); color: var(--tx); background: var(--fg); }
+.dots3 button.c.on { background: var(--m-completed); border-color: var(--m-completed); color: #fff; }
+.dots3 button.d.on { background: var(--m-dropped); border-color: var(--m-dropped); color: #fff; }
+.dots3 button.p.on { background: var(--m-planning); border-color: var(--m-planning); color: #fff; }
+.tile.dim .cover { filter: saturate(.5) brightness(.95); }
+
+/* ================= Round 6: starting-era question (near-empty list) ================= */
+.cu-foot.hide { display: none; }
+.era { max-width: 760px; margin: 30px auto; display: flex; flex-direction: column; gap: 18px; align-items: center; text-align: center; }
+.era h2 { font-size: 24px; font-weight: 900; color: var(--tx-strong); }
+.era p { max-width: 460px; line-height: 1.5; }
+.era .opts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.era .opts button { padding: 12px 18px; border-radius: 12px; background: var(--fg); color: var(--tx-strong); font-weight: 800; box-shadow: 0 2px 8px var(--shadow); }
+.era .opts button:hover { background: var(--blue); color: #fff; }
+.era .opts button small { display: block; font-weight: 600; font-size: 11px; opacity: .7; }
+.era .skip { font-size: 12px; }
+/* E2 mochi + slider */
+.era .mochiQ { display: flex; align-items: center; gap: 14px; }
+.era .mochiQ .say { background: var(--nav); color: #fff; padding: 12px 16px; border-radius: 16px; font-size: 16px; font-weight: 700; position: relative; }
+.era .mochiQ .say::after { content: ''; position: absolute; right: -9px; top: 18px; border: 9px solid transparent; border-right: 0; border-left-color: var(--nav); }
+.era input[type=range] { width: 420px; accent-color: var(--blue); }
+.era .yr { font-size: 34px; font-weight: 900; color: var(--tx-strong); }
+.era .peek { display: flex; gap: 8px; }
+.era .peek .cover { width: 72px; font-size: 9px; padding: 5px; }
+/* E3 timeline */
+.era .tl { display: flex; gap: 14px; align-items: flex-end; position: relative; padding-bottom: 30px; }
+.era .tl::after { content: ''; position: absolute; left: 0; right: 0; bottom: 12px; height: 3px; background: var(--fg2); border-radius: 2px; }
+.era .tl button { width: 104px; display: flex; flex-direction: column; gap: 6px; align-items: center; position: relative; }
+.era .tl button .cover { width: 100%; transition: transform .15s; }
+.era .tl button:hover .cover { transform: translateY(-6px); box-shadow: 0 0 0 3px var(--blue); }
+.era .tl button b { font-size: 12px; color: var(--tx-strong); }
+.era .tl button::after { content: ''; position: absolute; bottom: -24px; width: 11px; height: 11px; border-radius: 50%; background: var(--blue); z-index: 1; }
+/* E5 banner */
+.erabar { display: flex; align-items: center; gap: 10px; background: color-mix(in srgb, var(--blue) 12%, var(--fg)); border: 1px solid var(--blue); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; color: var(--tx-strong); font-size: 13px; }
+.erabar select { font: inherit; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--fg2); background: var(--fg); color: var(--tx-strong); }
+.erabar .x { margin-left: auto; opacity: .6; }
+.erachip { font-size: 11px; font-weight: 800; background: var(--fg2); color: var(--tx-strong); border-radius: 999px; padding: 3px 9px; }
+
+/* ================= Round 7: cuter mochi poses for the era slider ================= */
+.mo { overflow: visible; display: block; }
+.breathe { animation: breathe 2.4s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes breathe { 0%, 100% { transform: scale(1.03, .97); } 50% { transform: scale(.98, 1.03); } }
+.hop { animation: hop .35s ease-out; transform-origin: 50% 100%; }
+@keyframes hop { 0% { transform: translateY(0) scale(1.1, .9); } 40% { transform: translateY(-10px) scale(.95, 1.05); } 100% { transform: translateY(0) scale(1); } }
+.era .say { background: var(--nav); color: #fff; padding: 10px 15px; border-radius: 16px; font-size: 15px; font-weight: 700; position: relative; white-space: nowrap; }
+.era .say.sl::after { content: ''; position: absolute; right: -9px; top: 50%; margin-top: -9px; border: 9px solid transparent; border-right: 0; border-left-color: var(--nav); }
+.era .say.sd::after { content: ''; position: absolute; left: 50%; margin-left: -9px; bottom: -9px; border: 9px solid transparent; border-bottom: 0; border-top-color: var(--nav); }
+.era .row { display: flex; align-items: center; gap: 16px; }
+.era .peek { min-height: 110px; }
+/* P1 mochi is the slider thumb */
+.mtrack { position: relative; width: 480px; height: 10px; border-radius: 5px; background: var(--fg2); margin: 120px 0 10px; cursor: pointer; touch-action: none; }
+.mtrack .mfill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; background: var(--blue); }
+.mthumb { position: absolute; bottom: 2px; width: 74px; margin-left: -37px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: grab; }
+.mthumb .tag { background: var(--nav); color: #fff; font-weight: 900; font-size: 13px; border-radius: 999px; padding: 3px 10px; }
+.mthumb .lean { transition: transform .2s; transform-origin: 50% 100%; }
+.mthumb.grab .lean { transform: scale(1.08, .9); }
+.mthumb.l .lean { transform: rotate(-10deg); } .mthumb.r .lean { transform: rotate(10deg); }
+.mticks { width: 480px; display: flex; justify-content: space-between; font-size: 11px; opacity: .7; }
+/* P2 calendar */
+.cal { width: 92px; border-radius: 10px; background: var(--fg); box-shadow: 0 6px 18px var(--shadow); overflow: hidden; text-align: center; border: 2px solid var(--band-ink); }
+.cal .top { background: var(--danger); color: #fff; font-size: 10px; font-weight: 900; padding: 3px; letter-spacing: .1em; }
+.cal .num { font-size: 26px; font-weight: 900; color: var(--tx-strong); padding: 8px 0; }
+.cal.flip .num { animation: flip .3s; }
+@keyframes flip { 0% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+.calwrap { position: relative; }
+.calwrap .cal { position: absolute; right: -46px; bottom: -16px; transform: rotate(8deg); width: 78px; }
+/* P3 thinking */
+.qmarks { position: absolute; top: -18px; right: -8px; font-weight: 900; color: var(--blue); font-size: 18px; animation: float 1.6s ease-in-out infinite; }
+/* P4 draped over the question card */
+.qcard { position: relative; background: var(--fg); border-radius: 18px; padding: 34px 40px 26px; box-shadow: 0 10px 40px var(--shadow); display: flex; flex-direction: column; gap: 14px; align-items: center; margin-top: 50px; }
+.qcard .drape { position: absolute; top: -58px; right: -30px; }
+/* P5 sign */
+.signbig { position: absolute; left: 50%; top: 56px; transform: translateX(-50%) rotate(-4deg); background: var(--fg); border: 2px solid var(--band-ink); border-radius: 10px; font-size: 24px; font-weight: 900; color: var(--tx-strong); padding: 4px 16px; box-shadow: 0 3px 8px #0002; transform-origin: 50% 0; }
+.signbig.swing { animation: swing2 .5s ease-out; }
+@keyframes swing2 { 0% { transform: translateX(-50%) rotate(8deg); } 50% { transform: translateX(-50%) rotate(-10deg); } 100% { transform: translateX(-50%) rotate(-4deg); } }
+/* phone frame */
+body[data-device='phone'] #catchup { width: 390px; margin: 0 auto; border-left: 1px solid var(--fg2); border-right: 1px solid var(--fg2); }
+body[data-device='phone'] .era .tl { overflow-x: auto; max-width: 340px; padding: 8px 4px 30px; }
+body[data-device='phone'] .era .tl button { flex-shrink: 0; width: 92px; }
+body[data-device='phone'] .era h2 { font-size: 19px; }
+.erachip { cursor: pointer; }
+
+/* ================= Round 8: exit offer ================= */
+.cu-foot .done { font-weight: 800; color: var(--tx-strong); padding: 10px 14px; border-radius: 10px; background: var(--fg2); }
+.cu-foot .go { margin-left: 0; }
+.cu-foot .sp { margin-left: auto; }
+.offerbox { display: flex; flex-direction: column; gap: 10px; }
+.offerbox h3 { font-size: 20px; font-weight: 900; color: var(--tx-strong); }
+.offerbox p { line-height: 1.45; }
+.offerbox .acts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.offerbox .go { padding: 11px 18px; }
+.ghost { font-weight: 800; color: var(--tx); padding: 10px 6px; }
+.bigcount { font-size: 13px; font-weight: 800; color: var(--m-completed); }
+/* X1 modal */
+.scrim { position: fixed; inset: 0; background: #0006; display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { position: relative; width: 440px; background: var(--fg); border-radius: 18px; padding: 30px 28px 24px; box-shadow: 0 20px 60px #0006; }
+.modal .drape { position: absolute; top: -58px; right: -30px; transform: scale(.8); transform-origin: 110px 58px; }
+/* X2 end card */
+.endcard { grid-column: span 2; background: var(--fg); border: 2px dashed var(--blue); border-radius: 14px; padding: 18px; display: flex; align-items: center; }
+/* X3 back popover */
+.backpop { position: absolute; top: 54px; left: 16px; width: 360px; background: var(--fg); border-radius: 14px; padding: 18px; box-shadow: 0 12px 40px #0005; z-index: 40; }
+.backpop::before { content: ''; position: absolute; top: -8px; left: 12px; border: 8px solid transparent; border-top: 0; border-bottom-color: var(--fg); }
+.cu-top { position: relative; }
+/* X4 header CTA */
+.hcta { background: var(--m-completed); color: #fff; font-weight: 900; font-size: 13px; padding: 8px 14px; border-radius: 999px; box-shadow: 0 3px 10px #0003; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--m-completed) 50%, transparent); } 50% { box-shadow: 0 0 0 8px transparent; } }
+/* X5 back on Start */
+body[data-offer='1'] .m .bubble { opacity: 1; transform: none; pointer-events: auto; }
+.bubble .bgo { display: block; margin-top: 8px; background: var(--blue); color: #fff; border-radius: 8px; padding: 6px 10px; font-weight: 800; font-size: 13px; }
+.bubble .bx { position: absolute; top: 4px; right: 8px; color: #fff8; font-size: 13px; }
+
+/* ================= Round 9: clear Passed ================= */
+.kebab, .burger { font-weight: 900; font-size: 18px; color: var(--tx-strong); width: 34px; height: 34px; border-radius: 8px; }
+.kebab:hover, .burger:hover { background: var(--fg2); }
+.dd { position: absolute; top: 52px; right: 16px; width: 270px; background: var(--fg); border-radius: 12px; box-shadow: 0 12px 40px #0005; padding: 6px; z-index: 40; display: flex; flex-direction: column; }
+.dd.left { left: 16px; right: auto; }
+.dd button { text-align: left; padding: 9px 11px; border-radius: 8px; font-size: 13px; color: var(--tx-strong); }
+.dd button:hover { background: var(--fg2); }
+.dd button small { display: block; font-size: 11px; color: var(--tx); }
+.dd hr { border: 0; border-top: 1px solid var(--fg2); margin: 4px 0; }
+.dd .danger { color: var(--danger); }
+.plink { color: var(--blue); text-decoration: underline; cursor: pointer; }
+.ppop { position: absolute; bottom: 62px; left: 24px; width: 380px; background: var(--fg); border-radius: 14px; box-shadow: 0 12px 40px #0005; padding: 14px; z-index: 40; display: flex; flex-direction: column; gap: 10px; }
+.ppop .covs { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.ppop .covs > div { position: relative; cursor: pointer; }
+.ppop .covs .cover { padding: 3px; border-radius: 4px; font-size: 8px; }
+.ppop .covs > div:hover::after { content: '↺'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #0007; color: #fff; font-weight: 900; border-radius: 4px; }
+.cu-foot { position: relative; }
+.empty { max-width: 460px; margin: 60px auto; text-align: center; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.empty h2 { font-size: 22px; font-weight: 900; color: var(--tx-strong); }
+.confirm h3 { font-size: 18px; font-weight: 900; color: var(--tx-strong); margin-bottom: 8px; }
+.confirm .acts { display: flex; gap: 10px; margin-top: 16px; }
+.go.danger { background: var(--danger); }
+.toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: var(--nav); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 60; box-shadow: 0 6px 20px #0005; }
+.hcta { animation: none; }
+
+/* ================= picker ================= */
+#picker { position: fixed; right: 18px; bottom: 18px; z-index: 99; background: #1d1f33; color: #fff; border-radius: 14px; padding: 10px 12px; width: 320px; box-shadow: 0 10px 30px #0006; font-size: 12px; user-select: none; }
+#picker .grip { cursor: move; font-size: 10px; opacity: .55; letter-spacing: .08em; margin-bottom: 6px; }
+#picker .row { display: flex; align-items: center; gap: 8px; }
+#picker .nav { width: 28px; height: 28px; border-radius: 8px; background: #fff2; color: #fff; font-weight: 900; }
+#picker .name { flex: 1; text-align: center; }
+#picker .name b { display: block; font-size: 14px; }
+#picker .name span { opacity: .65; font-size: 11px; }
+#picker .states { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; align-items: center; }
+#picker .states em { font-style: normal; opacity: .5; font-size: 10px; width: 44px; }
+#picker .states button { padding: 4px 8px; border-radius: 7px; background: #fff1; color: #fffb; font-size: 11px; }
+#picker .states button.on { background: var(--blue); color: #fff; }
+body[data-screen='catchup'] #picker { bottom: 80px; }
+</style>
+</head>
+<body data-v="1" data-s="full" data-q="idle" data-screen="start" data-media="ANIME" data-device="desktop" data-exit="eligible" data-pool="ok" data-offer="0">
+
+<!-- ================= Start ================= -->
+<div class="screen" id="start">
+  <button class="theme-toggle" onclick="toggleTheme()">Dark</button>
+  <div class="l">
+    <div class="collage" id="collage"></div>
+    <div class="hero">
+      <span class="kao" style="background: var(--band-loved); font-size: 20px; align-self: flex-start">(♡˙︶˙♡)</span>
+      <div class="big">Which one did you<br />like more?</div>
+      <div>Answer that a few hundred times.<br />Get scores that actually mean something.</div>
+    </div>
+  </div>
+  <div class="r">
+    <div class="pwrap">
+      <div class="panel">
+        <div class="userbar"><span class="ava"></span> zennnne <button class="small link">Log out</button></div>
+        <div class="h2">What do you want to rank?</div>
+        <div class="seg"><button data-media="ANIME" onclick="setMedia('ANIME')">Anime</button><button data-media="MANGA" onclick="setMedia('MANGA')">Manga</button></div>
+        <div class="lab2">List statuses</div>
+        <div class="chips" id="chips"></div>
+        <div class="lab2">Sort Goal</div>
+        <div class="seg"><button class="on">Scores</button><button>Full Ranking</button></div>
+        <div class="est" id="est"></div>
+        <div class="offer"><span class="sw"></span><span><b style="color: var(--tx-strong)">Use my AniList scores for Rough Sort</b><br /><span class="small" id="scored"></span></span></div>
+        <button class="go" id="startBtn">Start Rough Sort →</button>
+        <button class="small link" style="align-self: flex-start">Restore from a Backup file</button>
+        <div class="small fine">Read-only until you confirm an Import. Your progress stays in this browser.</div>
+      </div>
+      <div class="front">
+        <div class="m" id="mochi" data-face="ok" onclick="openCatchup()">
+          <svg class="body" width="140" height="140" viewBox="0 0 140 140">
+            <!-- dome above the corner; the lip melts over the card's top edge (y=58) and a long drip runs down its right edge (x=110) -->
+            <path d="M24 50 C22 18 50 4 80 4 C112 4 134 22 132 52 C131 76 128 96 124 116 C122 130 106 132 104 118 C102 104 104 90 96 84 L58 84 C46 84 44 92 36 94 C28 95 24 86 24 72 Z" class="ink" style="fill: var(--mochi)" />
+            <ellipse cx="62" cy="40" rx="5" ry="3" fill="var(--mochi-cheek)" opacity=".7" /><ellipse cx="102" cy="40" rx="5" ry="3" fill="var(--mochi-cheek)" opacity=".7" />
+            <g class="face ok"><circle cx="70" cy="30" r="3.4" class="inkf" /><circle cx="94" cy="30" r="3.4" class="inkf" /><path d="M77 37 q5 4 10 0" class="ink" style="stroke-width: 2" /></g>
+            <g class="face sad"><path d="M65 28 l7 -3 M99 28 l-7 -3" class="ink" style="stroke-width: 2" /><circle cx="70" cy="33" r="2.8" class="inkf" /><circle cx="94" cy="33" r="2.8" class="inkf" /><path d="M77 41 q5 -4 10 0" class="ink" style="stroke-width: 2" /><path d="M114 16 q4 6 0 8 q-4 -2 0 -8 z" fill="#7cc8f2" /></g>
+            <g class="face sleep"><path d="M65 31 q5 4 10 0 M89 31 q5 4 10 0" class="ink" style="stroke-width: 2" /><path d="M79 39 q3 2 6 0" class="ink" style="stroke-width: 2" /></g>
+          </svg>
+          <span class="zzz">z z Z</span>
+          <span class="sign" id="sign"></span>
+          <svg class="paws" width="74" height="14" viewBox="0 0 74 14"><ellipse cx="12" cy="7" rx="8" ry="6" class="ink" style="fill: var(--mochi)" /><ellipse cx="62" cy="7" rx="8" ry="6" class="ink" style="fill: var(--mochi)" /></svg>
+          <div class="bubble" id="bubble"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= Catch-up ================= -->
+<div class="screen" id="catchup">
+  <div class="cu-top">
+    <span id="burgerslot"></span><button class="back" onclick="go('start')">←</button>
+    <h1>Catch-up</h1>
+    <span class="batch" id="batchLbl"></span>
+    <span class="qs" id="qs"></span><span id="hslot"></span><span id="kebabslot"></span><span id="popslot"></span>
+  </div>
+  <div class="failbar">✕ 2 saves didn’t reach AniList (Frieren, Odd Taxi) <button onclick="retry()">Retry</button></div>
+  <div id="cuBody"></div>
+  <div class="cu-foot">
+    <span class="sum" id="sum"></span><span id="ppopslot"></span>
+    <span class="sp"></span><button class="go" id="saveBtn" onclick="saveNext()">Save &amp; next 20 →</button>
+  </div>
+</div>
+
+<div id="modalslot"></div>
+<div id="picker">
+  <div class="grip">⠿ PROTOTYPE · #42 Catch-up · drag me · ←/→</div>
+  <div class="row">
+    <button class="nav" onclick="step(-1)">←</button>
+    <div class="name"><b id="vname"></b><span id="vdesc"></span></div>
+    <button class="nav" onclick="step(1)">→</button>
+  </div>
+  <div class="states"><em>screen</em>
+    <button data-k="screen" data-val="start">Start</button>
+    <button data-k="screen" data-val="catchup">Catch-up</button>
+  </div>
+  <div class="states"><em>list</em>
+    <button data-k="s" data-val="full">725 titles</button>
+    <button data-k="s" data-val="thin">near-empty (6)</button>
+  </div>
+  <div class="states"><em>queue</em>
+    <button data-k="q" data-val="idle">idle</button>
+    <button data-k="q" data-val="saving">saving 12/20</button>
+    <button data-k="q" data-val="failed">2 failed</button>
+  </div>
+  <div class="states"><em>media</em>
+    <button data-k="media" data-val="ANIME">Anime</button>
+    <button data-k="media" data-val="MANGA">Manga</button>
+  </div>
+  <div class="states"><em>device</em>
+    <button data-k="device" data-val="desktop">Desktop</button>
+    <button data-k="device" data-val="phone">Phone</button>
+  </div>
+  <div class="states"><em>exit</em>
+    <button data-k="exit" data-val="eligible">qualifies for Score New Titles</button>
+    <button data-k="exit" data-val="not">not yet</button>
+  </div>
+  <div class="states"><em>batch</em>
+    <button data-k="pool" data-val="ok">suggestions left</button>
+    <button data-k="pool" data-val="empty">ran out</button>
+  </div>
+</div>
+
+<script>
+const V = [
+  ['Header ⋯ menu', 'a ⋯ in the Catch-up header → “Bring back Passed titles”'],
+  ['Footer link', '“37 hidden · show them again” next to the Passed count'],
+  ['Only when you run out', 'no button; offered on the “no more suggestions” screen'],
+  ['App menu', 'lives in the app’s main menu with the other data actions'],
+  ['Passed drawer', 'the hidden count opens a drawer: un-pass one, or clear all'],
+]
+const TITLES = [['Frieren', 2023, 'TV'], ['Spy x Family', 2022, 'TV'], ['Bocchi the Rock!', 2022, 'TV'], ['Chainsaw Man', 2022, 'TV'], ['Oshi no Ko', 2023, 'TV'], ['Jujutsu Kaisen', 2020, 'TV'], ['Your Name.', 2016, 'Movie'], ['A Silent Voice', 2016, 'Movie'], ['Mob Psycho 100', 2016, 'TV'], ['Violet Evergarden', 2018, 'TV'], ['Kaguya-sama: Love is War', 2019, 'TV'], ['Demon Slayer', 2019, 'TV'], ['Attack on Titan', 2013, 'TV'], ['Made in Abyss', 2017, 'TV'], ['Cyberpunk: Edgerunners', 2022, 'ONA'], ['Lycoris Recoil', 2022, 'TV'], ['Summertime Rendering', 2022, 'ONA'], ['The Apothecary Diaries', 2023, 'TV'], ['Weathering with You', 2019, 'Movie'], ['Horimiya', 2021, 'TV'], ['Vinland Saga', 2019, 'TV'], ['Odd Taxi', 2021, 'TV'], ['Ranking of Kings', 2021, 'TV'], ['Dungeon Meshi', 2024, 'TV'], ['Kimi ni Todoke', 2009, 'TV'], ['Toradora!', 2008, 'TV'], ['Steins;Gate', 2011, 'TV'], ['Anohana', 2011, 'TV'], ['Hyouka', 2012, 'TV'], ['Re:Zero', 2016, 'TV'], ['Konosuba', 2016, 'TV'], ['Akira', 1988, 'Movie'], ['Perfect Blue', 1997, 'Movie'], ['Cowboy Bebop', 1998, 'TV'], ['Mushishi', 2005, 'TV'], ["Natsume's Book of Friends", 2008, 'TV'], ['Haikyu!!', 2014, 'TV'], ['Laid-Back Camp', 2018, 'TV'], ['Bunny Girl Senpai', 2018, 'TV'], ['Suzume', 2022, 'Movie']]
+const PAL = ['#ff8fab', '#ffcf5c', '#7fd39a', '#8fa8ff', '#b39ddb', '#3db4f2', '#c063ff', '#f2a03d', '#5ec2b7', '#e57373']
+const MARK = { c: 'Completed', d: 'Dropped', p: 'Planning' }
+const LIST = {
+  full: { chips: [['✓ Completed', 713, 'on'], ['✓ Repeating', 12, 'on'], ['Watching', 9], ['Paused', 19], ['Dropped', 70]], est: '<b>725</b> titles · about <b>2727</b> Duels<span class="small">(~136 min at 3 s each, spread over as many sittings as you like)</span>', scored: '709 of 725 titles have a score', msg: 'Add shows you’ve already watched' },
+  thin: { chips: [['✓ Completed', 6, 'on'], ['✓ Repeating', 0, 'on'], ['Watching', 1], ['Paused', 0], ['Dropped', 0]], est: '<b>6</b> titles · about <b>12</b> Duels<span class="small">(~1 min at 3 s each)</span>', scored: '4 of 6 titles have a score', msg: '(｡•́︿•̀｡) only 6 shows? let’s add more!' },
+}
+const Q = { idle: [0, 0], saving: [12, 20], failed: [18, 20] }
+let v = 1, batch = 0, marks = {}, cur = 0, sel = null, queue = { done: 0, total: 0 }, ticker = null
+const $ = (id) => document.getElementById(id)
+const B = document.body.dataset
+const batchTitles = () => Array.from({ length: 20 }, (_, i) => TITLES[(batch * 20 + i) % TITLES.length])
+const cov = ([t, y], i, extra = '') => `<div class="cover ${extra}" style="background: linear-gradient(160deg, ${PAL[(i + batch * 3) % 10]}, ${PAL[(i * 7 + 4) % 10]})"><span>${t}</span></div>`
+const meta = ([, y, f]) => `${y} · ${f}`
+function setMark(i, m) { marks[i] = marks[i] === m ? undefined : m; renderCU() }
+
+function renderStart() {
+  const L = LIST[B.s]
+  $('chips').innerHTML = L.chips.map(([l, n, on]) => `<span class="chip ${on || ''}">${l} <span class="cnt">${n}</span></span>`).join('') + '<span class="chip off">Planning · never ranked</span>'
+  $('est').innerHTML = L.est; $('scored').textContent = L.scored
+  document.querySelectorAll('.seg button[data-media]').forEach((b) => b.classList.toggle('on', b.dataset.media === B.media))
+  const sign = $('sign'), m = $('mochi')
+  if (B.media === 'MANGA') { m.dataset.face = 'sleep'; sign.className = 'sign sleep'; sign.innerHTML = 'anime only'; $('bubble').textContent = ''; return }
+  m.dataset.face = B.q === 'failed' ? 'sad' : 'ok'
+  if (B.q === 'saving') { sign.className = 'sign saving'; sign.innerHTML = `<i class="fill" style="width: ${(queue.done / queue.total) * 100}%"></i><b>saving ${queue.done}/${queue.total}</b>` }
+  else if (B.q === 'failed') { sign.className = 'sign failed'; sign.innerHTML = '<b>2 failed · retry</b>' }
+  else { sign.className = 'sign'; sign.innerHTML = '+ <em>Catch-up</em>' }
+  B.offer = '0'
+  if (B.offer === '1') { $('bubble').innerHTML = `<button class="bx" onclick="event.stopPropagation(); startOffer=false; render()">✕</button>(๑˃ᴗ˂)ﻭ you added ${added}! ${OFF().line}<button class="bgo" onclick="event.stopPropagation(); takeOffer()">${OFF().short} →</button>`; $('startBtn').textContent = OFF().short + ' →' }
+  else { $('bubble').textContent = B.q === 'failed' ? '(｡•́︿•̀｡) 2 didn’t save… tap me to retry' : L.msg; $('startBtn').textContent = 'Start Rough Sort →' }
+}
+
+function renderCU() {
+  const T = batchTitles()
+  $('batchLbl').textContent = `Batch ${batch + 1} · 20 anime you’ve probably watched`
+  $('qs').innerHTML = B.q === 'saving' ? `Saving ${queue.done}/${queue.total} <span class="bar"><i style="width: ${(queue.done / queue.total) * 100}%"></i></span>` : B.q === 'failed' ? '<span style="color: var(--danger)">2 failed</span>' : queue.total ? '<span style="color: var(--m-completed)">✓ all saved</span>' : ''
+  const n = { c: 0, d: 0, p: 0 }; Object.values(marks).forEach((m) => m && n[m]++)
+  const passed = 20 - n.c - n.d - n.p
+  $('sum').innerHTML = `<span class="dot c"></span>${n.c} Completed <span class="dot d"></span>${n.d} Dropped <span class="dot p"></span>${n.p} Planning &nbsp;·&nbsp; <span class="pass">${passed} Passed (hidden 30 days)</span>`
+  const body = $('cuBody')
+  const asking = B.s === 'thin' && era === null
+  document.querySelector('.cu-foot').classList.toggle('hide', asking)
+  if (asking) { body.innerHTML = eraQ(); return }
+  if (era) $('batchLbl').innerHTML = `Batch ${batch + 1} · popular from your era <span class="erachip" title="Change" onclick="era=null; renderCU()">${era} ✎</span>`
+  const banner = false ? `<div class="erabar">These are all-time favourites. Started watching around <select onchange="era=this.value; renderCU()"><option>pick…</option>${ERAS.map(([e]) => `<option ${era === e ? 'selected' : ''}>${e}</option>`).join('')}</select>? We’ll tune the next batch. <button class="x" onclick="eraDismissed=true; renderCU()">✕</button></div>` : ''
+  const tile = (t, i) => {
+    const m = marks[i]
+    let over = m ? `<span class="ribbon ${m}">${MARK[m]}</span>` : ''
+    over += `<span class="more" onclick="event.stopPropagation(); openPop(${i})">⋯</span>`
+    if (pop === i) over += `<div class="pop" onclick="event.stopPropagation()">${['c', 'd', 'p'].map((k) => `<button onclick="pick(${i}, '${k}')"><span class="dot ${k}"></span>${MARK[k]}${m === k ? ' ✓' : ''}</button>`).join('')}${m ? `<button onclick="pick(${i}, null)">Clear</button>` : ''}</div>`
+    return `<div class="tile ${m ? 'has' : ''}" onclick="tapCycle(${i})"><div class="cv">${cov(t, i, m ? 'marked-' + m : '')}${over}</div><div class="ttl">${t[0]}</div><div class="meta">${meta(t)}</div></div>`
+  }
+  body.innerHTML = `<div class="g4">${banner}<div class="legend">Tap a cover: <span class="dot c"></span>Completed → <span class="dot d"></span>Dropped → <span class="dot p"></span>Planning → none, or use ⋯. Leave the rest alone.</div><div class="grid">${T.map(tile).join('')}${false ? `<div class="endcard" id="endcard">${offerHtml()}</div>` : ''}</div></div>`
+  $('hslot').innerHTML = added ? `<button class="hcta" onclick="takeOffer()">${OFF().short} →</button>` : ''
+  const PC = passed30
+  const passedTxt = PC ? `${PC} hidden for 30 days` : 'none hidden'
+  $('kebabslot').innerHTML = v === 1 ? `<button class="kebab" onclick="dd = dd ? null : 'k'; renderCU()">⋯</button>${dd === 'k' ? `<div class="dd"><button onclick="askClear()">Bring back Passed titles<small>${passedTxt}</small></button><button onclick="dd=null; era=null; renderCU()">Change starting era</button></div>` : ''}` : ''
+  $('burgerslot').innerHTML = v === 4 ? `<button class="burger" onclick="dd = dd ? null : 'b'; renderCU()">☰</button>${dd === 'b' ? `<div class="dd left"><button>Full Ranking</button><button>Catch-up</button><hr /><button>Save a Backup</button><button>Restore from a Backup</button><hr /><button onclick="askClear()">Clear Catch-up’s Passed list<small>${passedTxt}</small></button><button class="danger">Log out</button></div>` : ''}` : ''
+  if (v === 2 && PC) $('sum').innerHTML += ` &nbsp;·&nbsp; <span class="small">${PC} hidden from earlier · <span class="plink" onclick="askClear()">show them again</span></span>`
+  if (v === 5 && PC) $('sum').innerHTML += ` &nbsp;·&nbsp; <span class="plink small" onclick="dd = dd === 'p' ? null : 'p'; renderCU()">${PC} hidden ▴</span>`
+  $('ppopslot').innerHTML = v === 5 && dd === 'p' ? `<div class="ppop"><b style="color: var(--tx-strong)">Passed — hidden until 30 days after you passed them</b><div class="small">Click a cover to bring just that one back.</div><div class="covs">${TITLES.slice(20, 20 + Math.min(PC, 12)).map((t, i) => `<div onclick="passed30--; toast('${t[0].replace(/'/g, '')} will be suggested again'); renderCU()">${cov(t, i)}</div>`).join('')}</div><button class="link small" style="align-self: flex-start" onclick="askClear()">Bring back all ${PC}</button></div>` : ''
+  if (B.pool === 'empty') {
+    $('cuBody').innerHTML = `<div class="empty"><svg width="90" height="78" viewBox="0 0 120 104"><path d="M10 70 C6 40 26 14 60 14 C94 14 114 40 110 70 C108 88 94 94 60 94 C26 94 12 88 10 70 Z" class="ink" style="fill: var(--mochi)" /><path d="M40 56 q6 -6 12 0 M68 56 q6 -6 12 0" class="ink" style="stroke-width: 3" /><path d="M54 68 q6 -4 12 0" class="ink" style="stroke-width: 2.2" /></svg><h2>That’s everything for now</h2><p>We’ve shown you every likely title. ${v === 3 && PC ? `${PC} you passed are hidden for 30 days.` : 'New suggestions appear as you add more.'}</p>${v === 3 && PC ? `<button class="go" style="align-self: center" onclick="askClear()">Bring back ${PC} Passed titles</button>` : ''}</div>`
+    document.querySelector('.cu-foot').classList.add('hide')
+  }
+  $('popslot').innerHTML = false ? `<div class="backpop">${offerHtml(true)}</div>` : ''
+}
+const ERAS = [['Before 2000', 'Bebop, Evangelion'], ['2000s', 'Naruto, FMA'], ['2010–2014', 'AoT, SAO'], ['2015–2019', 'Demon Slayer, MHA'], ['2020 or later', 'JJK, Frieren']]
+let era = null, eraDismissed = false, yr = 2012
+function mochi({ w = 90, eyes = 'dot', arms = 'side', cls = 'breathe', mouth = 'w' } = {}) {
+  const A = { side: [[10, 66, -30], [110, 66, 30]], up: [[14, 34, 30], [106, 34, -30]], hold: [[38, 74, 0], [82, 74, 0]], wave: [[10, 66, -30], [108, 30, -20]] }[arms]
+  const front = arms === 'hold'
+  const armSvg = A.map(([x, y, r]) => `<ellipse cx="${x}" cy="${y}" rx="9" ry="6.5" transform="rotate(${r} ${x} ${y})" class="ink" style="fill: var(--mochi)" />`).join('')
+  const E = eyes === 'happy'
+    ? '<path d="M40 56 q6 -8 12 0 M68 56 q6 -8 12 0" class="ink" style="stroke-width: 3" />'
+    : '<circle cx="46" cy="54" r="5.5" class="inkf" /><circle cx="74" cy="54" r="5.5" class="inkf" /><circle cx="47.8" cy="52" r="2" fill="#fff" /><circle cx="75.8" cy="52" r="2" fill="#fff" />'
+  const M = mouth === 'o' ? '<ellipse cx="60" cy="66" rx="3.5" ry="4" class="inkf" />' : '<path d="M53 63 q3.5 4 7 0 q3.5 4 7 0" class="ink" style="stroke-width: 2.2" />'
+  return `<svg class="mo ${cls}" width="${w}" height="${w * 104 / 120}" viewBox="0 0 120 104">
+    <ellipse cx="42" cy="94" rx="11" ry="6.5" class="ink" style="fill: var(--mochi)" /><ellipse cx="78" cy="94" rx="11" ry="6.5" class="ink" style="fill: var(--mochi)" />
+    ${front ? '' : armSvg}
+    <path d="M10 70 C6 40 26 14 60 14 C94 14 114 40 110 70 C108 88 94 94 60 94 C26 94 12 88 10 70 Z" class="ink" style="fill: var(--mochi)" />
+    <ellipse cx="34" cy="32" rx="10" ry="5" transform="rotate(-28 34 32)" fill="#fff" opacity=".55" />
+    <ellipse cx="34" cy="65" rx="6" ry="3.5" fill="var(--mochi-cheek)" opacity=".7" /><ellipse cx="86" cy="65" rx="6" ry="3.5" fill="var(--mochi-cheek)" opacity=".7" />
+    ${E}${M}${front ? armSvg : ''}
+  </svg>`
+}
+const yrLabel = () => (yr <= 1995 ? '1995 or earlier' : yr)
+const peekHtml = () => TITLES.filter(([, y]) => Math.abs(y - yr) <= 3).slice(0, 5).map((t, i) => cov(t, i)).join('') || '<span class="small fine">(no samples in this mock)</span>'
+const pct = () => ((yr - 1995) / (2024 - 1995)) * 100
+function eraQ() {
+  const skip = `<button class="link skip" onclick="era='all eras'; renderCU()">Skip — show all-time favourites</button>`
+  const ok = `<button class="go" style="align-self: center" onclick="era='around ${yr}'; renderCU()">That’s about right →</button>`
+  const ask = 'roughly when did you start watching anime?'
+  const range = `<input type="range" min="1995" max="2024" value="${yr}" oninput="setYr(+this.value)" />`
+  const peek = `<div class="small">shows from around then:</div><div class="peek" id="peek">${peekHtml()}</div>`
+  if (B.device === 'phone') {
+    const L = [['Cowboy Bebop', 1998, 'TV'], ["Natsume's Book of Friends", 2008, 'TV'], ['Attack on Titan', 2013, 'TV'], ['Demon Slayer', 2019, 'TV'], ['Frieren', 2023, 'TV']]
+    return `<div class="era"><h2>Which of these is closest to when you started?</h2><p class="small">Pick the one that feels like “my early days” — you don’t need to have seen it.</p><div class="tl">${L.map((t, i) => `<button onclick="era='${ERAS[i][0]}'; renderCU()">${cov(t, i * 3)}<b>${t[1]}</b></button>`).join('')}</div>${skip}</div>`
+  }
+  if (v === 1) return `<div class="era"><div class="say sd">(｡･ω･｡) ${ask}</div><div class="small">drag me ↓</div><div class="mtrack" id="mtrack"><div class="mfill" id="mfill" style="width: ${pct()}%"></div><div class="mthumb" id="mthumb" style="left: ${pct()}%"><span class="tag" id="yrtxt">${yrLabel()}</span><div class="lean">${mochi({ w: 74, arms: 'up' })}</div></div></div><div class="mticks"><span>1995</span><span>2005</span><span>2015</span><span>2024</span></div>${peek}${ok}${skip}</div>`
+  if (v === 2) return `<div class="era"><div class="row"><div class="say sl">${ask}</div><div class="calwrap">${mochi({ w: 120, arms: 'wave' })}<div class="cal" id="cal"><div class="top">SINCE</div><div class="num" id="yrtxt">${yr <= 1995 ? '≤95' : yr}</div></div></div></div>${range}${peek}${ok}${skip}</div>`
+  if (v === 3) return `<div class="era"><div class="row"><div class="say sl">hmm… ${ask}</div><div style="position: relative; transform: rotate(-8deg)"><span class="qmarks">? ?</span><div id="hopper">${mochi({ w: 110, arms: 'up', mouth: 'o' })}</div></div></div><div class="yr" id="yrtxt">${yrLabel()}</div>${range}${peek}${ok}${skip}</div>`
+  if (v === 4) return `<div class="era"><div class="qcard"><div class="drape"><svg width="140" height="140" viewBox="0 0 140 140"><path d="M24 50 C22 18 50 4 80 4 C112 4 134 22 132 52 C131 76 128 96 124 116 C122 130 106 132 104 118 C102 104 104 90 96 84 L58 84 C46 84 44 92 36 94 C28 95 24 86 24 72 Z" class="ink" style="fill: var(--mochi)" /><ellipse cx="62" cy="40" rx="5" ry="3" fill="var(--mochi-cheek)" opacity=".7" /><ellipse cx="102" cy="40" rx="5" ry="3" fill="var(--mochi-cheek)" opacity=".7" /><circle cx="70" cy="30" r="4" class="inkf" /><circle cx="94" cy="30" r="4" class="inkf" /><circle cx="71.5" cy="28.5" r="1.5" fill="#fff" /><circle cx="95.5" cy="28.5" r="1.5" fill="#fff" /><path d="M77 37 q2.5 3 5 0 q2.5 3 5 0" class="ink" style="stroke-width: 2" /><ellipse cx="48" cy="86" rx="8" ry="6" class="ink" style="fill: var(--mochi)" /><ellipse cx="88" cy="86" rx="8" ry="6" class="ink" style="fill: var(--mochi)" /></svg></div><h2>Roughly when did you start watching anime?</h2><div class="yr" id="yrtxt">${yrLabel()}</div>${range}${peek}${ok}</div>${skip}</div>`
+  return `<div class="era"><div class="say sd">${ask}</div><div style="position: relative">${mochi({ w: 120, arms: 'up' })}<span class="signbig" id="yrtxt">${yrLabel()}</span></div>${range}${peek}${ok}${skip}</div>`
+}
+let lastYr = yr, leanT = null
+function setYr(n) {
+  const dir = n > lastYr ? 'r' : n < lastYr ? 'l' : ''
+  yr = lastYr = n
+  const t = $('yrtxt'); if (t) t.textContent = v === 2 ? (yr <= 1995 ? '≤95' : yr) : yrLabel()
+  $('peek').innerHTML = peekHtml()
+  if (v === 1) { $('mthumb').style.left = pct() + '%'; $('mfill').style.width = pct() + '%'; const th = $('mthumb'); th.classList.remove('l', 'r'); if (dir) th.classList.add(dir); clearTimeout(leanT); leanT = setTimeout(() => th.classList.remove('l', 'r'), 180) }
+  if (v === 2) { const c = $('cal'); c.classList.remove('flip'); void c.offsetWidth; c.classList.add('flip') }
+  if (v === 3) { const h = $('hopper').firstElementChild; h.classList.remove('hop', 'breathe'); void h.getBoundingClientRect(); h.classList.add('hop') }
+  if (v === 5) { const sg = $('yrtxt'); sg.classList.remove('swing'); void sg.offsetWidth; sg.classList.add('swing') }
+}
+// P1: drag along the custom track
+addEventListener('pointerdown', (e) => {
+  const tr = e.target.closest && e.target.closest('#mtrack'); if (!tr) return
+  const th = $('mthumb'); th.classList.add('grab')
+  const move = (ev) => { const r = tr.getBoundingClientRect(); setYr(Math.round(1995 + Math.min(1, Math.max(0, (ev.clientX - r.left) / r.width)) * 29)) }
+  move(e)
+  addEventListener('pointermove', move)
+  addEventListener('pointerup', () => { removeEventListener('pointermove', move); th.classList.remove('grab') }, { once: true })
+})
+let pop = null
+function openPop(i) { pop = pop === i ? null : i; renderCU() }
+function pick(i, k) { marks[i] = k || undefined; pop = null; renderCU() }
+function tapCycle(i) { if (pop !== null) { pop = null; return renderCU() } cycle(i) }
+function deck(m) { if (m) marks[cur] = m; else marks[cur] = undefined; cur = Math.min(cur + 1, 19); renderCU() }
+function cycle(i) { const order = [undefined, 'c', 'd', 'p']; marks[i] = order[(order.indexOf(marks[i]) + 1) % 4]; renderCU() }
+function drop(m) { if (sel !== null) { marks[sel] = m; sel = null; renderCU() } }
+
+function saveNext() {
+  const n = Object.values(marks).filter(Boolean).length; added += n
+  marks = {}; cur = 0; sel = null; batch++
+  if (n) { if (B.q !== 'saving') queue = { done: 0, total: 0 }; queue.total += n; B.q = 'saving'; tick() }
+  $('cuBody').scrollTop = 0
+  render()
+}
+function tick() {
+  clearInterval(ticker)
+  ticker = setInterval(() => { queue.done++; if (queue.done >= queue.total) { clearInterval(ticker); B.q = 'idle' } render() }, 700)
+}
+function retry() { B.q = 'saving'; queue = { done: 18, total: 20 }; tick(); render() }
+function openCatchup() { if (B.media === 'MANGA') return; go('catchup') }
+function go(scr) { B.screen = scr; render() }
+// ---- exit offer ----
+let added = 14, backOpen = false, startOffer = false
+const OFF = () => B.exit === 'eligible'
+  ? { title: 'Score your new titles?', line: 'Score New Titles places them on your scale.', body: `You added <b>${added}</b> titles. <b>Score New Titles</b> places each one between titles you’ve already scored — about ${added * 3} Duels.`, short: `Score ${added} new titles` }
+  : { title: 'Build your scale first', line: 'Rank them with Rough Sort first.', body: `You added <b>${added}</b> titles. Before new titles can be scored, rank your list once — <b>Rough Sort · Scores</b> on ${added + 6} titles, about ${Math.round((added + 6) * 3.7)} Duels.`, short: 'Start Rough Sort' }
+function offerHtml(inPop) {
+  const o = OFF()
+  return `<div class="offerbox"><span class="bigcount">✓ ${added} added to AniList</span><h3>${o.title}</h3><p>${o.body}</p><div class="acts"><button class="go" onclick="takeOffer()">${o.short} →</button><button class="ghost" onclick="${inPop ? 'backOpen=false; go(\'start\')' : 'closeModal()'}">${inPop ? 'Just leave' : 'Keep adding'}</button></div></div>`
+}
+const DRAPE = `<div class="drape"><svg width="140" height="140" viewBox="0 0 140 140"><path d="M24 50 C22 18 50 4 80 4 C112 4 134 22 132 52 C131 76 128 96 124 116 C122 130 106 132 104 118 C102 104 104 90 96 84 L58 84 C46 84 44 92 36 94 C28 95 24 86 24 72 Z" class="ink" style="fill: var(--mochi)" /><ellipse cx="62" cy="40" rx="5" ry="3" fill="var(--mochi-cheek)" opacity=".7" /><ellipse cx="102" cy="40" rx="5" ry="3" fill="var(--mochi-cheek)" opacity=".7" /><path d="M65 31 q5 -6 10 0 M89 31 q5 -6 10 0" class="ink" style="stroke-width: 2.4" /><path d="M77 37 q5 5 10 0" class="ink" style="stroke-width: 2" /></svg></div>`
+function exitFlow(viaBack) {
+  if (!added) return go('start')
+  if (v === 1) { if (viaBack) return go('start'); $('modalslot').innerHTML = `<div class="scrim" onclick="closeModal()"><div class="modal" onclick="event.stopPropagation()">${DRAPE}${offerHtml()}</div></div>`; return }
+  if (v === 2) { if (viaBack) return go('start'); const e = $('endcard'); e && e.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }
+  if (v === 3) { backOpen = !backOpen; return renderCU() }
+  if (v === 4) return go('start')
+  startOffer = true; go('start')
+}
+
+// ---- clear Passed ----
+let passed30 = 37, dd = null
+function toast(msg) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 2200) }
+function askClear() {
+  dd = null; renderCU()
+  $('modalslot').innerHTML = `<div class="scrim" onclick="closeModal()"><div class="modal confirm" onclick="event.stopPropagation()"><h3>Bring back ${passed30} Passed titles?</h3><p>They’ll be suggested again from the next batch. Nothing on your AniList changes.</p><div class="acts"><button class="go" onclick="passed30=0; closeModal(); toast('Passed list cleared'); B.pool='ok'; render()">Bring them back</button><button class="ghost" onclick="closeModal()">Cancel</button></div></div></div>`
+}
+function closeModal() { $('modalslot').innerHTML = '' }
+function takeOffer() { closeModal(); backOpen = false; startOffer = false; alert(`(prototype) → would open: ${OFF().short}`); go('start') }
+
+function setMedia(m) { B.media = m; render() }
+
+function render() {
+  $('vname').textContent = `${v}/5 · ${V[v - 1][0]}`
+  $('vdesc').textContent = V[v - 1][1] + ' (clear Passed)'
+  renderStart(); renderCU()
+  document.querySelectorAll('#picker .states button').forEach((b) => b.classList.toggle('on', B[b.dataset.k] === b.dataset.val))
+  history.replaceState(null, '', `?v=${v}&screen=${B.screen}&s=${B.s}&q=${B.q}&media=${B.media}&device=${B.device}&exit=${B.exit}&pool=${B.pool}`)
+}
+function step(d) { dd = null; closeModal(); backOpen = false; startOffer = false; v = ((v - 1 + d + 5) % 5) + 1; cur = 0; sel = null; era = null; eraDismissed = false; render() }
+document.querySelectorAll('#picker .states button').forEach((b) => b.addEventListener('click', () => {
+  B[b.dataset.k] = b.dataset.val
+  if (b.dataset.k === 's') { era = null; eraDismissed = false }
+  if (b.dataset.k === 'q') { clearInterval(ticker); const [d, t] = Q[b.dataset.val]; queue = { done: d, total: t } }
+  render()
+}))
+function toggleTheme() {
+  const dark = document.documentElement.dataset.theme !== 'dark'
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+  document.querySelector('.theme-toggle').textContent = dark ? 'Light' : 'Dark'
+}
+addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft') step(-1); if (e.key === 'ArrowRight') step(1) })
+const P = new URLSearchParams(location.search)
+v = +(P.get('v') || 1)
+for (const k of ['screen', 's', 'q', 'media', 'device', 'exit', 'pool']) if (P.get(k)) B[k] = P.get(k)
+{ const [d, t] = Q[B.q]; queue = { done: d, total: t } }
+const pal = ['#ffb3c8', '#ffe08a', '#bfe8c9', '#c9d4ff', '#cfc9d6', '#3db4f2', '#c063ff', '#f2b13d']
+$('collage').innerHTML = Array.from({ length: 48 }, (_, i) => `<i style="background: linear-gradient(160deg, ${pal[i % 8]}, ${pal[(i * 3 + 2) % 8]})"></i>`).join('')
+const pk = $('picker')
+pk.querySelector('.grip').addEventListener('pointerdown', (e) => {
+  const r = pk.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top
+  const mv = (ev) => { pk.style.left = ev.clientX - dx + 'px'; pk.style.top = ev.clientY - dy + 'px'; pk.style.right = pk.style.bottom = 'auto' }
+  addEventListener('pointermove', mv)
+  addEventListener('pointerup', () => removeEventListener('pointermove', mv), { once: true })
+})
+render()
+</script>
+</body>
+</html>
