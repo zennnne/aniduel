@@ -1,6 +1,6 @@
-// Import Runner: writes the Import plan to AniList one score at a time, inside the rate limit.
+// Import Runner: writes the Import plan (and Catch-up's list statuses) to AniList one write at a time, inside the rate limit.
 import { AniListError, type AniListGateway } from '../anilist/gateway.ts'
-import type { ListStatus, MediaType, ScoreFormat } from '../anilist/types.ts'
+import type { ListEntry, ListStatus, MediaType, ScoreFormat } from '../anilist/types.ts'
 import type { PendingWrite } from '../ranking/preview.ts'
 
 /** Injected time, so tests run the throttle without waiting. `sleep` may end early once `signal` aborts. */
@@ -27,49 +27,76 @@ export const WRITE_SPACING_MS = 2200
 
 export type WriteStatus = 'pending' | 'done' | 'failed' | 'skipped'
 
-/** `error` says why a failed write failed, e.g. "network error". */
-export type ImportWrite = PendingWrite & { status: WriteStatus; error?: string }
+/** Sets a title's list status, adding it to the list if it isn't there yet (Catch-up). */
+export type StatusWrite = { mediaId: number; listStatus: ListStatus }
+
+/** What the Runner can write: a score (Import) or a list status (Catch-up). */
+export type Write = PendingWrite | StatusWrite
+
+/** A write in the queue. `error` says why a failed write failed, e.g. "network error". */
+export type QueuedWrite<W extends Write = Write> = W & { status: WriteStatus; error?: string }
+
+export type ImportWrite = QueuedWrite<PendingWrite>
 
 /** One Import, saved after every write so a cut-off Import carries on where it stopped. */
-export type ImportState = {
+export type ImportState<W extends Write = PendingWrite> = {
   /** Hash of the Duel log and scoring settings the plan was made from. */
   hash: string
   format: ScoreFormat
-  writes: ImportWrite[]
+  writes: QueuedWrite<W>[]
+}
+
+export function isStatusWrite(write: Write): write is StatusWrite {
+  return 'listStatus' in write
 }
 
 const FORMATS: readonly string[] = ['POINT_100', 'POINT_10_DECIMAL', 'POINT_10', 'POINT_5', 'POINT_3'] satisfies ScoreFormat[]
 const STATUSES: readonly string[] = ['pending', 'done', 'failed', 'skipped'] satisfies WriteStatus[]
 
-/** A saved Import read back from storage, or null if it isn't one. */
+const LIST_STATUSES: readonly string[] = ['CURRENT', 'PLANNING', 'COMPLETED', 'DROPPED', 'PAUSED', 'REPEATING'] satisfies ListStatus[]
+
+/** A saved Import read back from storage, or null if it isn't one. Only score writes are accepted. */
 export function parseImportState(value: unknown): ImportState | null {
-  const v = value as Partial<ImportState> | null
+  return parseQueue(value, isScoreWrite) as ImportState | null
+}
+
+/** A saved queue of score and list status writes read back from storage, or null if it isn't one. */
+export function parseWriteQueue(value: unknown): ImportState<Write> | null {
+  return parseQueue(value, (w) => isScoreWrite(w) || isSavedStatusWrite(w))
+}
+
+type SavedWrite = Partial<PendingWrite & StatusWrite & { status: unknown; error: unknown }>
+
+const isScoreWrite = (w: SavedWrite) => Number.isInteger(w.scoreRaw) && Number.isInteger(w.oldScore100)
+const isSavedStatusWrite = (w: SavedWrite) => LIST_STATUSES.includes(w.listStatus as string)
+
+function parseQueue(value: unknown, isWrite: (w: SavedWrite) => boolean): ImportState<Write> | null {
+  const v = value as Partial<ImportState<Write>> | null
   if (typeof v !== 'object' || v === null || typeof v.hash !== 'string' || !FORMATS.includes(v.format as string)) return null
   if (!Array.isArray(v.writes)) return null
   const ok = v.writes.every(
-    (w: Partial<ImportWrite>) =>
+    (w: SavedWrite) =>
       Number.isInteger(w?.mediaId) &&
-      Number.isInteger(w.scoreRaw) &&
-      Number.isInteger(w.oldScore100) &&
+      isWrite(w) &&
       STATUSES.includes(w.status as string) &&
       (w.error === undefined || typeof w.error === 'string'),
   )
-  return ok ? (v as ImportState) : null
+  return ok ? (v as ImportState<Write>) : null
 }
 
-export function newImport(plan: readonly PendingWrite[], from: { hash: string; format: ScoreFormat }): ImportState {
-  return { hash: from.hash, format: from.format, writes: plan.map((w) => ({ ...w, status: 'pending' })) }
+export function newImport<W extends Write>(plan: readonly W[], from: { hash: string; format: ScoreFormat }): ImportState<W> {
+  return { hash: from.hash, format: from.format, writes: plan.map((w) => ({ ...w, status: 'pending' as const })) }
 }
 
-export type RunnerDeps = {
+export type RunnerDeps<W extends Write = PendingWrite> = {
   gateway: AniListGateway
   clock: Clock
   userId: number
   mediaType: MediaType
-  save: (state: ImportState) => void
+  save: (state: ImportState<W>) => void
 }
 
-const ALL_STATUSES: readonly ListStatus[] = ['CURRENT', 'PLANNING', 'COMPLETED', 'DROPPED', 'PAUSED', 'REPEATING']
+const ALL_STATUSES = LIST_STATUSES as readonly ListStatus[]
 
 /** Spacing once `X-RateLimit-Remaining` is at or below LOW_REMAINING. */
 export const SLOW_SPACING_MS = 4000
@@ -84,10 +111,10 @@ export type RunnerStatus =
   /** Rate limit reached (a 429): nothing is sent until `until` (epoch ms). */
   | { phase: 'waiting'; until: number }
 
-export type RunOptions = {
+export type RunOptions<W extends Write = PendingWrite> = {
   /** Stops before the next write; what was written so far is saved. */
   signal?: AbortSignal
-  onStatus?: (status: RunnerStatus, state: ImportState) => void
+  onStatus?: (status: RunnerStatus, state: ImportState<W>) => void
 }
 
 /**
@@ -96,7 +123,11 @@ export type RunOptions = {
  * written before the tab closed), and one whose score changed since the plan, or that left the list, is skipped.
  * Then one write at a time, about 1 every 2.2 s (4 s once few requests remain); a 429 waits for the reset and retries.
  */
-export async function runImport(deps: RunnerDeps, initial: ImportState, options: RunOptions = {}): Promise<ImportState> {
+export async function runImport<W extends Write>(
+  deps: RunnerDeps<W>,
+  initial: ImportState<W>,
+  options: RunOptions<W> = {},
+): Promise<ImportState<W>> {
   const { gateway, clock } = deps
   const { signal, onStatus } = options
   let state = initial
@@ -125,14 +156,14 @@ export async function runImport(deps: RunnerDeps, initial: ImportState, options:
   try {
     onStatus?.({ phase: 'reading' }, state)
     const list = await withRateLimit(() => gateway.mediaList({ userId: deps.userId, type: deps.mediaType, statuses: ALL_STATUSES }))
-    state = reconcile(state, new Map(list.map((e) => [e.mediaId, e.oldScore100])))
+    state = reconcile(state, new Map(list.map((e) => [e.mediaId, e])))
     deps.save(state)
 
     let lastWriteAt: number | null = null
     for (let i = 0; i < state.writes.length; i++) {
       const write = state.writes[i]
       if (write.status !== 'pending') continue
-      let result: Pick<ImportWrite, 'status' | 'error'>
+      let result: Pick<QueuedWrite, 'status' | 'error'>
       try {
         await withRateLimit(async () => {
           const gap = spacing()
@@ -140,7 +171,8 @@ export async function runImport(deps: RunnerDeps, initial: ImportState, options:
           if (lastWriteAt !== null) await clock.sleep(Math.max(0, lastWriteAt + gap - clock.now()), signal)
           if (signal?.aborted) throw new StoppedError()
           lastWriteAt = clock.now()
-          await gateway.saveScore(write.mediaId, write.scoreRaw)
+          if (isStatusWrite(write)) await gateway.saveStatus(write.mediaId, write.listStatus)
+          else await gateway.saveScore(write.mediaId, write.scoreRaw)
         })
         result = { status: 'done' }
       } catch (e) {
@@ -159,19 +191,25 @@ export async function runImport(deps: RunnerDeps, initial: ImportState, options:
 
 class StoppedError extends Error {}
 
-/** Settles pending writes against the scores AniList has now (by mediaId, 100-point). */
-function reconcile(state: ImportState, current: ReadonlyMap<number, number>): ImportState {
-  return {
-    ...state,
-    writes: state.writes.map((w) => {
-      if (w.status !== 'pending') return w
-      const now = current.get(w.mediaId)
-      if (now === undefined) return { ...w, status: 'skipped', error: 'not on your list' }
-      if (now === w.scoreRaw) return { ...w, status: 'done' }
-      if (now !== w.oldScore100) return { ...w, status: 'skipped', error: 'changed on AniList' }
-      return w
-    }),
+/** Settles pending writes against the list AniList has now (by mediaId). */
+function reconcile<W extends Write>(state: ImportState<W>, current: ReadonlyMap<number, ListEntry>): ImportState<W> {
+  return { ...state, writes: state.writes.map((w) => settle(w, current.get(w.mediaId))) }
+}
+
+function settle<W extends Write>(w: QueuedWrite<W>, entry: ListEntry | undefined): QueuedWrite<W> {
+  if (w.status !== 'pending') return w
+  if (isStatusWrite(w)) {
+    // Writing would overwrite a status the user set on AniList since marking the title.
+    if (entry === undefined) return w
+    if (entry.status === w.listStatus) return { ...w, status: 'done' }
+    return { ...w, status: 'skipped', error: 'already on your list' }
   }
+  // A score write: 100-point scores.
+  const now = entry?.oldScore100
+  if (now === undefined) return { ...w, status: 'skipped', error: 'not on your list' }
+  if (now === w.scoreRaw) return { ...w, status: 'done' }
+  if (now !== w.oldScore100) return { ...w, status: 'skipped', error: 'changed on AniList' }
+  return w
 }
 
 function failureReason(e: unknown): string {
@@ -180,24 +218,30 @@ function failureReason(e: unknown): string {
   return 'AniList error'
 }
 
-function updateWrite(state: ImportState, index: number, change: Pick<ImportWrite, 'status' | 'error'>): ImportState {
+function updateWrite<W extends Write>(
+  state: ImportState<W>,
+  index: number,
+  change: Pick<QueuedWrite, 'status' | 'error'>,
+): ImportState<W> {
   return {
     ...state,
     writes: state.writes.map((w, j) => {
       if (j !== index) return w
       const { error: _old, ...rest } = w
-      return change.error === undefined ? { ...rest, status: change.status } : { ...rest, ...change }
+      const next = change.error === undefined ? { ...rest, status: change.status } : { ...rest, ...change }
+      return next as QueuedWrite<W>
     }),
   }
 }
 
 /** Puts every failed title back in line, for the Retry button. */
-export function retryFailed(state: ImportState): ImportState {
-  return { ...state, writes: state.writes.map(({ error: _e, ...w }) => (w.status === 'failed' ? { ...w, status: 'pending' } : w)) }
+export function retryFailed<W extends Write>(state: ImportState<W>): ImportState<W> {
+  const writes = state.writes.map(({ error: _e, ...w }) => (w.status === 'failed' ? { ...w, status: 'pending' } : w))
+  return { ...state, writes: writes as QueuedWrite<W>[] }
 }
 
 /** Estimated time until every pending title is written: one spacing each, plus what is left of a rate-limit wait. */
-export function timeLeftMs(state: ImportState, status: RunnerStatus, now: number): number {
+export function timeLeftMs(state: ImportState<Write>, status: RunnerStatus, now: number): number {
   const left = state.writes.filter((w) => w.status === 'pending').length
   if (status.phase === 'waiting') return Math.max(0, status.until - now) + left * WRITE_SPACING_MS
   return left * (status.phase === 'writing' ? status.spacingMs : WRITE_SPACING_MS)
@@ -211,13 +255,13 @@ export function formatDuration(ms: number): string {
 }
 
 /** Each skipped title with why it was skipped ("changed on AniList", "not on your list"), in plan order. */
-export function skippedWrites(state: ImportState): { mediaId: number; reason: string }[] {
+export function skippedWrites(state: ImportState<Write>): { mediaId: number; reason: string }[] {
   return state.writes.filter((w) => w.status === 'skipped').map((w) => ({ mediaId: w.mediaId, reason: w.error ?? 'skipped' }))
 }
 
 export type ImportSummary = { written: number; skipped: number; failed: number; left: number; total: number }
 
-export function importSummary(state: ImportState): ImportSummary {
+export function importSummary(state: ImportState<Write>): ImportSummary {
   const count = (status: WriteStatus) => state.writes.filter((w) => w.status === status).length
   return { written: count('done'), skipped: count('skipped'), failed: count('failed'), left: count('pending'), total: state.writes.length }
 }

@@ -4,12 +4,14 @@ import {
   formatDuration,
   importSummary,
   newImport,
+  parseWriteQueue,
   retryFailed,
   runImport,
   skippedWrites,
   timeLeftMs,
   type Clock,
   type ImportState,
+  type Write,
 } from './runner.ts'
 
 const START = 1_760_000_000_000
@@ -38,14 +40,15 @@ type Reply =
  * A fake AniList behind a fake `fetch`: it keeps each title's score, answers the list query and
  * SaveMediaListEntry, and records when each write arrived. Scripted replies are used for writes, in order.
  */
-function fakeAniList(clock: Clock, scores: Record<number, number>, options: { remaining?: (n: number) => number } = {}) {
+function fakeAniList(clock: Clock, scores: Record<number, number>, options: FakeOptions = {}) {
   const store = new Map(Object.entries(scores).map(([id, s]) => [Number(id), s]))
-  const writes: Array<{ mediaId: number; scoreRaw: number; at: number }> = []
+  const statuses = new Map<number, string>(Object.entries(options.statuses ?? {}).map(([id, s]) => [Number(id), s]))
+  const writes: Array<{ mediaId: number; scoreRaw?: number; status?: string; at: number }> = []
   const script: Reply[] = []
   let requests = 0
   const fetch = async (_url: string | URL | Request, init?: RequestInit) => {
     requests++
-    const body = JSON.parse(String(init?.body)) as { query: string; variables: Record<string, number> }
+    const body = JSON.parse(String(init?.body)) as { query: string; variables: { mediaId: number; scoreRaw?: number; status?: string } }
     const remaining = String(options.remaining?.(requests) ?? 25)
     const resetAt = String(Math.floor(clock.now() / 1000) + 60)
     const json = (status: number, data: unknown, headers: Record<string, string> = {}) =>
@@ -54,12 +57,12 @@ function fakeAniList(clock: Clock, scores: Record<number, number>, options: { re
         headers: { 'Content-Type': 'application/json', 'X-RateLimit-Remaining': remaining, 'X-RateLimit-Reset': resetAt, ...headers },
       })
     if (body.query.includes('MediaListCollection')) {
-      const entries = [...store].map(([mediaId, score]) => listEntry(mediaId, score))
+      const entries = [...store].map(([mediaId, score]) => listEntry(mediaId, score, statuses.get(mediaId)))
       return json(200, { data: { MediaListCollection: { hasNextChunk: false, lists: [{ entries }] } } })
     }
     if (!body.query.includes('SaveMediaListEntry')) throw new Error('unexpected query')
     const reply = script.shift() ?? { kind: 'ok' }
-    const { mediaId, scoreRaw } = body.variables
+    const { mediaId, scoreRaw, status } = body.variables
     switch (reply.kind) {
       case 'network':
         throw new TypeError('Failed to fetch')
@@ -71,18 +74,26 @@ function fakeAniList(clock: Clock, scores: Record<number, number>, options: { re
           headers: reply.reset === undefined ? { 'X-RateLimit-Remaining': '0' } : { 'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': String(reply.reset) },
         })
       case 'ok':
-        writes.push({ mediaId, scoreRaw, at: clock.now() })
-        store.set(mediaId, scoreRaw)
+        if (status === undefined) {
+          writes.push({ mediaId, scoreRaw, at: clock.now() })
+          store.set(mediaId, scoreRaw!)
+        } else {
+          writes.push({ mediaId, status, at: clock.now() })
+          statuses.set(mediaId, status)
+          if (!store.has(mediaId)) store.set(mediaId, 0)
+        }
         return json(200, { data: { SaveMediaListEntry: { mediaId } } })
     }
   }
-  return { fetch: fetch as typeof globalThis.fetch, store, writes, script }
+  return { fetch: fetch as typeof globalThis.fetch, store, statuses, writes, script }
 }
 
-function listEntry(mediaId: number, score: number) {
+type FakeOptions = { remaining?: (n: number) => number; statuses?: Record<number, string> }
+
+function listEntry(mediaId: number, score: number, status = 'COMPLETED') {
   return {
     mediaId,
-    status: 'COMPLETED',
+    status,
     score,
     completedAt: null,
     media: {
@@ -98,12 +109,12 @@ function listEntry(mediaId: number, score: number) {
   }
 }
 
-function setup(scores: Record<number, number>, options: { remaining?: (n: number) => number } = {}) {
+function setup(scores: Record<number, number>, options: FakeOptions = {}) {
   const clock = fakeClock()
   const aniList = fakeAniList(clock, scores, options)
   const gateway = createAniListGateway({ fetch: aniList.fetch, token: 't' })
-  const saved: ImportState[] = []
-  const deps = { gateway, clock, userId: 1, mediaType: 'ANIME' as const, save: (s: ImportState) => saved.push(s) }
+  const saved: ImportState<Write>[] = []
+  const deps = { gateway, clock, userId: 1, mediaType: 'ANIME' as const, save: (s: ImportState<Write>) => saved.push(s) }
   return { clock, aniList, deps, saved }
 }
 
@@ -300,5 +311,91 @@ describe('Import Runner: 429', () => {
     expect(clock.sleeps).toContain(60_000)
     expect(aniList.writes.map((w) => w.mediaId)).toEqual([1, 2, 3])
     expect(aniList.writes[1].at - aniList.writes[0].at).toBeGreaterThanOrEqual(60_000)
+  })
+})
+
+describe('Import Runner: list status writes', () => {
+  const marks = [
+    { mediaId: 11, listStatus: 'COMPLETED' as const },
+    { mediaId: 12, listStatus: 'DROPPED' as const },
+    { mediaId: 13, listStatus: 'PLANNING' as const },
+  ]
+
+  it('adds titles not yet on the list with their status, spaced like score writes', async () => {
+    const { aniList, deps } = setup(oldScores)
+
+    const done = await runImport(deps, newImport([plan[0], ...marks], { hash: 'h', format: 'POINT_100' }))
+
+    expect(aniList.writes.map((w) => [w.mediaId, w.scoreRaw ?? w.status])).toEqual([
+      [1, 90],
+      [11, 'COMPLETED'],
+      [12, 'DROPPED'],
+      [13, 'PLANNING'],
+    ])
+    expect(aniList.writes.map((w) => w.at - aniList.writes[0].at)).toEqual([0, 2200, 4400, 6600])
+    expect(done.writes.map((w) => w.status)).toEqual(['done', 'done', 'done', 'done'])
+  })
+
+  it('waits out a 429 on a status write, then retries the same title', async () => {
+    const { clock, aniList, deps } = setup({})
+    const reset = Math.floor(START / 1000) + 42
+    aniList.script.push({ kind: '429', reset })
+
+    const done = await runImport(deps, newImport(marks, { hash: 'h', format: 'POINT_100' }))
+
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([11, 12, 13])
+    expect(aniList.writes[0].at).toBeGreaterThanOrEqual(reset * 1000)
+    expect(clock.sleeps).toContain(reset * 1000 - START)
+    expect(done.writes.every((w) => w.status === 'done')).toBe(true)
+  })
+
+  it('marks a failed status write and retries only that one', async () => {
+    const { aniList, deps } = setup({})
+    aniList.script.push({ kind: 'ok' }, { kind: 'network' }, { kind: 'ok' })
+    const first = await runImport(deps, newImport(marks, { hash: 'h', format: 'POINT_100' }))
+    expect(first.writes.map((w) => w.status)).toEqual(['done', 'failed', 'done'])
+
+    const second = await runImport(deps, retryFailed(first))
+
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([11, 13, 12])
+    expect(aniList.statuses.get(12)).toBe('DROPPED')
+    expect(importSummary(second)).toMatchObject({ written: 3, failed: 0, left: 0 })
+  })
+
+  it('a resumed queue never writes a status twice', async () => {
+    const { aniList, deps, saved } = setup({})
+    const stop = new AbortController()
+    const save = (s: ImportState<Write>) => {
+      saved.push(s)
+      if (s.writes.filter((w) => w.status === 'done').length === 1) stop.abort()
+    }
+    await runImport({ ...deps, save }, newImport(marks, { hash: 'h', format: 'POINT_100' }), { signal: stop.signal })
+
+    // Read back from storage, as the next visit does.
+    const restored = parseWriteQueue(JSON.parse(JSON.stringify(saved.at(-1))))
+    expect(restored).not.toBeNull()
+    const resumed = await runImport(deps, restored!)
+
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([11, 12, 13])
+    expect(importSummary(resumed)).toMatchObject({ written: 3, left: 0 })
+  })
+
+  it('counts a status that reached AniList before the tab closed as done, without writing it again', async () => {
+    const { aniList, deps } = setup({ 11: 0 }, { statuses: { 11: 'COMPLETED' } })
+
+    const done = await runImport(deps, newImport(marks, { hash: 'h', format: 'POINT_100' }))
+
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([12, 13])
+    expect(done.writes[0].status).toBe('done')
+  })
+
+  it('skips a title put on the list with another status since it was marked, leaving it as it is', async () => {
+    const { aniList, deps } = setup({ 12: 0 }, { statuses: { 12: 'CURRENT' } })
+
+    const done = await runImport(deps, newImport(marks, { hash: 'h', format: 'POINT_100' }))
+
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([11, 13])
+    expect(aniList.statuses.get(12)).toBe('CURRENT')
+    expect(done.writes[1]).toMatchObject({ status: 'skipped', error: 'already on your list' })
   })
 })
