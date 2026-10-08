@@ -26,9 +26,8 @@ export type CatchUpMedia = {
   recommendations: Array<{ mediaId: number; rating: number }>
 }
 
-const CANDIDATE_QUERY = `query ($ids: [Int], $perPage: Int) {
-  Page(perPage: $perPage) {
-    media(id_in: $ids, type: ANIME) {
+/** Everything the suggestion module scores a title from. */
+const CANDIDATE_FIELDS = `
       id
       title { romaji english native }
       coverImage { large color }
@@ -39,7 +38,18 @@ const CANDIDATE_QUERY = `query ($ids: [Int], $perPage: Int) {
       stats { statusDistribution { status amount } }
       tags { name rank }
       relations { edges { relationType node { id type } } }
-      recommendations(perPage: 25, sort: RATING_DESC) { nodes { rating mediaRecommendation { id } } }
+      recommendations(perPage: 25, sort: RATING_DESC) { nodes { rating mediaRecommendation { id } } }`
+
+const CANDIDATE_QUERY = `query ($ids: [Int], $perPage: Int) {
+  Page(perPage: $perPage) {
+    media(id_in: $ids, type: ANIME) {${CANDIDATE_FIELDS}
+    }
+  }
+}`
+
+const POPULAR_QUERY = `query ($page: Int, $perPage: Int, $from: FuzzyDateInt, $to: FuzzyDateInt) {
+  Page(page: $page, perPage: $perPage) {
+    media(type: ANIME, sort: POPULARITY_DESC, isAdult: false, startDate_greater: $from, startDate_lesser: $to) {${CANDIDATE_FIELDS}
     }
   }
 }`
@@ -79,12 +89,22 @@ function toCatchUpMedia(raw: RawCandidate): CatchUpMedia {
   }
 }
 
+type Deps = { fetch: typeof fetch; token: string | null; onRateLimit?: (rateLimit: RateLimit) => void }
+
+function rateLimitHeaders(deps: Deps) {
+  return (headers: Headers) =>
+    deps.onRateLimit?.({
+      remaining: numberHeader(headers, 'X-RateLimit-Remaining'),
+      resetAt: numberHeader(headers, 'X-RateLimit-Reset'),
+    })
+}
+
 /**
  * Loads anime by id, 50 per request. Throws the gateway's typed `AniListError` (a 429 is
  * `rate-limited`) at the first failing request. `onRateLimit` gets the headers of every response.
  */
 export async function fetchCatchUpMedia(
-  deps: { fetch: typeof fetch; token: string; onRateLimit?: (rateLimit: RateLimit) => void },
+  deps: Deps,
   ids: readonly number[],
 ): Promise<CatchUpMedia[]> {
   const unique = [...new Set(ids)]
@@ -94,11 +114,30 @@ export async function fetchCatchUpMedia(
       deps,
       CANDIDATE_QUERY,
       { ids: unique.slice(i, i + CANDIDATES_PER_REQUEST), perPage: CANDIDATES_PER_REQUEST },
-      (headers) =>
-        deps.onRateLimit?.({
-          remaining: numberHeader(headers, 'X-RateLimit-Remaining'),
-          resetAt: numberHeader(headers, 'X-RateLimit-Reset'),
-        }),
+      rateLimitHeaders(deps),
+    )
+    media.push(...data.Page.media.map(toCatchUpMedia))
+  }
+  return media
+}
+
+/** Years in which titles started, both ends included. */
+export type Era = { from: number; to: number }
+
+/**
+ * The most popular anime that started within `era` (all-time without one), `pages` pages of 50, with the same fields
+ * as `fetchCatchUpMedia`. Throws the gateway's `AniListError` like it.
+ */
+export async function fetchPopularAnime(deps: Deps, era: Era | null, pages: number): Promise<CatchUpMedia[]> {
+  const media: CatchUpMedia[] = []
+  // FuzzyDateInt is YYYYMMDD and both bounds are exclusive.
+  const range = era ? { from: (era.from - 1) * 10000 + 1231, to: (era.to + 1) * 10000 } : {}
+  for (let page = 1; page <= pages; page++) {
+    const data = await request<{ Page: { media: RawCandidate[] } }>(
+      deps,
+      POPULAR_QUERY,
+      { page, perPage: CANDIDATES_PER_REQUEST, ...range },
+      rateLimitHeaders(deps),
     )
     media.push(...data.Page.media.map(toCatchUpMedia))
   }
