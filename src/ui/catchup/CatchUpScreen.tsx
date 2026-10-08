@@ -63,6 +63,8 @@ export function CatchUpScreen(props: {
   onRetryWrites: () => void
   /** Beside "Batch N": the Starting era chip (#51). */
   batchExtra?: ReactNode
+  /** The body while the view asks the Starting era (#51). */
+  eraQuestion?: ReactNode
   /** Right of the queue status: the exit offer (#52). */
   headerAction?: ReactNode
 }) {
@@ -123,6 +125,8 @@ export function CatchUpScreen(props: {
             <p className="cu-h2">Finding anime you’ve probably watched…</p>
             <p className="small">Reading your list and what it links to on AniList. A long list can take a minute.</p>
           </div>
+        ) : view.phase === 'era' ? (
+          props.eraQuestion
         ) : view.phase === 'failed' ? (
           <div className="cu-center">
             <p className="cu-h2">Couldn’t load suggestions</p>
