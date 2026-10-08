@@ -37,6 +37,8 @@ export type MenuActions = {
   logout: () => void
   /** Switch the open Ranking to this Sort Goal (#28): Full Ranking asks first, Scores switches at once. */
   switchSortGoal: (goal: SortGoal) => void
+  /** Catch-up (anime only), whichever Media Type the open Ranking is. */
+  openCatchUp: () => void
 }
 
 /** The one list behind the account menu and the Ctrl+K palette, for a logged-in user. */
@@ -139,6 +141,14 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
     })
   }
   items.push(
+    {
+      id: 'catch-up',
+      group: 'App',
+      icon: '+',
+      title: 'Catch-up',
+      description: 'Add anime you’ve already watched, 20 at a time',
+      run: actions.openCatchUp,
+    },
     {
       id: 'theme',
       group: 'App',

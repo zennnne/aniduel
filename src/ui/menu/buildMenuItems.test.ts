@@ -26,6 +26,7 @@ const actions: MenuActions = {
   toggleTheme: noop,
   logout: noop,
   switchSortGoal: noop,
+  openCatchUp: noop,
 }
 
 const ids = (log: DuelLog) =>
@@ -103,5 +104,30 @@ describe('the split offer in the menu', () => {
     expect(splitItem({ ...log, events: [...log.events, ...hated.map((id) => assign(id, 4))] }).description).toBe(
       '100 titles not settled: Best / Middle / Lowest cuts the Duels',
     )
+  })
+})
+
+describe('Catch-up in the menu', () => {
+  const items = (mediaType: 'ANIME' | 'MANGA', hasLog: boolean, openCatchUp = noop) =>
+    buildMenuItems(
+      { mediaType, statuses: ['COMPLETED'], hasLog, hasProgress: hasLog, ranking: null, choosingBand: false, splitOffers: [] },
+      { ...actions, openCatchUp },
+    )
+
+  it('is always offered, with or without a Ranking, and says it is for anime', () => {
+    for (const item of [...items('ANIME', false), ...items('MANGA', true)].filter((i) => i.id === 'catch-up')) {
+      expect(item.title).toBe('Catch-up')
+      expect(item.description).toMatch(/anime/i)
+    }
+    expect(items('ANIME', false).filter((i) => i.id === 'catch-up')).toHaveLength(1)
+    expect(items('MANGA', true).filter((i) => i.id === 'catch-up')).toHaveLength(1)
+  })
+
+  it('opens Catch-up', () => {
+    let opened = 0
+    items('ANIME', true, () => opened++)
+      .find((i) => i.id === 'catch-up')!
+      .run()
+    expect(opened).toBe(1)
   })
 })

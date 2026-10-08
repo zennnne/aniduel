@@ -1,9 +1,10 @@
 // Holdout eval for the Catch-up weights (#44): hide part of real AniList lists and count how many hidden titles each
 // weight variant brings back into the batch of 20. A throwaway prototype, kept out of the test suite; it reuses the
 // suggestion module and the candidate query rather than copying them.
-import { fetchCatchUpMedia, type CatchUpMedia } from '../../src/anilist/candidates.ts'
+import { fetchCatchUpMedia, fetchPopularAnime, type CatchUpMedia } from '../../src/anilist/candidates.ts'
 import { AniListError, request } from '../../src/anilist/gateway.ts'
 import type { ListStatus } from '../../src/anilist/types.ts'
+import { eraYears } from '../../src/catchup/candidatePool.ts'
 import { BATCH_SIZE, DEFAULT_WEIGHTS, suggestCatchUp, type CatchUpWeights } from '../../src/catchup/suggest.ts'
 
 export const VARIANTS: ReadonlyArray<{ name: string; weights: CatchUpWeights }> = [
@@ -125,35 +126,6 @@ export async function fetchPublicList(fetchFn: typeof fetch, userName: string): 
   return [...byId.values()]
 }
 
-const POPULAR_QUERY = `query ($page: Int, $from: FuzzyDateInt, $to: FuzzyDateInt) {
-  Page(page: $page, perPage: 50) {
-    media(type: ANIME, sort: POPULARITY_DESC, isAdult: false, startDate_greater: $from, startDate_lesser: $to) { id }
-  }
-}`
-
-/** The years the middle 80% of the watched titles started in. */
-export function eraYears(entries: readonly EvalEntry[]): { from: number; to: number } | null {
-  const years = entries
-    .filter((e) => e.status !== 'PLANNING' && e.year !== null)
-    .map((e) => e.year!)
-    .sort((a, b) => a - b)
-  if (years.length === 0) return null
-  return { from: years[Math.floor(years.length * 0.1)], to: years[Math.ceil(years.length * 0.9) - 1] }
-}
-
-async function fetchPopularInEra(fetchFn: typeof fetch, era: { from: number; to: number }): Promise<number[]> {
-  const ids: number[] = []
-  for (let page = 1; page <= ERA_PAGES; page++) {
-    const data = await request<{ Page: { media: Array<{ id: number }> } }>(
-      { fetch: fetchFn, token: null },
-      POPULAR_QUERY,
-      { page, from: (era.from - 1) * 10000 + 1231, to: (era.to + 1) * 10000 },
-    )
-    ids.push(...data.Page.media.map((m) => m.id))
-  }
-  return ids
-}
-
 export type UserResult = {
   userName: string
   watched: number
@@ -186,12 +158,14 @@ export async function evaluateUser(
     for (const r of m.recommendations) expanded.add(r.mediaId)
   }
   const era = eraYears(visible)
-  if (era) for (const id of await fetchPopularInEra(fetchFn, era)) expanded.add(id)
-  const candidateIds = [...expanded].filter((id) => !onVisibleList.has(id))
+  const popular = era ? await fetchPopularAnime({ fetch: fetchFn, token: null }, era, ERA_PAGES) : []
+  const known = new Set([...seeds, ...popular].map((m) => m.id))
+  const candidateIds = [...expanded].filter((id) => !onVisibleList.has(id) && !known.has(id))
   deps.log(`${userName}: ${seeds.length} seeds, fetching ${candidateIds.length} candidates`)
   const candidates = await fetchCatchUpMedia({ fetch: fetchFn, token: '' }, candidateIds)
+  const media = [...new Map([...seeds, ...popular, ...candidates].map((m) => [m.id, m])).values()]
 
-  return scoreVariants(userName, visible, hidden, [...seeds, ...candidates], seed)
+  return scoreVariants(userName, visible, hidden, media, seed)
 }
 
 /** Runs each variant over already-fetched data and counts hidden titles in its batch. Pure. */

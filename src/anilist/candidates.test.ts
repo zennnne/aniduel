@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fetchCatchUpMedia } from './candidates.ts'
+import { fetchCatchUpMedia, fetchPopularAnime } from './candidates.ts'
 import { AniListError } from './gateway.ts'
 
 type Call = { init: RequestInit; body: { query: string; variables: Record<string, unknown> } }
@@ -159,5 +159,37 @@ describe('Catch-up candidate query', () => {
     const ids = Array.from({ length: 150 }, (_, i) => i + 1)
     await expect(fetchCatchUpMedia({ fetch, token: 't' }, ids)).rejects.toMatchObject({ kind: 'rate-limited' })
     expect(calls).toHaveLength(2)
+  })
+})
+
+describe('Catch-up popular-in-era query', () => {
+  it('asks for the most popular anime that started within the era, with everything the suggestions score from', async () => {
+    const { fetch, calls } = fakeFetch(
+      { json: page(rawMedia(1), rawMedia(2)) },
+      { json: page(rawMedia(3)) },
+    )
+
+    const media = await fetchPopularAnime({ fetch, token: 'tok' }, { from: 2010, to: 2016 }, 2)
+
+    expect(media.map((m) => m.id)).toEqual([1, 2, 3])
+    expect(calls.map((c) => c.body.variables.page)).toEqual([1, 2])
+    for (const call of calls) {
+      expect(call.body.query).toContain('sort: POPULARITY_DESC')
+      expect(call.body.query).toContain('type: ANIME')
+      expect(call.body.query).toContain('isAdult: false')
+      expect(call.body.query).toMatch(/relations\s*\{/)
+      expect(call.body.query).toMatch(/statusDistribution\s*\{\s*status\s+amount\s*\}/)
+      // FuzzyDateInt bounds are exclusive: after the end of 2009, before 2017.
+      expect(call.body.variables).toMatchObject({ perPage: 50, from: 20091231, to: 20170000 })
+    }
+  })
+
+  it('asks for all-time favourites without an era', async () => {
+    const { fetch, calls } = fakeFetch({ json: page(rawMedia(1)) })
+
+    await fetchPopularAnime({ fetch, token: 't' }, null, 1)
+
+    expect(calls[0].body.variables.from).toBeUndefined()
+    expect(calls[0].body.variables.to).toBeUndefined()
   })
 })
