@@ -3,11 +3,13 @@ import { createAniListGateway } from '../anilist/gateway.ts'
 import {
   formatDuration,
   importSummary,
+  appendWrites,
   newImport,
   parseWriteQueue,
   retryFailed,
   runImport,
   skippedWrites,
+  startImport,
   timeLeftMs,
   type Clock,
   type ImportState,
@@ -397,5 +399,36 @@ describe('Import Runner: list status writes', () => {
     expect(aniList.writes.map((w) => w.mediaId)).toEqual([11, 13])
     expect(aniList.statuses.get(12)).toBe('CURRENT')
     expect(done.writes[1]).toMatchObject({ status: 'skipped', error: 'already on your list' })
+  })
+})
+
+describe('Import Runner: appending to a running queue', () => {
+  it('writes what is appended while it runs, after what was already queued and at the same spacing', async () => {
+    const { aniList, deps, saved } = setup({})
+    const run = startImport(deps, newImport<Write>([{ mediaId: 11, listStatus: 'COMPLETED' }], { hash: 'h', format: 'POINT_100' }), {
+      onStatus: (s) => {
+        if (s.phase === 'writing' && s.mediaId === 11) run.append([{ mediaId: 21, listStatus: 'DROPPED' }, { mediaId: 22, listStatus: 'PLANNING' }])
+      },
+    })
+
+    const done = await run.done
+
+    expect(aniList.writes.map((w) => [w.mediaId, w.status])).toEqual([[11, 'COMPLETED'], [21, 'DROPPED'], [22, 'PLANNING']])
+    expect(aniList.writes.map((w) => w.at - aniList.writes[0].at)).toEqual([0, 2200, 4400])
+    expect(importSummary(done)).toMatchObject({ written: 3, total: 3 })
+    // Appended writes are saved at once, so a tab closed straight after still resumes them.
+    expect(saved.some((st) => st.writes.length === 3 && importSummary(st).written === 0)).toBe(true)
+  })
+
+  it('refuses an append once the run has ended; the writes then start a new run from the final state', async () => {
+    const { aniList, deps } = setup({})
+    const run = startImport(deps, newImport<Write>([{ mediaId: 11, listStatus: 'COMPLETED' }], { hash: 'h', format: 'POINT_100' }))
+    const first = await run.done
+
+    expect(run.append([{ mediaId: 21, listStatus: 'DROPPED' }])).toBe(false)
+
+    const second = await startImport(deps, appendWrites(first, [{ mediaId: 21, listStatus: 'DROPPED' }])).done
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([11, 21])
+    expect(importSummary(second)).toMatchObject({ written: 2, total: 2 })
   })
 })

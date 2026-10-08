@@ -121,16 +121,53 @@ export type RunOptions<W extends Write = PendingWrite> = {
  * Runs every pending write in order and returns the final state; `deps.save` gets the state after each write.
  * First it re-reads the list: a pending title whose AniList score is already the new one counts as done (it was
  * written before the tab closed), and one whose score changed since the plan, or that left the list, is skipped.
+ * A pending status write whose title is already on the list counts as done with the same status, or is skipped.
  * Then one write at a time, about 1 every 2.2 s (4 s once few requests remain); a 429 waits for the reset and retries.
  */
-export async function runImport<W extends Write>(
+export function runImport<W extends Write>(
   deps: RunnerDeps<W>,
   initial: ImportState<W>,
   options: RunOptions<W> = {},
 ): Promise<ImportState<W>> {
+  return startImport(deps, initial, options).done
+}
+
+/** A run in progress. */
+export type RunningImport<W extends Write = Write> = {
+  /**
+   * Queues more writes behind the ones already queued (Catch-up appends each saved page). Saved at once. Returns false
+   * once the run has ended: start a new run from `appendWrites(finalState, writes)` instead.
+   */
+  append(writes: readonly W[]): boolean
+  /** The final state, as `runImport` returns it. */
+  done: Promise<ImportState<W>>
+}
+
+/** Queues more pending writes after the existing ones, for a run that isn't going. */
+export function appendWrites<W extends Write>(state: ImportState<W>, writes: readonly W[]): ImportState<W> {
+  return { ...state, writes: [...state.writes, ...writes.map((w) => ({ ...w, status: 'pending' as const }))] }
+}
+
+/** `runImport`, with a handle to append writes while it runs. */
+export function startImport<W extends Write>(
+  deps: RunnerDeps<W>,
+  initial: ImportState<W>,
+  options: RunOptions<W> = {},
+): RunningImport<W> {
   const { gateway, clock } = deps
   const { signal, onStatus } = options
   let state = initial
+  let ended = false
+  /** The list as re-read at the start, to settle writes appended after it. */
+  let current: ReadonlyMap<number, ListEntry> | null = null
+
+  function append(writes: readonly W[]): boolean {
+    if (ended) return false
+    state = appendWrites(state, writes)
+    if (current !== null) state = reconcile(state, current)
+    deps.save(state)
+    return true
+  }
 
   /** Runs one request; on a 429 waits until the reset time (or 60 s) and tries again. */
   async function withRateLimit<T>(request: () => Promise<T>): Promise<T> {
@@ -153,40 +190,47 @@ export async function runImport<W extends Write>(
     return remaining !== null && remaining <= LOW_REMAINING ? SLOW_SPACING_MS : WRITE_SPACING_MS
   }
 
-  try {
-    onStatus?.({ phase: 'reading' }, state)
-    const list = await withRateLimit(() => gateway.mediaList({ userId: deps.userId, type: deps.mediaType, statuses: ALL_STATUSES }))
-    state = reconcile(state, new Map(list.map((e) => [e.mediaId, e])))
-    deps.save(state)
-
-    let lastWriteAt: number | null = null
-    for (let i = 0; i < state.writes.length; i++) {
-      const write = state.writes[i]
-      if (write.status !== 'pending') continue
-      let result: Pick<QueuedWrite, 'status' | 'error'>
-      try {
-        await withRateLimit(async () => {
-          const gap = spacing()
-          onStatus?.({ phase: 'writing', mediaId: write.mediaId, spacingMs: gap }, state)
-          if (lastWriteAt !== null) await clock.sleep(Math.max(0, lastWriteAt + gap - clock.now()), signal)
-          if (signal?.aborted) throw new StoppedError()
-          lastWriteAt = clock.now()
-          if (isStatusWrite(write)) await gateway.saveStatus(write.mediaId, write.listStatus)
-          else await gateway.saveScore(write.mediaId, write.scoreRaw)
-        })
-        result = { status: 'done' }
-      } catch (e) {
-        // A stop or an expired login ends the run; the saved state resumes later.
-        if (e instanceof StoppedError || (e instanceof AniListError && e.kind === 'auth')) throw e
-        result = { status: 'failed', error: failureReason(e) }
-      }
-      state = updateWrite(state, i, result)
+  async function run(): Promise<ImportState<W>> {
+    try {
+      onStatus?.({ phase: 'reading' }, state)
+      const list = await withRateLimit(() => gateway.mediaList({ userId: deps.userId, type: deps.mediaType, statuses: ALL_STATUSES }))
+      current = new Map(list.map((e) => [e.mediaId, e]))
+      state = reconcile(state, current)
       deps.save(state)
+
+      let lastWriteAt: number | null = null
+      for (let i = 0; i < state.writes.length; i++) {
+        const write = state.writes[i]
+        if (write.status !== 'pending') continue
+        let result: Pick<QueuedWrite, 'status' | 'error'>
+        try {
+          await withRateLimit(async () => {
+            const gap = spacing()
+            onStatus?.({ phase: 'writing', mediaId: write.mediaId, spacingMs: gap }, state)
+            if (lastWriteAt !== null) await clock.sleep(Math.max(0, lastWriteAt + gap - clock.now()), signal)
+            if (signal?.aborted) throw new StoppedError()
+            lastWriteAt = clock.now()
+            if (isStatusWrite(write)) await gateway.saveStatus(write.mediaId, write.listStatus)
+            else await gateway.saveScore(write.mediaId, write.scoreRaw)
+          })
+          result = { status: 'done' }
+        } catch (e) {
+          // A stop or an expired login ends the run; the saved state resumes later.
+          if (e instanceof StoppedError || (e instanceof AniListError && e.kind === 'auth')) throw e
+          result = { status: 'failed', error: failureReason(e) }
+        }
+        state = updateWrite(state, i, result)
+        deps.save(state)
+      }
+    } catch (e) {
+      if (!(e instanceof StoppedError)) throw e
+    } finally {
+      ended = true
     }
-  } catch (e) {
-    if (!(e instanceof StoppedError)) throw e
+    return state
   }
-  return state
+
+  return { append, done: run() }
 }
 
 class StoppedError extends Error {}
