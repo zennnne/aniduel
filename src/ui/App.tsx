@@ -44,6 +44,7 @@ import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
 import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
 import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
+import { StartingEraChip, StartingEraQuestion } from './catchup/StartingEraQuestion.tsx'
 import { ClearPassedDialog } from './catchup/ClearPassedDialog.tsx'
 import { ExitOfferButton } from './catchup/ExitOfferButton.tsx'
 import { useCatchUp } from './catchup/useCatchUp.ts'
@@ -902,6 +903,21 @@ export function App() {
         <CatchUpScreen
           view={catchUp.view}
           queue={catchUp.queue}
+          batchExtra={
+            catchUp.startingEraLabel !== null && (
+              <StartingEraChip label={catchUp.startingEraLabel} onChange={catchUp.changeStartingEra} />
+            )
+          }
+          eraQuestion={
+            catchUp.view.phase === 'era' && (
+              <StartingEraQuestion
+                popular={catchUp.view.popular}
+                answer={catchUp.view.answer}
+                titleLanguage={viewer.titleLanguage}
+                onAnswer={catchUp.answerStartingEra}
+              />
+            )
+          }
           titleLanguage={viewer.titleLanguage}
           onBack={() => window.history.back()}
           onReload={catchUp.open}

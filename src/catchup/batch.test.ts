@@ -160,3 +160,35 @@ describe('Catch-up batch: after a reload', () => {
     expect(ids(firstBatch({ list: merged, media: filler(40), passed: new Map(), now: NOW, seed: 1 }))).not.toContain(1000)
   })
 })
+
+describe('Catch-up batch: cold start', () => {
+  /** 40 titles from 2005, and 40 less popular ones from 2018 that are sequels of the 2005 ones. */
+  const media = [
+    ...Array.from({ length: 40 }, (_, i) => anime(2000 + i, { year: 2005, watched: 20_000 + i })),
+    ...Array.from({ length: 40 }, (_, i) =>
+      anime(3000 + i, { year: 2018, watched: 1_000 + i, relations: [{ mediaId: 2000 + i, type: 'PREQUEL' }] }),
+    ),
+  ]
+  const threeWatched = list.slice(0, 3)
+  const startingEra = { from: 2003, to: 2007 }
+
+  it('keeps suggesting from the Starting era while the list stays below 10 watched titles', () => {
+    let batch = firstBatch({ list: threeWatched, media, passed: new Map(), now: NOW, seed: 1, startingEra })
+    batch = setMark(batch, ids(batch)[0], 'COMPLETED')
+
+    const saved = saveBatch(batch, { list: threeWatched, media, passed: new Map(), now: NOW, seed: 2, startingEra })
+
+    expect(saved.next.suggestions).toHaveLength(20)
+    expect(saved.next.suggestions.every((s) => s.media.year === 2005)).toBe(true)
+  })
+
+  it('switches to the usual mix once the marks take the list to 10 watched titles', () => {
+    let batch = firstBatch({ list: threeWatched, media, passed: new Map(), now: NOW, seed: 1, startingEra })
+    for (const id of ids(batch).slice(0, 7)) batch = setMark(batch, id, 'COMPLETED')
+
+    const saved = saveBatch(batch, { list: threeWatched, media, passed: new Map(), now: NOW, seed: 2, startingEra })
+
+    // Sequels of the seven just marked lead the batch, though far less popular than the 2005 titles left.
+    expect(saved.next.suggestions.slice(0, 7).every((s) => s.media.year === 2018)).toBe(true)
+  })
+})

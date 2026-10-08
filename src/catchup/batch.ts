@@ -1,6 +1,6 @@
 // Catch-up batches: the 20 titles on screen, the user's marks on them, and "Save & next 20". Pure: the screen keeps the
 // current batch and hands every change back through these functions.
-import type { CatchUpMedia } from '../anilist/candidates.ts'
+import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
 import type { QueuedWrite, StatusWrite } from '../import/runner.ts'
 import { suggestCatchUp, type Suggestion } from './suggest.ts'
@@ -30,10 +30,13 @@ export type BatchInput = {
   passed: ReadonlyMap<number, number>
   now: number
   seed: number
+  /** The Starting era's years, for a near-empty list (null: all-time favourites). */
+  startingEra?: Era | null
 }
 
 function suggest(input: BatchInput): Suggestion[] {
-  return suggestCatchUp({ list: input.list, media: input.media, passed: input.passed, now: input.now, seed: input.seed })
+  const { list, media, passed, now, seed, startingEra } = input
+  return suggestCatchUp({ list, media, passed, now, seed, startingEra })
 }
 
 export function firstBatch(input: BatchInput): CatchUpBatch {
