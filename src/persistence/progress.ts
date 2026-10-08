@@ -1,7 +1,7 @@
 // Persistence: localStorage keys for a user's saved progress, keyed by AniList user id and Media Type.
 // Every key belonging to one user starts with `aniduel/progress/<userId>/`, so logout can delete them all.
 import type { ListStatus, MediaType } from '../anilist/types.ts'
-import { parseImportState, type ImportState } from '../import/runner.ts'
+import { isStatusWrite, parseImportState, parseWriteQueue, type ImportState, type StatusWrite } from '../import/runner.ts'
 import { OFFERED_STATUSES } from '../pool/pool.ts'
 import type { DuelLog } from '../ranking/engine.ts'
 import type { TickOverrides } from '../ranking/preview.ts'
@@ -129,6 +129,36 @@ export function loadImportState(storage: Storage, key: RankingKey): ImportState 
 
 export function deleteImportState(storage: Storage, key: RankingKey): void {
   storage.removeItem(progressStorageKey({ ...key, part: IMPORT_PART }))
+}
+
+const CATCH_UP_QUEUE_PART = 'catchup-queue'
+
+/** A Catch-up status write, with the title's name for the failure bar. */
+export type NamedStatusWrite = StatusWrite & { name: string }
+
+/** Catch-up is anime only, so its write queue is saved under the user's anime progress. */
+const catchUpKey = (userId: number) => ({ userId, mediaType: 'ANIME' as const, part: CATCH_UP_QUEUE_PART })
+
+/** Saves Catch-up's write queue (every saved page's status writes). Called after every write. */
+export function saveCatchUpQueue(storage: Storage, userId: number, state: ImportState<NamedStatusWrite>): void {
+  saveProgressPart(storage, catchUpKey(userId), JSON.stringify(state))
+}
+
+/** The saved Catch-up write queue, or null if none or unreadable. */
+export function loadCatchUpQueue(storage: Storage, userId: number): ImportState<NamedStatusWrite> | null {
+  const raw = loadProgressPart(storage, catchUpKey(userId))
+  if (raw === null) return null
+  try {
+    const state = parseWriteQueue(JSON.parse(raw))
+    const named = state?.writes.every((w) => isStatusWrite(w) && typeof (w as Partial<NamedStatusWrite>).name === 'string')
+    return named ? (state as ImportState<NamedStatusWrite>) : null
+  } catch {
+    return null
+  }
+}
+
+export function deleteCatchUpQueue(storage: Storage, userId: number): void {
+  storage.removeItem(progressStorageKey(catchUpKey(userId)))
 }
 
 const TICKS_PART = 'import-ticks'
