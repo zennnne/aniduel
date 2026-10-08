@@ -120,14 +120,14 @@ function toListEntry(raw: RawEntry): ListEntry {
   }
 }
 
-function numberHeader(headers: Headers, name: string): number | null {
+export function numberHeader(headers: Headers, name: string): number | null {
   const value = headers.get(name)
   if (value === null || value.trim() === '') return null
   const n = Number(value)
   return Number.isFinite(n) ? n : null
 }
 
-async function request<T>(
+export async function request<T>(
   deps: { fetch: typeof fetch; token: string | null },
   query: string,
   variables: Record<string, unknown> = {},
