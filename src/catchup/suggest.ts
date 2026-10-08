@@ -1,6 +1,6 @@
 // Catch-up suggestions: picks the next batch of anime the user has probably already watched. Pure: the same input
 // and seed always give the same batch. See docs/research/onboarding-recall-recommendation.md for the signals.
-import type { CatchUpMedia } from '../anilist/candidates.ts'
+import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
 import type { ListEntry } from '../anilist/types.ts'
 
 /** How much each signal counts in a candidate's strength. Placeholders until the holdout eval locks them. */
@@ -39,6 +39,11 @@ export type CatchUpInput = {
   seed: number
   /** Defaults to DEFAULT_WEIGHTS; the holdout eval passes its variants here. */
   weights?: CatchUpWeights
+  /**
+   * The Starting era, used only while the list is below COLD_START_THRESHOLD watched titles: the batch is then the
+   * most popular titles from it. Null or left out gives all-time favourites.
+   */
+  startingEra?: Era | null
 }
 
 /**
@@ -53,6 +58,14 @@ export type Suggestion = { media: CatchUpMedia; kind: SuggestionKind }
 export const PASSED_HIDE_MS = 30 * 24 * 60 * 60 * 1000
 
 export const BATCH_SIZE = 20
+
+/** Below this many watched titles the list says too little, and the batch is popular titles from the Starting era. */
+export const COLD_START_THRESHOLD = 10
+
+/** Whether the list is below COLD_START_THRESHOLD watched titles (Planning doesn't count). */
+export function isColdStart(list: ReadonlyArray<Pick<ListEntry, 'status'>>): boolean {
+  return list.filter((e) => e.status !== 'PLANNING').length < COLD_START_THRESHOLD
+}
 
 /** How many of each kind a batch has when there are enough candidates; any shortfall is filled by the strongest. */
 export const BATCH_COMPOSITION: Readonly<Record<SuggestionKind, number>> = { strong: 12, era: 5, explore: 3 }
@@ -191,6 +204,15 @@ export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
   )
   const maxWatched = Math.max(1, ...candidates.map((m) => m.watched))
 
+  // Starting era fit, 0–1: 1 inside it (or with no Starting era), falling off with the years outside it.
+  const startingEra = input.startingEra ?? null
+  const startingEraFit = (year: number | null) => {
+    if (startingEra === null) return 1
+    if (year === null) return 0
+    const off = Math.max(0, startingEra.from - year, year - startingEra.to)
+    return 1 / (1 + off / ERA_SPAN_YEARS)
+  }
+
   const signals = new Map(
     candidates.map((m) => {
       const era = nearYear(m.year) / maxNearYear
@@ -207,7 +229,8 @@ export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
         weights.recommendations * (1 - Math.exp(-(votes.get(m.id) ?? 0) / 6)) +
         weights.popularity * popularInEra +
         weights.tags * tagFit
-      return [m.id, { strength, popularInEra, outsideEra: popularity * (1 - era * formatFit) }]
+      const fromStartingEra = popularity * startingEraFit(m.year)
+      return [m.id, { strength, popularInEra, outsideEra: popularity * (1 - era * formatFit), fromStartingEra }]
     }),
   )
 
@@ -243,6 +266,12 @@ export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
   const strength = (m: CatchUpMedia) => signals.get(m.id)!.strength
   const popularInEra = (m: CatchUpMedia) => signals.get(m.id)!.popularInEra
   const outsideEra = (m: CatchUpMedia) => signals.get(m.id)!.outsideEra
+  const fromStartingEra = (m: CatchUpMedia) => signals.get(m.id)!.fromStartingEra
+
+  if (isColdStart(input.list)) {
+    take('era', BATCH_SIZE, byRank(fromStartingEra)([...left]), fromStartingEra)
+    return batch
+  }
 
   take('strong', BATCH_COMPOSITION.strong, byRank(strength)([...left]), strength)
   take('era', BATCH_COMPOSITION.era, byRank(popularInEra)([...left]), popularInEra)

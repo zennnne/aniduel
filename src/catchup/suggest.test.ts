@@ -220,4 +220,49 @@ describe('Catch-up suggestions', () => {
 
     expect(ids(suggestCatchUp(input({ media })))).toEqual([2])
   })
+
+  describe('cold start: fewer than 10 watched titles', () => {
+    /** 30 titles from 2005 and 30 far more popular ones from 2018. */
+    const media = [
+      ...Array.from({ length: 30 }, (_, i) => anime(2000 + i, { year: 2005, watched: 20_000 + i })),
+      ...Array.from({ length: 30 }, (_, i) => anime(3000 + i, { year: 2018, watched: 200_000 + i })),
+    ]
+    const nineWatched = Array.from({ length: 9 }, (_, i) => entry(100 + i, 'COMPLETED', 2018))
+
+    it('fills the batch with popular titles from the Starting era', () => {
+      const batch = suggestCatchUp(input({ list: nineWatched, media, startingEra: { from: 2003, to: 2007 } }))
+
+      expect(batch).toHaveLength(20)
+      expect(batch.every((s) => s.media.year === 2005)).toBe(true)
+      // Most popular first.
+      expect(ids(batch).slice(0, 3)).toEqual([2029, 2028, 2027])
+    })
+
+    it('gives all-time favourites when the Starting era was skipped', () => {
+      const batch = suggestCatchUp(input({ list: nineWatched, media, startingEra: null }))
+
+      expect(batch.every((s) => s.media.year === 2018)).toBe(true)
+      expect(ids(batch).slice(0, 3)).toEqual([3029, 3028, 3027])
+    })
+
+    it('still counts as cold start with Planning titles, which are not watched', () => {
+      const list = [...nineWatched, entry(500, 'PLANNING'), entry(501, 'PLANNING')]
+
+      const batch = suggestCatchUp(input({ list, media, startingEra: { from: 2003, to: 2007 } }))
+
+      expect(batch.every((s) => s.media.year === 2005)).toBe(true)
+    })
+
+    it('ignores the Starting era from 10 watched titles: the usual mix from the list takes over', () => {
+      const tenWatched = [...nineWatched, entry(109, 'DROPPED', 2018)]
+      const sequel = anime(4000, { year: 2019, watched: 100, relations: [{ mediaId: 100, type: 'PREQUEL' }] })
+
+      const batch = suggestCatchUp(input({ list: tenWatched, media: [...media, sequel], startingEra: { from: 2003, to: 2007 } }))
+
+      expect(ids(batch)[0]).toBe(4000)
+      expect(batch.map((s) => s.kind)).toContain('strong')
+      // The list's own era (2018) leads, not the Starting era.
+      expect(batch.filter((s) => s.media.year === 2005).length).toBeLessThan(batch.length / 2)
+    })
+  })
 })
