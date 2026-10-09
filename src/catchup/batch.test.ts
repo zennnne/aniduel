@@ -170,10 +170,10 @@ describe('Catch-up batch: cold start', () => {
     ),
   ]
   const threeWatched = list.slice(0, 3)
-  const fortyThreeWatched = list.slice(0, 43)
+  const twentyThreeWatched = list.slice(0, 23)
   const startingEra = { from: 2003, to: 2007 }
 
-  it('keeps suggesting from the Starting era while the list stays below 50 watched titles', () => {
+  it('keeps suggesting from the Starting era while the list stays below 30 watched titles', () => {
     let batch = firstBatch({ list: threeWatched, media, passed: new Map(), now: NOW, seed: 1, startingEra })
     batch = setMark(batch, ids(batch)[0], 'COMPLETED')
 
@@ -183,11 +183,11 @@ describe('Catch-up batch: cold start', () => {
     expect(saved.next.suggestions.every((s) => s.media.year === 2005)).toBe(true)
   })
 
-  it('switches to the usual mix once the marks take the list to 50 watched titles', () => {
-    let batch = firstBatch({ list: fortyThreeWatched, media, passed: new Map(), now: NOW, seed: 1, startingEra })
+  it('switches to the usual mix once the marks take the list to 30 watched titles', () => {
+    let batch = firstBatch({ list: twentyThreeWatched, media, passed: new Map(), now: NOW, seed: 1, startingEra })
     for (const id of ids(batch).slice(0, 7)) batch = setMark(batch, id, 'COMPLETED')
 
-    const saved = saveBatch(batch, { list: fortyThreeWatched, media, passed: new Map(), now: NOW, seed: 2, startingEra })
+    const saved = saveBatch(batch, { list: twentyThreeWatched, media, passed: new Map(), now: NOW, seed: 2, startingEra })
 
     // Sequels of the seven just marked lead the batch, though far less popular than the 2005 titles left.
     expect(saved.next.suggestions.slice(0, 7).every((s) => s.media.year === 2018)).toBe(true)
