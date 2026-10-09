@@ -9,15 +9,15 @@ const listOf = (...statuses: ListStatus[]) => statuses.map((status, i) => ({ med
 const completed = (n: number) => listOf(...Array.from({ length: n }, () => 'COMPLETED' as const))
 
 describe('a near-empty list', () => {
-  it('is one with fewer than 10 watched titles', () => {
+  it('is one with fewer than 50 watched titles', () => {
     expect(isNearEmpty(completed(0))).toBe(true)
-    expect(isNearEmpty(completed(9))).toBe(true)
-    expect(isNearEmpty(completed(10))).toBe(false)
+    expect(isNearEmpty(completed(49))).toBe(true)
+    expect(isNearEmpty(completed(50))).toBe(false)
   })
 
   it('does not count Planning titles as watched', () => {
-    expect(isNearEmpty([...completed(9), ...listOf('PLANNING', 'PLANNING')])).toBe(true)
-    expect(isNearEmpty([...completed(9), ...listOf('DROPPED')])).toBe(false)
+    expect(isNearEmpty([...completed(49), ...listOf('PLANNING', 'PLANNING')])).toBe(true)
+    expect(isNearEmpty([...completed(49), ...listOf('DROPPED')])).toBe(false)
   })
 })
 

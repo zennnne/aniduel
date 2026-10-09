@@ -32,8 +32,8 @@ function filler(count: number, overrides: (i: number) => Partial<CatchUpMedia> =
   return Array.from({ length: count }, (_, i) => anime(1000 + i, { watched: 5_000 + i, ...overrides(i) }))
 }
 
-/** Twelve watched titles, so the list is past the cold-start threshold. */
-const watchedList = Array.from({ length: 12 }, (_, i) => entry(100 + i))
+/** Sixty watched titles, so the list is past the cold-start threshold. */
+const watchedList = Array.from({ length: 60 }, (_, i) => entry(100 + i))
 
 function input(overrides: Partial<CatchUpInput>): CatchUpInput {
   return { list: watchedList, media: [], passed: new Map(), now: NOW, seed: 1, ...overrides }
@@ -103,7 +103,7 @@ describe('Catch-up suggestions', () => {
   })
 
   it("prefers popular titles from the user's years and formats over more popular ones outside them", () => {
-    const list = Array.from({ length: 12 }, (_, i) => entry(100 + i, 'COMPLETED', 2009 + (i % 3), 'TV'))
+    const list = Array.from({ length: 60 }, (_, i) => entry(100 + i, 'COMPLETED', 2009 + (i % 3), 'TV'))
     const media = [
       anime(1, { year: 1990, format: 'MOVIE', watched: 20_000 }),
       anime(2, { year: 2010, format: 'MOVIE', watched: 12_000 }),
@@ -118,7 +118,7 @@ describe('Catch-up suggestions', () => {
   })
 
   it('makes a batch of 12 strongest matches, 5 popular-in-era and 3 exploratory titles', () => {
-    const list = Array.from({ length: 12 }, (_, i) => entry(100 + i, 'COMPLETED', 2014 + (i % 3), 'TV'))
+    const list = Array.from({ length: 60 }, (_, i) => entry(100 + i, 'COMPLETED', 2014 + (i % 3), 'TV'))
     // 30 titles recommended from the user's list, 30 popular ones from their era, 30 popular ones from other eras.
     const recommended = Array.from({ length: 30 }, (_, i) => anime(200 + i, { year: 2015, watched: 3_000 }))
     const inEra = Array.from({ length: 30 }, (_, i) => anime(300 + i, { year: 2015, watched: 50_000 + i }))
@@ -174,7 +174,7 @@ describe('Catch-up suggestions', () => {
   })
 
   it('gives the same batch for the same seed, and varies the exploratory titles between seeds', () => {
-    const list = Array.from({ length: 12 }, (_, i) => entry(100 + i, 'COMPLETED', 2015, 'TV'))
+    const list = Array.from({ length: 60 }, (_, i) => entry(100 + i, 'COMPLETED', 2015, 'TV'))
     const media = [
       ...filler(30),
       ...Array.from({ length: 30 }, (_, i) => anime(400 + i, { year: 1990 + i, format: 'MOVIE', watched: 40_000 + i })),
@@ -221,16 +221,16 @@ describe('Catch-up suggestions', () => {
     expect(ids(suggestCatchUp(input({ media })))).toEqual([2])
   })
 
-  describe('cold start: fewer than 10 watched titles', () => {
+  describe('cold start: fewer than 50 watched titles', () => {
     /** 30 titles from 2005 and 30 far more popular ones from 2018. */
     const media = [
       ...Array.from({ length: 30 }, (_, i) => anime(2000 + i, { year: 2005, watched: 20_000 + i })),
       ...Array.from({ length: 30 }, (_, i) => anime(3000 + i, { year: 2018, watched: 200_000 + i })),
     ]
-    const nineWatched = Array.from({ length: 9 }, (_, i) => entry(100 + i, 'COMPLETED', 2018))
+    const fortyNineWatched = Array.from({ length: 49 }, (_, i) => entry(100 + i, 'COMPLETED', 2018))
 
     it('fills the batch with popular titles from the Starting era', () => {
-      const batch = suggestCatchUp(input({ list: nineWatched, media, startingEra: { from: 2003, to: 2007 } }))
+      const batch = suggestCatchUp(input({ list: fortyNineWatched, media, startingEra: { from: 2003, to: 2007 } }))
 
       expect(batch).toHaveLength(20)
       expect(batch.every((s) => s.media.year === 2005)).toBe(true)
@@ -239,25 +239,25 @@ describe('Catch-up suggestions', () => {
     })
 
     it('gives all-time favourites when the Starting era was skipped', () => {
-      const batch = suggestCatchUp(input({ list: nineWatched, media, startingEra: null }))
+      const batch = suggestCatchUp(input({ list: fortyNineWatched, media, startingEra: null }))
 
       expect(batch.every((s) => s.media.year === 2018)).toBe(true)
       expect(ids(batch).slice(0, 3)).toEqual([3029, 3028, 3027])
     })
 
     it('still counts as cold start with Planning titles, which are not watched', () => {
-      const list = [...nineWatched, entry(500, 'PLANNING'), entry(501, 'PLANNING')]
+      const list = [...fortyNineWatched, entry(500, 'PLANNING'), entry(501, 'PLANNING')]
 
       const batch = suggestCatchUp(input({ list, media, startingEra: { from: 2003, to: 2007 } }))
 
       expect(batch.every((s) => s.media.year === 2005)).toBe(true)
     })
 
-    it('ignores the Starting era from 10 watched titles: the usual mix from the list takes over', () => {
-      const tenWatched = [...nineWatched, entry(109, 'DROPPED', 2018)]
+    it('ignores the Starting era from 50 watched titles: the usual mix from the list takes over', () => {
+      const fiftyWatched = [...fortyNineWatched, entry(149, 'DROPPED', 2018)]
       const sequel = anime(4000, { year: 2019, watched: 100, relations: [{ mediaId: 100, type: 'PREQUEL' }] })
 
-      const batch = suggestCatchUp(input({ list: tenWatched, media: [...media, sequel], startingEra: { from: 2003, to: 2007 } }))
+      const batch = suggestCatchUp(input({ list: fiftyWatched, media: [...media, sequel], startingEra: { from: 2003, to: 2007 } }))
 
       expect(ids(batch)[0]).toBe(4000)
       expect(batch.map((s) => s.kind)).toContain('strong')

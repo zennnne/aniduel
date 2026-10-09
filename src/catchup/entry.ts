@@ -4,7 +4,7 @@ import { queueProgress, type QueueSnapshot } from './queue.ts'
 import { isWatched } from './watched.ts'
 
 /** Below this many watched titles the list is near empty, and the mochi asks for more without being hovered. */
-export const NEAR_EMPTY_BELOW = 10
+export const NEAR_EMPTY_BELOW = 50
 
 /** Titles on the list with any status but Planning. */
 export function watchedCount(list: readonly { status: ListStatus }[]): number {
