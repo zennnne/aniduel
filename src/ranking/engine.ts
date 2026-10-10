@@ -5,6 +5,8 @@ import { sideHash } from './hash.ts'
 import { intervalOf, knowledgeOf, nextLevelDuel, tierIndex, type LevelContext, type PositionRange, type SegmentKnowledge } from './levelSelect.ts'
 import {
   addNewTitles,
+  excludeAnchor,
+  includeAnchor,
   answerAnchorDuel,
   newTitlesView,
   nextAnchorDuel,
@@ -601,6 +603,12 @@ function apply(machine: Machine, event: RecordedEvent): void {
       return
     }
     case 'forgotten':
+      // Score New Titles: Forgotten on an Anchor stops using it as a reference; another Anchor is chosen (ADR 0009).
+      if (machine.newTitles?.anchorIds.has(event.id) && !machine.forgotten.includes(event.id)) {
+        excludeAnchor(machine.newTitles, event.id)
+        machine.forgotten.push(event.id)
+        return
+      }
       if (!machine.present.has(event.id) || machine.forgotten.includes(event.id)) {
         throw new ReplayError(`Title ${event.id} can't be marked Forgotten: it is not in the Ranking or Rough Sort`)
       }
@@ -634,6 +642,10 @@ function apply(machine: Machine, event: RecordedEvent): void {
       const index = machine.forgotten.indexOf(event.id)
       if (index < 0) throw new ReplayError(`Title ${event.id} can't be brought back: it is not Forgotten`)
       machine.forgotten.splice(index, 1)
+      if (machine.newTitles?.anchorIds.has(event.id)) {
+        includeAnchor(machine.newTitles, event.id)
+        return
+      }
       if (machine.newTitles) {
         returnNewTitle(machine.newTitles, event.id)
         return

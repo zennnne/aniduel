@@ -86,6 +86,21 @@ describe('syncEvents on a Score New Titles Ranking', () => {
     expect(replay(events.reduce(appendEvent, log)).newTitles!.titles.map((t) => t.id)).toEqual([1, 2, 3])
   })
 
+  it('never changes the Anchor snapshot: changed, removed or unscored Anchors and newly scored titles leave it as it was', () => {
+    // 101 rescored, 102 lost its score, 103 left the list, 4 is newly scored, 5 is newly unscored on another status.
+    const list = [scored(101, 40), entry(102), entry(1), entry(2), scored(4, 100), entry(5, 'REPEATING'), entry(6, 'PLANNING')]
+    const events = syncEvents(log, list, DEFAULT, 'ROMAJI')
+    expect(events).toEqual([{ type: 'titles-added', ids: [5] }])
+    const synced = replay(events.reduce(appendEvent, log))
+    expect(synced.newTitles!.levels).toEqual(replay(log).newTitles!.levels)
+    expect(synced.newTitles!.titles.map((t) => t.id)).toEqual([1, 2, 5])
+    // Syncing again changes nothing, and taking titles out never names an Anchor.
+    expect(syncEvents(events.reduce(appendEvent, log), list, DEFAULT, 'ROMAJI')).toEqual([])
+    const removed = syncEvents(log, [scored(101, 90)], DEFAULT, 'ROMAJI')
+    expect(removed).toEqual([{ type: 'titles-removed', ids: [1, 2] }])
+    expect(replay(removed.reduce(appendEvent, log)).newTitles!.levels).toEqual(replay(log).newTitles!.levels)
+  })
+
   it('keeps a new title that got a score since (e.g. imported)', () => {
     expect(syncEvents(log, [scored(1, 80), entry(2)], DEFAULT, 'ROMAJI')).toEqual([])
   })
