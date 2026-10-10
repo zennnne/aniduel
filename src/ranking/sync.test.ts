@@ -12,6 +12,7 @@ function logOf(ids: number[], ...events: LogEvent[]): DuelLog {
 function finish(log: DuelLog, band: (id: number) => 0 | 1 | 2 | 3 | 4, value: (id: number) => number): DuelLog {
   for (let s = replay(log); s.prompt.kind !== 'all-complete'; s = replay(log)) {
     const p = s.prompt
+    if (p.kind === 'closer-to') throw new Error('a closer-to prompt is Score New Titles only')
     if (p.kind === 'rough-sort') log = appendEvent(log, { type: 'band-assigned', id: p.id, band: band(p.id) })
     else if (s.bandChoice) log = appendEvent(log, { type: 'band-selected', band: s.bandChoice.next })
     else {

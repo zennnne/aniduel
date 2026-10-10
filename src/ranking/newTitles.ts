@@ -13,7 +13,7 @@
 // or a split pair), the Anchors of the neighbouring levels vote too.
 import type { ScoreFormat } from '../anilist/types.ts'
 import { sideHash } from './hash.ts'
-import { levels as levelsOf } from './scoring.ts'
+import { humanStepPast, levels as levelsOf } from './scoring.ts'
 
 /** One Anchor in the snapshot (ADR 0009): its id and its score as a level of the snapshot's Score Format. */
 export type AnchorScore = { id: number; level: number }
@@ -38,10 +38,11 @@ export type NewTitlesState = {
 type AnchorAnswer = { anchor: number; level: number; result: 'win' | 'tie' | 'loss' }
 
 /**
- * A new title being placed: the positions lo..hi it can still be at, and every answer it was given against an
- * Anchor, in order (never the same Anchor twice).
+ * A new title being placed: the positions lo..hi it can still be at, every answer it was given against an Anchor, in
+ * order (never the same Anchor twice), and its closer-to answer once given: the gap position it was asked at and the
+ * score chosen. That answer counts only while the title is still at that gap.
  */
-type Placement = { id: number; lo: number; hi: number; answers: AnchorAnswer[] }
+type Placement = { id: number; lo: number; hi: number; answers: AnchorAnswer[]; closer?: { position: number; level: number } }
 
 /** Which side of boundary j a vote puts the title: 'above' = a position before j, 'below' = j or after. */
 type Side = 'above' | 'below'
@@ -62,6 +63,12 @@ export type NewTitles = {
 
 /** The next Duel: new title `a` against Anchor `b`, which is on Anchor level index `level`. */
 export type AnchorDuel = { a: number; b: number; level: number }
+
+/** The closer-to prompt (GLOSSARY): which of the scores `upper` and `lower` title `id` is closer to. */
+export type CloserTo = { id: number; upper: number; lower: number }
+
+/** What a Score New Titles Ranking asks next. */
+export type NewTitlesQuestion = ({ kind: 'anchor-duel' } & AnchorDuel) | ({ kind: 'closer-to' } & CloserTo)
 
 /**
  * Builds the search from the Anchor snapshot, or returns why the snapshot can't be used. Anchors are grouped by
@@ -115,22 +122,35 @@ export function includeAnchor(state: NewTitles, id: number): void {
 }
 
 /**
- * The next Duel: the first title that isn't settled, at the middle Anchor level it can still be on (a binary search
- * over the positions), against the next Anchor that may vote on that level's first open boundary. Null once every
- * title is settled.
+ * What to ask next, for the first title that isn't settled. Strictly between two Anchor levels: the closer-to prompt.
+ * Otherwise a Duel at the middle Anchor level it can still be on (a binary search over the positions), against the
+ * next Anchor that may vote on that level's first open boundary. Null once every title is settled.
  */
-export function nextAnchorDuel(state: NewTitles): AnchorDuel | null {
+export function nextQuestion(state: NewTitles): NewTitlesQuestion | null {
   for (const placement of state.queue) {
     const at = range(state, placement)
+    const between = closerTo(state, placement, at)
+    if (between) return { kind: 'closer-to', ...between }
     const level = nextLevel(state, at)
     if (level === null) continue
     // The level's own position is inside lo..hi, so at least one of its boundaries is too, and every boundary inside
     // lo..hi is still open. An open boundary of a level with a usable Anchor always has a voter left.
     const boundary = [2 * level + 1, 2 * level + 2].find((j) => at.lo < j && j <= at.hi)!
     const voter = nextVoter(state, placement, boundary)!
-    return { a: placement.id, b: voter.anchor, level: voter.level }
+    return { kind: 'anchor-duel', a: placement.id, b: voter.anchor, level: voter.level }
   }
   return null
+}
+
+/**
+ * The closer-to prompt a title is waiting on, or null: its place is a gap between two Anchor levels (not one past the
+ * extremes), and it has no closer-to answer for that gap yet.
+ */
+function closerTo(state: NewTitles, placement: Placement, at: Range): CloserTo | null {
+  const gap = at.lo / 2
+  if (at.lo !== at.hi || at.lo % 2 === 1 || gap === 0 || gap === state.levels.length) return null
+  if (placement.closer?.position === at.lo) return null
+  return { id: placement.id, upper: state.levels[gap - 1].level, lower: state.levels[gap].level }
 }
 
 /** Positions lo..hi a title can be at. */
@@ -197,55 +217,71 @@ function voterLevels(state: NewTitles, j: number): number[] {
  */
 function nextVoter(state: NewTitles, placement: Placement, j: number): Voter | null {
   const met = new Set(placement.answers.map((answer) => answer.anchor))
-  for (const level of voterLevels(state, j)) {
+  const unmet = (level: number): Voter | null => {
     const anchors = usable(state, level)
     const start = sideHash(state.seed, placement.id, 0xa0c4 + level) % Math.max(anchors.length, 1)
     for (let i = 0; i < anchors.length; i++) {
       const anchor = anchors[(start + i) % anchors.length]
       if (!met.has(anchor)) return { anchor, level }
     }
+    return null
   }
-  return null
+  const [own, ...neighbours] = voterLevels(state, j)
+  const first = unmet(own)
+  if (first) return first
+  // The neighbours take turns, the one asked least first (the one across the boundary on a draw), so both are heard.
+  const asked = (level: number) => placement.answers.filter((answer) => answer.level === level).length
+  const voters = neighbours
+    .map((level) => ({ level, voter: unmet(level) }))
+    .filter((n) => n.voter !== null)
+    .sort((x, y) => asked(x.level) - asked(y.level))
+  return voters[0]?.voter ?? null
 }
 
 /**
- * How an answer against an Anchor of one of boundary j's voter levels votes on it. An Anchor of the boundary's own
- * level m tells it directly. An Anchor of a neighbouring level stands in for level m together with the gap between
- * them: one above votes 'above' when the title is at least as good as it, one below when the title beats it.
+ * How an answer against an Anchor of one of boundary j's voter levels votes on it, or null when it doesn't tell. An
+ * Anchor of the boundary's own level m tells it directly. An Anchor of a neighbouring level tells only when the title
+ * is level with it or past it: at least as good as one above votes 'above', no better than one below votes 'below'.
+ * Losing to one above (or beating one below) fits both sides: the title may be on level m, or in the gap between
+ * them, the strict between-level case of the closer-to prompt (#48).
  */
-function vote(j: number, { level, result }: AnchorAnswer): Side {
+function vote(j: number, { level, result }: AnchorAnswer): Side | null {
   const m = levelOfBoundary(j)
   if (level === m && j % 2 === 1) return result === 'win' ? 'above' : 'below'
   if (level === m) return result === 'loss' ? 'below' : 'above'
-  if (level < m) return result === 'loss' ? 'below' : 'above'
-  return result === 'win' ? 'above' : 'below'
+  if (level < m) return result === 'loss' ? null : 'above'
+  return result === 'win' ? null : 'below'
 }
 
 /**
  * Boundary j's verdict from the answers so far, or null while it is open. Two votes on one side, and more than the
- * other side has, decide it: two agreeing Anchors, or 2 of 3. The voter levels count in turn: a neighbour's votes
- * count only once every usable Anchor of the levels before it has answered and left the boundary open. Once every
- * voter has answered without a verdict, the side with more votes wins, and an even split goes to the own level's
- * first answer. Answers from Forgotten Anchors don't count.
+ * other side has, decide it: two agreeing Anchors, or 2 of 3. The level's own Anchors vote first; the neighbouring
+ * levels' votes count only once every usable Anchor of the own level has answered and left the boundary open (a
+ * single-Anchor level, or a split). Then the side the own level leans to (more votes, or its first answer on an even
+ * split) stands once each neighbour has been asked and it still has more votes: the neighbours confirm it by not
+ * contradicting it. Once every voter has answered without a verdict, the side with more votes wins, and an even split
+ * goes to the own level's lean. Answers from Forgotten Anchors don't count.
  */
 function decide(state: NewTitles, placement: Placement, j: number): Side | null {
   const counts = placement.answers.filter((answer) => !state.excluded.has(answer.anchor))
-  const own = counts.filter((answer) => answer.level === levelOfBoundary(j))
-  let above = 0
-  let below = 0
-  for (const level of voterLevels(state, j)) {
-    const answers = counts.filter((answer) => answer.level === level)
-    for (const answer of answers) {
-      if (vote(j, answer) === 'above') above++
-      else below++
-    }
-    if (above >= 2 && above > below) return 'above'
-    if (below >= 2 && below > above) return 'below'
-    if (answers.length < usable(state, level).length) break
+  const [ownLevel, ...neighbours] = voterLevels(state, j)
+  const own = counts.filter((answer) => answer.level === ownLevel)
+  const tally = { above: 0, below: 0 }
+  const verdict = (): Side | null =>
+    tally.above >= 2 && tally.above > tally.below ? 'above' : tally.below >= 2 && tally.below > tally.above ? 'below' : null
+  for (const answer of own) tally[vote(j, answer)!]++
+  if (verdict() || own.length < usable(state, ownLevel).length) return verdict()
+  const lean = tally.above !== tally.below ? (tally.above > tally.below ? 'above' : 'below') : own.length > 0 ? vote(j, own[0]) : null
+  const heard = neighbours.every((level) => usable(state, level).length === 0 || counts.some((answer) => answer.level === level))
+  for (const answer of counts) {
+    const side = neighbours.includes(answer.level) ? vote(j, answer) : null
+    if (side) tally[side]++
   }
+  if (verdict()) return verdict()
+  if (lean && heard && tally[lean] > tally[lean === 'above' ? 'below' : 'above']) return lean
   if (nextVoter(state, placement, j)) return null
-  if (above !== below) return above > below ? 'above' : 'below'
-  return own.length > 0 ? vote(j, own[0]) : null
+  if (tally.above !== tally.below) return tally.above > tally.below ? 'above' : 'below'
+  return lean
 }
 
 /**
@@ -268,8 +304,8 @@ function range(state: NewTitles, placement: Placement): Range {
  * decided boundary is never reopened by later answers.
  */
 export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner: number | null): boolean {
-  const duel = nextAnchorDuel(state)
-  if (!duel || !((duel.a === a && duel.b === b) || (duel.a === b && duel.b === a))) return false
+  const duel = nextQuestion(state)
+  if (duel?.kind !== 'anchor-duel' || !((duel.a === a && duel.b === b) || (duel.a === b && duel.b === a))) return false
   const placement = state.queue.find((p) => p.id === duel.a)!
   const result = winner === null ? 'tie' : winner === duel.a ? 'win' : 'loss'
   placement.answers.push({ anchor: duel.b, level: duel.level, result })
@@ -278,22 +314,39 @@ export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner:
 }
 
 /**
- * The score a settled title gets at its position. A tie gives that Anchor level. For now a title above every Anchor
- * gets the top level, one below every one the bottom level, and one between two levels the upper one: the closer-to
- * prompt and the levels past the extremes (#48) replace these.
+ * Applies a closer-to answer: title `id` takes `level`. Returns false when it isn't the closer-to prompt asked now, or
+ * `level` isn't one of its two scores, so replay can refuse it.
  */
-function settledLevel(state: NewTitles, position: number): number {
+export function answerCloserTo(state: NewTitles, id: number, level: number): boolean {
+  const question = nextQuestion(state)
+  if (question?.kind !== 'closer-to' || question.id !== id || (level !== question.upper && level !== question.lower)) return false
+  const placement = state.queue.find((p) => p.id === id)!
+  placement.closer = { position: range(state, placement).lo, level }
+  return true
+}
+
+/**
+ * The score a settled title gets at its position. A tie gives that Anchor level. A title above every Anchor gets one
+ * human Score Step above the top Anchor score, one below every Anchor one step below the bottom, never past the Score
+ * Format's ends (ADR 0009). One between two levels gets the score its closer-to answer chose.
+ */
+function settledLevel(state: NewTitles, placement: Placement, position: number): number {
   const k = state.levels.length
   if (position % 2 === 1) return state.levels[(position - 1) / 2].level
   const gap = position / 2
-  return state.levels[Math.min(Math.max(gap - 1, 0), k - 1)].level
+  if (gap === 0) return humanStepPast(state.format, state.levels[0].level, 1)
+  if (gap === k) return humanStepPast(state.format, state.levels[k - 1].level, -1)
+  return placement.closer!.level
 }
 
-/** The levels a position may still give: its own level, or for a gap both levels around it. */
+/** The levels a position may still give: its own level, or for a gap the levels on either side of it. */
 function levelsNear(state: NewTitles, position: number): number[] {
   if (position % 2 === 1) return [state.levels[(position - 1) / 2].level]
   const gap = position / 2
-  return [state.levels[gap - 1], state.levels[gap]].filter((l) => l !== undefined).map((l) => l.level)
+  const k = state.levels.length
+  const above = gap === 0 ? humanStepPast(state.format, state.levels[0].level, 1) : state.levels[gap - 1].level
+  const below = gap === k ? humanStepPast(state.format, state.levels[k - 1].level, -1) : state.levels[gap].level
+  return [above, below]
 }
 
 export function newTitlesView(state: NewTitles): NewTitlesState {
@@ -301,8 +354,8 @@ export function newTitlesView(state: NewTitles): NewTitlesState {
     const { id } = placement
     const at = range(state, placement)
     const { lo, hi } = at
-    const settled = settledPosition(state, at)
-    if (settled !== null) return { id, settled: true, levels: [settledLevel(state, settled)] }
+    const settled = closerTo(state, placement, at) ? null : settledPosition(state, at)
+    if (settled !== null) return { id, settled: true, levels: [settledLevel(state, placement, settled)] }
     const levels = new Set<number>()
     for (let p = lo; p <= hi; p++) for (const level of levelsNear(state, p)) levels.add(level)
     return { id, settled: false, levels: [...levels].sort((x, y) => y - x) }
