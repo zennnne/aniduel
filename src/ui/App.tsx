@@ -24,6 +24,7 @@ import { anchorsOf, estimateNewTitlesDuels, newTitlesEligibility, newTitlesList 
 import {
   answeredDuels,
   appendEvent,
+  promptedTitle,
   replay,
   startLog,
   startNewTitlesLog,
@@ -102,9 +103,7 @@ function loginRedirect() {
  * only Refine Duels of other titles are left (on Scores the fixed title is worked on first, until it is settled).
  */
 function fixDone(state: RankingState, id: number): boolean {
-  const { prompt } = state
-  const asked = prompt.kind === 'duel' || prompt.kind === 'anchor-duel' ? prompt.a : prompt.kind === 'closer-to' ? prompt.id : null
-  return previewOpen(prompt) && asked !== id
+  return previewOpen(state.prompt) && promptedTitle(state.prompt) !== id
 }
 
 function newSeed(): number {
@@ -818,7 +817,7 @@ export function App() {
           count: unscored,
           enabled: newTitlesReason === null && Boolean(eligibility),
           reason: onNewTitles ? null : newTitlesReason,
-          anchors: ranking?.newTitles?.levels.reduce((sum, level) => sum + level.anchors.length, 0) ?? eligibility?.anchors ?? 0,
+          anchors: ranking?.newTitles?.anchorCount ?? eligibility?.anchors ?? 0,
         },
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
@@ -1068,11 +1067,11 @@ export function App() {
           settings={scoring}
           onSettings={changeScoring}
           onSwitchGoal={isNewTitles(ranking) ? undefined : requestSortGoal}
-          onRefine={refineFromPreview}
+          onRefine={ranking.prompt.kind === 'all-complete' ? undefined : refineFromPreview}
           overrides={imports.ticks}
           onTick={imports.tick}
           onImport={importView?.stage === 'running' ? undefined : (plan) => imports.plan(plan, scoring)}
-          onRerank={isNewTitles(ranking) ? undefined : (id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
+          onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
           onMove={isNewTitles(ranking) ? undefined : setPreviewMoving}
           onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}
         />
@@ -1146,7 +1145,7 @@ export function App() {
       {dialog === 'replace-with-new-titles' && viewer && (
         <ReplaceWithNewTitlesDialog
           mediaType={mediaType}
-          saved={ranking && log ? { goal: goalOf(ranking) === 'scores' ? 'Scores' : 'Full Ranking', duels: answeredDuels(log) } : null}
+          saved={ranking && log ? { goal: goalOf(ranking), duels: answeredDuels(log) } : null}
           onConfirm={replaceWithNewTitles}
           onSaveBackup={log ? saveBackup : undefined}
           onCancel={() => setDialog(null)}

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import type { ListEntry, MediaType, TitleLanguage, Viewer } from '../anilist/types.ts'
-import { BANDS, SUB_BANDS, progressOf, type BandIndex, type RankingState } from '../ranking/engine.ts'
+import { BANDS, SUB_BANDS, progressOf, promptedTitle, type BandIndex, type RankingState } from '../ranking/engine.ts'
 import { SUB_BAND_UI } from './bands.ts'
 import { Kao } from './Kao.tsx'
 import { MEDIA_LABEL, count, titleName } from './meta.ts'
@@ -138,7 +138,7 @@ function NewTitlesSidebar(props: {
   const newTitles = state.newTitles!
   const { done, total } = state.progress.ranked
   const prompt = state.prompt
-  const asked = prompt.kind === 'anchor-duel' ? prompt.a : prompt.kind === 'closer-to' ? prompt.id : null
+  const asked = promptedTitle(prompt)
   const current = newTitles.titles.find((t) => t.id === asked)
   const open = current ? new Set(current.levels) : null
   const mark = (level: number) => formatLevel(newTitles.format, level)
@@ -174,7 +174,7 @@ function NewTitlesSidebar(props: {
           <div key={line.level} className={open ? (open.has(line.level) ? 'lvl inb' : 'lvl out') : 'lvl'}>
             <b>{line.mark}</b>
             <span>
-              <span className="fine">{line.anchors} scored</span>
+              <span className="fine">{count(line.anchors, 'Anchor')}</span>
               <span className="lvchips">
                 {line.ids.map((id) => (
                   <span key={id}>{name(id)}</span>

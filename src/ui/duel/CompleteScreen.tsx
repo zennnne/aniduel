@@ -59,15 +59,21 @@ export function CompleteScreen(props: {
   )
 }
 
-/** Score New Titles (ADR 0009): "Every new title has a score", the scores with their new titles, and on to Preview. */
+/**
+ * Score New Titles (ADR 0009): "Every new title has a score", the scores with their new titles, and on to Preview.
+ * Titles left with no Anchor to compare (every one Forgotten or Suspect) are never given a score: counted here,
+ * listed on Preview's unsettled card.
+ */
 function NewTitlesComplete(props: { state: RankingState; name: (id: number) => string; onUndo: () => void; onScore?: () => void }) {
   const { state, name, onUndo, onScore } = props
   const lines = newTitlesLines(state, name).filter((line) => line.ids.length > 0)
+  const { done, total } = state.progress.ranked
   return (
     <div className="ranked">
-      <div className="h1">Every new title has a score</div>
+      <div className="h1">{done === total ? 'Every new title has a score' : 'No more Duels to ask'}</div>
       <div className="sub">
-        {state.progress.ranked.done} new titles scored
+        {done} new titles scored
+        {done < total && ` · ${total - done} not settled: no Anchor left to compare`}
         {state.forgotten.length > 0 && ` · ${state.forgotten.length} Forgotten`} · titles on the same score have no order
         among themselves
       </div>

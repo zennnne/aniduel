@@ -2,6 +2,7 @@
 // against an Anchor, and a plain search over the Anchor score levels places each title. Driven through `replay`.
 import { describe, expect, it } from 'vitest'
 import type { ScoreFormat } from '../anilist/types.ts'
+import { estimateNewTitlesDuels } from '../pool/anchors.ts'
 import { ReplayError, appendEvent, replay, startLog, startNewTitlesLog, type AnchorScore, type DuelLog, type LogEvent, type RankingState } from './engine.ts'
 
 /** Small seeded PRNG (mulberry32), so every case is reproducible. */
@@ -120,6 +121,29 @@ describe('placing new titles against Anchor score levels', () => {
       // Anchor: about twice the plain search (ADR 0009).
       expect(duels).toBeLessThanOrEqual(2 * ids.length * Math.ceil(Math.log2(2 * used.length + 1)))
     }
+  })
+
+  it("takes about the Duels Start estimates: twice a plain binary search over the Anchor scores", () => {
+    const random = rng(36)
+    let asked = 0
+    let estimated = 0
+    for (let trial = 0; trial < 40; trial++) {
+      const all = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+      const scale = all.filter(() => random() < 0.6)
+      while (scale.length < 3) scale.push(all.find((l) => !scale.includes(l))!)
+      scale.sort((x, y) => y - x)
+      const anchors = scale.flatMap((level, i) =>
+        Array.from({ length: 2 + Math.floor(random() * 5) }, (_, n) => ({ id: 1000 + 10 * i + n, level })),
+      )
+      const ids = Array.from({ length: 1 + Math.floor(random() * 20) }, (_, i) => 1 + i)
+      // On an Anchor score, or between two (half a point above one).
+      const truth = new Map(ids.map((id) => [id, scale[Math.floor(random() * scale.length)] + (random() < 0.5 ? 0.5 : 0)]))
+      const log = startNewTitlesLog({ seed: Math.floor(random() * 2 ** 32), userId: 1, mediaType: 'ANIME', format: 'POINT_10', anchors, ids })
+      asked += play(log, anchors, truth, random).duels
+      estimated += estimateNewTitlesDuels(ids.length, scale.length)
+    }
+    expect(asked / estimated).toBeGreaterThan(0.7)
+    expect(asked / estimated).toBeLessThan(1.05)
   })
 
   it('settles a title that ties no Anchor by the closer-to prompt, or one step past the extreme Anchor', () => {
@@ -397,6 +421,45 @@ describe('Forgotten and Undo on a new title', () => {
   })
 })
 
+describe('Re-rank on a new title', () => {
+  it('forgets where it was placed and asks it again first, the same Duels on every replay', () => {
+    const anchors = anchorsOn(9, 9, 9, 8, 8, 8, 7, 7, 7)
+    const truth = new Map([
+      [1, 8],
+      [2, 7],
+    ])
+    const { log } = play(logOf(anchors, [1, 2]), anchors, truth)
+    const reranked = plus(log, { type: 'rerank-requested', id: 2 })
+    const state = replay(reranked)
+    expect(state.newTitles!.titles.find((t) => t.id === 2)).toEqual({ id: 2, settled: false, levels: [10, 9, 8, 7, 6] })
+    expect(state.newTitles!.titles.find((t) => t.id === 1)).toEqual({ id: 1, settled: true, levels: [8] })
+    expect(state.prompt).toMatchObject({ kind: 'anchor-duel', a: 2 })
+    expect(replay(reranked).prompt).toEqual(state.prompt)
+    // Answered again, it lands where the new answers put it.
+    expect(settledScores(play(reranked, anchors, new Map([...truth, [2, 9]])).state)).toEqual(new Map([[1, 8], [2, 9]]))
+    // Undo puts it back where it was.
+    expect(replay(plus(reranked, { type: 'undo' })).newTitles).toEqual(replay(log).newTitles)
+  })
+
+  it('takes back the contradictions it recorded', () => {
+    // 105 plays like a 6: the two titles on 8 that beat it make it Suspect; re-ranking one of them clears that.
+    const anchors = anchorsOn(9, 9, 9, 8, 8, 8, 7, 7, 7)
+    const ids = Array.from({ length: 8 }, (_, i) => 1 + i)
+    const { state, log, met } = play(logOf(anchors, ids), anchors, new Map(ids.map((id) => [id, 8])), rng(3), new Map([[105, 6]]))
+    const against = met.filter((m) => m.anchor === 105).map((m) => m.title)
+    expect(against).toHaveLength(2)
+    expect(state.newTitles!.suspect.map((s) => s.id)).toEqual([105])
+    expect(replay(plus(log, { type: 'rerank-requested', id: against[0] })).newTitles!.suspect).toEqual([])
+  })
+
+  it('is refused on an Anchor, a Forgotten new title, or a title not in the Ranking', () => {
+    const log = logOf(anchorsOn(9, 8, 7), [1, 2])
+    expect(() => replay(plus(log, { type: 'rerank-requested', id: 101 }))).toThrow(ReplayError)
+    expect(() => replay(plus(log, { type: 'forgotten', id: 2 }, { type: 'rerank-requested', id: 2 }))).toThrow(ReplayError)
+    expect(() => replay(plus(log, { type: 'rerank-requested', id: 999 }))).toThrow(ReplayError)
+  })
+})
+
 describe('Forgotten on an Anchor', () => {
   type AnchorDuelPrompt = Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
   const promptOf = (log: DuelLog) => replay(log).prompt as AnchorDuelPrompt
@@ -455,6 +518,27 @@ describe('Forgotten on an Anchor', () => {
     const p = promptOf(log)
     expect([8, 6]).toContain(levelOf(anchors, p.b))
     expect(replay(log).newTitles!.titles[0]).toEqual({ id: 1, settled: false, levels: [10, 9, 8, 7, 6, 5, 4] })
+  })
+
+  it('never settles a title it can no longer compare: with three scores left and none askable, it stays unsettled', () => {
+    // 8, 7 and 6 lose their single Anchors: a title on 7 loses to 9 and beats 5, then nothing is left to ask.
+    const anchors = anchorsOn(9, 8, 7, 6, 5)
+    const log = plus(logOf(anchors, [1]), { type: 'forgotten', id: 102 }, { type: 'forgotten', id: 103 }, { type: 'forgotten', id: 104 })
+    const { state, log: played } = play(log, anchors, new Map([[1, 7]]))
+    expect(state.prompt).toEqual({ kind: 'all-complete' })
+    expect(state.newTitles!.titles).toEqual([{ id: 1, settled: false, levels: [9, 8, 7, 6, 5] }])
+    expect(state.progress.ranked).toEqual({ done: 0, total: 1 })
+    // Bring back an Anchor of a score it may be on: its Duels go on from there.
+    const back = replay(plus(played, { type: 'unforgotten', id: 103 }))
+    expect(back.prompt).toMatchObject({ kind: 'anchor-duel', a: 1, b: 103 })
+  })
+
+  it('asks the closer-to prompt when only two neighbouring scores are left and neither can be asked', () => {
+    const anchors = anchorsOn(9, 8, 7, 6, 5)
+    const log = plus(logOf(anchors, [1]), { type: 'forgotten', id: 102 }, { type: 'forgotten', id: 103 })
+    const { state, closer } = play(log, anchors, new Map([[1, 7.5]]))
+    expect(closer).toEqual([{ title: 1, upper: 8, lower: 7 }])
+    expect(state.newTitles!.titles).toEqual([{ id: 1, settled: true, levels: [8] }])
   })
 
   it('is refused for a title that is neither a new title nor an Anchor, or an Anchor already Forgotten', () => {
@@ -585,12 +669,16 @@ describe('the closer-to prompt (#48)', () => {
 })
 
 describe('scores past the extreme Anchors (#48)', () => {
-  it('gives every title above all Anchors one human Score Step above the top Anchor score, the same below the bottom', () => {
+  it('gives every title above all Anchors the next human Score Step above the top Anchor score, the same below the bottom', () => {
     const cases: [ScoreFormat, number[], number, number, number, number][] = [
       // Score Format, Anchor scores, a title above them all and the score it gets, one below them all and its score
       ['POINT_10', [9, 8, 7, 6, 5], 9.7, 10, 3, 4],
-      ['POINT_10_DECIMAL', [9, 8.5, 8, 7, 6.3], 9.8, 9.5, 5, 5.8],
+      // On the human grid (every 0.5 / every 5): the next grid point strictly past the extreme Anchor score.
+      ['POINT_10_DECIMAL', [9, 8.5, 8, 7, 6.3], 9.8, 9.5, 5, 6],
+      ['POINT_10_DECIMAL', [9.3, 8.5, 8, 7, 6], 9.8, 9.5, 5, 5.5],
+      ['POINT_10_DECIMAL', [9.5, 8.5, 8, 7, 6.7], 9.9, 10, 5, 6.5],
       ['POINT_100', [90, 85, 80, 72, 60], 99, 95, 30, 55],
+      ['POINT_100', [92, 85, 80, 72, 58], 99, 95, 30, 55],
       // No human step: the next level of the Score Format.
       ['POINT_5', [4, 3, 2], 5, 5, 1, 1],
     ]
@@ -654,6 +742,22 @@ describe('Suspect Anchors', () => {
     expect(settledScores(state)).toEqual(truth)
     expect(met.filter((m) => m.anchor === 105).length).toBeGreaterThanOrEqual(2)
     expect(state.newTitles!.suspect).toEqual([{ id: 105, level: 8, contradicted: met.filter((m) => m.anchor === 105).length }])
+  })
+
+  it('judges a title settled by the closer-to answer against the score it chose', () => {
+    // Titles between 9 and 8, closer to 8: they beat the 8s, lose to the 9s, and choose 8.
+    const ids = Array.from({ length: 8 }, (_, i) => 1 + i)
+    const truth = new Map(ids.map((id) => [id, 8.4]))
+    // 105 plays like the titles themselves: about the same as a title that got 8, so it agrees with its score of 8.
+    const same = play(logOf(anchors, ids), anchors, truth, rng(3), new Map([[105, 8.4]]))
+    expect(settledScores(same.state)).toEqual(new Map(ids.map((id) => [id, 8])))
+    expect(same.met.filter((m) => m.anchor === 105 && m.result === 'tie').length).toBeGreaterThanOrEqual(2)
+    expect(suspects(same.state)).toEqual([])
+    // 105 plays like a 9: losing to an 8 and then getting 8 contradicts it.
+    const above = play(logOf(anchors, ids), anchors, truth, rng(3), new Map([[105, 9]]))
+    expect(settledScores(above.state)).toEqual(new Map(ids.map((id) => [id, 8])))
+    expect(above.met.filter((m) => m.anchor === 105 && m.result === 'loss').length).toBeGreaterThanOrEqual(2)
+    expect(suspects(above.state)).toEqual([105])
   })
 
   it('is not Suspect after a single contradiction', () => {

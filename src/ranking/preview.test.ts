@@ -190,6 +190,25 @@ describe('Preview rows on Score New Titles', () => {
   })
 })
 
+describe('a new title left with no Anchor to compare', () => {
+  it('stays an unsettled row, never planned, while Preview opens on the finished Duels', () => {
+    // 8, 7 and 6 lose their single Anchors; title 1 (a 7) loses to 9 and beats 5, then nothing is left to ask.
+    const anchors = [9, 8, 7, 6, 5].map((level, i) => ({ id: 101 + i, level }))
+    let log: DuelLog = startNewTitlesLog({ seed: 42, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids: [1] })
+    for (const id of [102, 103, 104]) log = appendEvent(log, { type: 'forgotten', id })
+    for (let s = replay(log); s.prompt.kind === 'anchor-duel'; s = replay(log)) {
+      const { a, b } = s.prompt
+      log = appendEvent(log, { type: 'duel-answered', a, b, result: anchors.find((x) => x.id === b)!.level > 7 ? 'b' : 'a' })
+    }
+    const state = replay(log)
+    expect(state.prompt).toEqual({ kind: 'all-complete' })
+    expect(previewOpen(state.prompt)).toBe(true)
+    const rows = previewRows(state, score(state, 'POINT_10', defaultSettings('POINT_10', 'whole')), new Map([[1, 0]]), 'POINT_10', idName)
+    expect(rows).toMatchObject([{ id: 1, settled: false, levels: [9, 8, 7, 6, 5] }])
+    expect(importPlan(rows, new Map([[1, true]]))).toEqual([])
+  })
+})
+
 describe('Suspect Anchors on Preview', () => {
   // Anchors 101.. on 9, 8, 7 (three each). 105 is scored 8 but plays like a 6, so the titles on 8 and 7 contradict it.
   const anchors = [9, 9, 9, 8, 8, 8, 7, 7, 7].map((level, i) => ({ id: 101 + i, level }))

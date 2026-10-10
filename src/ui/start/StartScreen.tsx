@@ -229,7 +229,7 @@ function PoolSetup(form: PoolForm) {
             <b>{n}</b> new {pluralWord(n, 'title')} · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
             {form.saved ? ' left' : ''}
             <span className="small">
-              (each against one of your {form.newTitles?.anchors ?? 0} scored titles, ~{estimateMinutes(duels)} min at 3 s each)
+              (each against one of your {form.newTitles?.anchors ?? 0} Anchors, ~{estimateMinutes(duels)} min at 3 s each)
             </span>
           </>
         ) : pool ? (
@@ -330,8 +330,8 @@ function GoalInfo({ extraDuels, newTitles }: { extraDuels: number | null; newTit
             <>
               <br />
               <br />
-              <b>New Titles</b>: only titles with no score, each compared with titles you already scored, and given one of
-              your own scores. Your scored titles never change. Chosen when a Ranking starts, and it can't switch later.
+              <b>New Titles</b>: only titles with no score, each compared with titles you already scored (your Anchors), and
+              given one of your own scores. Your Anchors never change. Chosen when a Ranking starts, and it can't switch later.
             </>
           )}
         </span>

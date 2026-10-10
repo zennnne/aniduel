@@ -12,7 +12,7 @@
 // once they disagree. The level's own Anchors vote first; once every one of them has answered (a single-Anchor level,
 // or a split pair), the Anchors of the neighbouring levels vote too.
 import type { ScoreFormat } from '../anilist/types.ts'
-import { sideHash } from './hash.ts'
+import { seededHash } from './hash.ts'
 import { humanStepPast, levels as levelsOf } from './scoring.ts'
 
 /** One Anchor in the snapshot (ADR 0009): its id and its score as a level of the snapshot's Score Format. */
@@ -33,6 +33,8 @@ export type NewTitlesState = {
   format: ScoreFormat
   /** The Anchor score levels, best first. */
   levels: readonly AnchorLevel[]
+  /** How many Anchors the snapshot has, on every level (Forgotten and Suspect ones too). */
+  anchorCount: number
   /** Every new title in the Ranking (Forgotten ones are not), in the order Duels work on them. */
   titles: readonly NewTitle[]
   /** Suspect Anchors (not Forgotten ones), best score first, then by id. Their scores are never changed. */
@@ -44,16 +46,17 @@ type AnchorAnswer = { anchor: number; level: number; result: 'win' | 'tie' | 'lo
 
 /**
  * A new title being placed: the positions lo..hi it can still be at, every answer it was given against an Anchor, in
- * order (never the same Anchor twice), and its closer-to answer once given: the gap position it was asked at and the
- * score chosen, which counts only while the title is still at that gap. Once an answer settles it (lo = hi),
- * `contradicts` holds the Anchors whose answers disagree with where it settled; it is kept as it was then.
+ * order (never the same Anchor twice), and its closer-to answer once given: the positions lo..hi it was asked at and
+ * the score chosen, which counts only while the same prompt would still be asked. Once an answer settles it (a Duel
+ * that leaves it on a score or past the extremes, or the closer-to answer), `contradicts` holds the Anchors whose
+ * answers disagree with where it settled; it is kept as it was then.
  */
 type Placement = {
   id: number
   lo: number
   hi: number
   answers: AnchorAnswer[]
-  closer?: { position: number; level: number }
+  closer?: { lo: number; hi: number; level: number }
   contradicts?: readonly number[]
 }
 
@@ -151,14 +154,31 @@ function refreshSuspects(state: NewTitles): void {
  * Whether an answer disagrees with the Anchor's own score, for a title settled at `position`: it beat an Anchor it
  * isn't above, lost to one it isn't below, or was about the same as one whose score it didn't get.
  */
-function contradicts(position: number, { level, result }: AnchorAnswer): boolean {
+function contradictsAt(position: number, { level, result }: AnchorAnswer): boolean {
   const own = 2 * level + 1
   if (result === 'win') return position >= own
   if (result === 'loss') return position <= own
   return position !== own
 }
 
-/** Forgotten on an Anchor: it stops being chosen for Duels. What titles learnt from it before still counts. */
+/**
+ * The Anchors a title's answers contradict, recorded at the answer that settles it (#47), judged against the level it
+ * settled at (`position`). Settled by the closer-to answer, that is the score it chose; an answer then counts only
+ * where it also disagrees with every place lo..hi the Duels left open (`open`), so beating the Anchors of the lower
+ * score and then choosing that score is no contradiction, but losing to one of them is.
+ */
+function contradictionsOf(placement: Placement, position: number, open: Range = { lo: position, hi: position }): number[] {
+  const disagrees = (answer: AnchorAnswer) => {
+    for (let p = open.lo; p <= open.hi; p++) if (!contradictsAt(p, answer)) return false
+    return contradictsAt(position, answer)
+  }
+  return placement.answers.filter(disagrees).map((answer) => answer.anchor)
+}
+
+/**
+ * Forgotten on an Anchor: it stops being chosen for Duels, and its answers stop counting on boundaries still open
+ * (`decide`). Boundaries it already helped decide stay decided: they are kept in lo..hi.
+ */
 export function excludeAnchor(state: NewTitles, id: number): void {
   state.excluded.add(id)
 }
@@ -169,17 +189,16 @@ export function includeAnchor(state: NewTitles, id: number): void {
 }
 
 /**
- * What to ask next, for the first title that isn't settled. Strictly between two Anchor levels: the closer-to prompt.
- * Otherwise a Duel at the middle Anchor level it can still be on (a binary search over the positions), against the
- * next Anchor that may vote on that level's first open boundary. Null once every title is settled.
+ * What to ask next, for the first title that has a question left: the closer-to prompt, or a Duel at the Anchor level
+ * `standing` names, against the next Anchor that may vote on that level's first open boundary. Null once no title has
+ * one: every title is settled, or left unsettled with nothing to ask (see `standing`).
  */
 export function nextQuestion(state: NewTitles): NewTitlesQuestion | null {
   for (const placement of state.queue) {
-    const at = range(state, placement)
-    const between = closerTo(state, placement, at)
-    if (between) return { kind: 'closer-to', ...between }
-    const level = nextLevel(state, at)
-    if (level === null) continue
+    const now = standing(state, placement)
+    if (now.kind === 'closer-to') return { kind: 'closer-to', id: placement.id, upper: now.upper, lower: now.lower }
+    if (now.kind !== 'duel') continue
+    const { at, level } = now
     // The level's own position is inside lo..hi, so at least one of its boundaries is too, and every boundary inside
     // lo..hi is still open. An open boundary of a level with a usable Anchor always has a voter left.
     const boundary = [2 * level + 1, 2 * level + 2].find((j) => at.lo < j && j <= at.hi)!
@@ -190,14 +209,51 @@ export function nextQuestion(state: NewTitles): NewTitlesQuestion | null {
 }
 
 /**
- * The closer-to prompt a title is waiting on, or null: its place is a gap between two Anchor levels (not one past the
- * extremes), and it has no closer-to answer for that gap yet.
+ * Where a title stands now, derived from its answers and the Anchors still usable:
+ * - `settled` at a position, with its score: a Duel left it on a level, or past the extreme Anchors; or only one
+ *   level is left open and none of its Anchors can be asked (settled by elimination); or it answered the closer-to
+ *   prompt it is still at.
+ * - `closer-to`: which of two neighbouring scores it is closer to. Asked when the Duels put it strictly between them,
+ *   and when the only levels left open are two neighbours and neither has an Anchor left to ask.
+ * - `duel` at the open level to ask next.
+ * - `stuck`: three or more levels are open and none has an Anchor left to ask (every one Forgotten or Suspect). It is
+ *   never settled without a confirmed answer: Duels skip it, and Bring back on an Anchor resumes them.
+ *
+ * "Strictly between" is the confirmation-aware reading of ADR 0009's "beats every Anchor of one score and loses to
+ * every Anchor of the next": both boundaries around the gap are decided by `decide`, by two agreeing Anchors or the
+ * majority (2 of 3), so one drifted Anchor that disagrees doesn't keep the prompt from firing.
  */
-function closerTo(state: NewTitles, placement: Placement, at: Range): CloserTo | null {
-  const gap = at.lo / 2
-  if (at.lo !== at.hi || at.lo % 2 === 1 || gap === 0 || gap === state.levels.length) return null
-  if (placement.closer?.position === at.lo) return null
-  return { id: placement.id, upper: state.levels[gap - 1].level, lower: state.levels[gap].level }
+type Standing =
+  | { kind: 'settled'; position: number; level: number }
+  | { kind: 'closer-to'; at: Range; upper: number; lower: number }
+  | { kind: 'duel'; at: Range; level: number }
+  | { kind: 'stuck'; at: Range }
+
+function standing(state: NewTitles, placement: Placement): Standing {
+  const at = range(state, placement)
+  const open = openLevels(at)
+  let pair: [number, number]
+  if (!open) {
+    const position = at.lo
+    const gap = position / 2
+    if (position % 2 === 1) return { kind: 'settled', position, level: state.levels[(position - 1) / 2].level }
+    if (gap === 0) return { kind: 'settled', position, level: gapLevels(state, gap).above }
+    if (gap === state.levels.length) return { kind: 'settled', position, level: gapLevels(state, gap).below }
+    pair = [gap - 1, gap]
+  } else {
+    const level = nextLevel(state, at)
+    if (level !== null) return { kind: 'duel', at, level }
+    const { first, last } = open
+    if (first === last) return { kind: 'settled', position: 2 * first + 1, level: state.levels[first].level }
+    if (last !== first + 1) return { kind: 'stuck', at }
+    pair = [first, last]
+  }
+  const [upper, lower] = pair.map((index) => state.levels[index].level)
+  const { closer } = placement
+  if (closer?.lo === at.lo && closer.hi === at.hi) {
+    return { kind: 'settled', position: 2 * pair[closer.level === upper ? 0 : 1] + 1, level: closer.level }
+  }
+  return { kind: 'closer-to', at, upper, lower }
 }
 
 /** Positions lo..hi a title can be at. */
@@ -228,16 +284,6 @@ function nextLevel(state: NewTitles, at: Range): number | null {
   return null
 }
 
-/**
- * Where a title is settled, or null while Duels can still move it: lo = hi, or no open level has an Anchor left to
- * ask (every one Forgotten), and then it takes the middle open level, the score it can't be told apart from.
- */
-function settledPosition(state: NewTitles, at: Range): number | null {
-  const open = openLevels(at)
-  if (!open) return at.lo
-  return nextLevel(state, at) === null ? 2 * open.middle + 1 : null
-}
-
 /** A level's Anchors that may still be chosen, by id ascending. */
 function usable(state: NewTitles, level: number): readonly number[] {
   return state.levels[level].anchors.filter((id) => !state.excluded.has(id) && !state.suspect.has(id))
@@ -258,6 +304,12 @@ function voterLevels(state: NewTitles, j: number): number[] {
 }
 
 /**
+ * Added to the level index in `seededHash`'s third word when picking where a level's Anchors start, so the pick never
+ * repeats another seeded choice (left/right sides hash two title ids). Changing it changes replay (ADR 0005).
+ */
+const VOTER_SALT = 0xa0c4
+
+/**
  * The first usable Anchor on boundary j the title hasn't met yet, or null once every one has answered. Each level's
  * Anchors start at a point picked from the seed, the title and the level only, so replay asks the same Duels
  * (ADR 0005) while different titles meet different Anchors.
@@ -266,7 +318,7 @@ function nextVoter(state: NewTitles, placement: Placement, j: number): Voter | n
   const met = new Set(placement.answers.map((answer) => answer.anchor))
   const unmet = (level: number): Voter | null => {
     const anchors = usable(state, level)
-    const start = sideHash(state.seed, placement.id, 0xa0c4 + level) % Math.max(anchors.length, 1)
+    const start = seededHash(state.seed, placement.id, VOTER_SALT + level) % Math.max(anchors.length, 1)
     for (let i = 0; i < anchors.length; i++) {
       const anchor = anchors[(start + i) % anchors.length]
       if (!met.has(anchor)) return { anchor, level }
@@ -357,8 +409,11 @@ export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner:
   const result = winner === null ? 'tie' : winner === duel.a ? 'win' : 'loss'
   placement.answers.push({ anchor: duel.b, level: duel.level, result })
   Object.assign(placement, range(state, placement))
-  if (placement.lo === placement.hi) {
-    placement.contradicts = placement.answers.filter((answer) => contradicts(placement.lo, answer)).map((answer) => answer.anchor)
+  // Settled by this answer, on a score or past the extremes. Strictly between two scores it is settled only by the
+  // closer-to answer, which records its contradictions then.
+  const now = standing(state, placement)
+  if (placement.lo === placement.hi && now.kind === 'settled') {
+    placement.contradicts = contradictionsOf(placement, now.position)
     refreshSuspects(state)
   }
   return true
@@ -372,43 +427,54 @@ export function answerCloserTo(state: NewTitles, id: number, level: number): boo
   const question = nextQuestion(state)
   if (question?.kind !== 'closer-to' || question.id !== id || (level !== question.upper && level !== question.lower)) return false
   const placement = state.queue.find((p) => p.id === id)!
-  placement.closer = { position: range(state, placement).lo, level }
+  const at = range(state, placement)
+  placement.closer = { ...at, level }
+  // The closer-to answer settles it: its contradictions are judged against the score it chose.
+  const now = standing(state, placement) as Extract<Standing, { kind: 'settled' }>
+  placement.contradicts = contradictionsOf(placement, now.position, at)
+  refreshSuspects(state)
   return true
 }
 
 /**
- * The score a settled title gets at its position. A tie gives that Anchor level. A title above every Anchor gets one
- * human Score Step above the top Anchor score, one below every Anchor one step below the bottom, never past the Score
- * Format's ends (ADR 0009). One between two levels gets the score its closer-to answer chose.
+ * Re-rank on a new title: it drops every answer it was given (Duels and closer-to) and the contradictions it recorded,
+ * and starts its search again at the front. Returns false for anything but a new title in the queue.
  */
-function settledLevel(state: NewTitles, placement: Placement, position: number): number {
+export function rerankNewTitle(state: NewTitles, id: number): boolean {
+  const at = state.queue.findIndex((p) => p.id === id)
+  if (at < 0) return false
+  state.queue.splice(at, 1)
+  state.queue.unshift(fresh(state, id))
+  refreshSuspects(state)
+  return true
+}
+
+/**
+ * The scores on either side of gap g: the Anchor levels around it, or past the extremes the next point of the human
+ * Score Step grid above the top Anchor score (below the bottom one), never past the Score Format's ends (ADR 0009).
+ */
+function gapLevels(state: NewTitles, gap: number): { above: number; below: number } {
   const k = state.levels.length
-  if (position % 2 === 1) return state.levels[(position - 1) / 2].level
-  const gap = position / 2
-  if (gap === 0) return humanStepPast(state.format, state.levels[0].level, 1)
-  if (gap === k) return humanStepPast(state.format, state.levels[k - 1].level, -1)
-  return placement.closer!.level
+  return {
+    above: gap === 0 ? humanStepPast(state.format, state.levels[0].level, 1) : state.levels[gap - 1].level,
+    below: gap === k ? humanStepPast(state.format, state.levels[k - 1].level, -1) : state.levels[gap].level,
+  }
 }
 
 /** The levels a position may still give: its own level, or for a gap the levels on either side of it. */
 function levelsNear(state: NewTitles, position: number): number[] {
   if (position % 2 === 1) return [state.levels[(position - 1) / 2].level]
-  const gap = position / 2
-  const k = state.levels.length
-  const above = gap === 0 ? humanStepPast(state.format, state.levels[0].level, 1) : state.levels[gap - 1].level
-  const below = gap === k ? humanStepPast(state.format, state.levels[k - 1].level, -1) : state.levels[gap].level
+  const { above, below } = gapLevels(state, position / 2)
   return [above, below]
 }
 
 export function newTitlesView(state: NewTitles): NewTitlesState {
   const titles = state.queue.map((placement): NewTitle => {
     const { id } = placement
-    const at = range(state, placement)
-    const { lo, hi } = at
-    const settled = closerTo(state, placement, at) ? null : settledPosition(state, at)
-    if (settled !== null) return { id, settled: true, levels: [settledLevel(state, placement, settled)] }
+    const now = standing(state, placement)
+    if (now.kind === 'settled') return { id, settled: true, levels: [now.level] }
     const levels = new Set<number>()
-    for (let p = lo; p <= hi; p++) for (const level of levelsNear(state, p)) levels.add(level)
+    for (let p = now.at.lo; p <= now.at.hi; p++) for (const level of levelsNear(state, p)) levels.add(level)
     return { id, settled: false, levels: [...levels].sort((x, y) => y - x) }
   })
   const suspect = state.levels.flatMap(({ level, anchors }) =>
@@ -416,5 +482,5 @@ export function newTitlesView(state: NewTitles): NewTitlesState {
       .filter((id) => state.suspect.has(id) && !state.excluded.has(id))
       .map((id): SuspectAnchor => ({ id, level, contradicted: state.suspect.get(id)! })),
   )
-  return { format: state.format, levels: state.levels, titles, suspect }
+  return { format: state.format, levels: state.levels, anchorCount: state.anchorIds.size, titles, suspect }
 }
