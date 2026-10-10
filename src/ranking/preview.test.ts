@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { appendEvent, replay, startLog, startNewTitlesLog, type DuelLog, type LogEvent } from './engine.ts'
-import { importPlan, isTicked, previewOpen, previewRows, settledRows } from './preview.ts'
+import { importPlan, isTicked, previewOpen, previewRows, settledRows, suspectAnchors } from './preview.ts'
 import { defaultSettings, score } from './scoring.ts'
 import { rankingOf } from './testRanking.ts'
 
@@ -167,6 +167,38 @@ describe('Preview rows on Score New Titles', () => {
   it('opens Preview while Duels are left, since every settled title can already be imported', () => {
     expect(state.prompt.kind).toBe('anchor-duel')
     expect(previewOpen(state.prompt)).toBe(true)
+  })
+})
+
+describe('Suspect Anchors on Preview', () => {
+  // Anchors 101.. on 9, 8, 7 (three each). 105 is scored 8 but plays like a 6, so the titles on 8 and 7 contradict it.
+  const anchors = [9, 9, 9, 8, 8, 8, 7, 7, 7].map((level, i) => ({ id: 101 + i, level }))
+  const ids = [1, 2, 3, 4, 5, 6, 7, 8]
+  const truth = new Map(ids.map((id) => [id, id % 2 === 0 ? 8 : 7]))
+  let log: DuelLog = startNewTitlesLog({ seed: 42, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids })
+  for (let s = replay(log); s.prompt.kind === 'anchor-duel'; s = replay(log)) {
+    const { a, b } = s.prompt
+    const mine = truth.get(a)!
+    const theirs = b === 105 ? 6 : anchors.find((x) => x.id === b)!.level
+    log = appendEvent(log, { type: 'duel-answered', a, b, result: mine === theirs ? 'tie' : mine > theirs ? 'a' : 'b' })
+  }
+  const state = replay(log)
+
+  it('lists each Suspect Anchor with its old score, shown at the Score Format AniList reports now', () => {
+    expect(suspectAnchors(state, 'POINT_10').map(({ id, level }) => ({ id, level }))).toEqual([{ id: 105, level: 8 }])
+    expect(suspectAnchors(state, 'POINT_100').map(({ id, level }) => ({ id, level }))).toEqual([{ id: 105, level: 80 }])
+    expect(suspectAnchors(state, 'POINT_10')[0].contradicted).toBeGreaterThanOrEqual(2)
+  })
+
+  it('never puts a Suspect Anchor in the write plan, even ticked', () => {
+    const oldScores = new Map([...ids.map((id): [number, number] => [id, 0]), ...anchors.map((a): [number, number] => [a.id, a.level * 10])])
+    const rows = previewRows(state, score(state, 'POINT_10', defaultSettings('POINT_10', 'whole')), oldScores, 'POINT_10', idName)
+    expect(rows.map((r) => r.id).sort()).toEqual(ids)
+    expect(importPlan(rows, new Map([[105, true]])).map((w) => w.mediaId)).not.toContain(105)
+  })
+
+  it('is empty for a Ranking on another Sort Goal', () => {
+    expect(suspectAnchors(rankingOf([[[1], [2]]]), 'POINT_10')).toEqual([])
   })
 })
 
