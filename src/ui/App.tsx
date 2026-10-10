@@ -47,7 +47,7 @@ import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
 import { createPassedStore } from '../catchup/passed.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
-import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
+import { exitOffer, type AnimeStanding, type ExitOffer } from '../catchup/exitOffer.ts'
 import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
 import { StartingEraChip, StartingEraQuestion } from './catchup/StartingEraQuestion.tsx'
 import { ClearPassedDialog } from './catchup/ClearPassedDialog.tsx'
@@ -744,13 +744,16 @@ export function App() {
   }
 
   /**
-   * Leaving Catch-up through its exit offer: on to Start on anime, with Score New Titles picked, or with no pick so
-   * the Sort Goal follows the Pool size (#38). A saved anime Ranking keeps its own Sort Goal either way.
+   * Leaving Catch-up through its exit offer: on to Start on anime. Without a saved Ranking, Score New Titles is picked,
+   * or nothing is so the Sort Goal follows the Pool size (#38). A saved Ranking is shown as it is, with the Replace
+   * dialog (#46) over it when the offer was Score New Titles and the Ranking is on another Sort Goal.
    */
   function takeExitOffer(offer: ExitOffer) {
     switchMediaType('ANIME')
-    setPickedGoal(offer.target === 'score-new-titles' ? 'score-new-titles' : null)
+    if (offer.target === 'score-new-titles') setPickedGoal('score-new-titles')
+    if (offer.target === 'default-sort-goal') setPickedGoal(null)
     goTo('start')
+    if (offer.target === 'replace-with-new-titles') setDialog('replace-with-new-titles')
   }
 
   const hasProgress = Boolean(log) || savedBroken
@@ -850,7 +853,30 @@ export function App() {
         },
       }
     : null
-  const offer = exitOffer({ added: catchUp.added, eligibleForNewTitles: animeNewTitlesEligible })
+  // Catch-up's exit offer (#52) is about anime, whichever Media Type is selected: on Manga, the anime Ranking and
+  // statuses are the saved ones.
+  const animeStanding = useMemo((): AnimeStanding | null => {
+    if (!viewer || !animeList || animeNewTitlesEligible === null) return null
+    let saved = log
+    let chosen = statuses
+    if (mediaType !== 'ANIME') {
+      const key: RankingKey = { userId: viewer.id, mediaType: 'ANIME' }
+      try {
+        saved = loadDuelLog(localStorage, key)
+      } catch {
+        return null
+      }
+      chosen = loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES
+    } else if (savedBroken) return null
+    const inLog = saved ? newTitlesInLog(saved) : null
+    return {
+      eligibleForNewTitles: animeNewTitlesEligible,
+      // The count on Start's New Titles button.
+      unscored: buildPool(newTitlesList(animeList, inLog), chosen).titles.length,
+      saved: !saved ? 'none' : inLog ? 'new-titles' : 'other',
+    }
+  }, [viewer, animeList, animeNewTitlesEligible, mediaType, log, statuses, savedBroken])
+  const offer = exitOffer({ added: catchUp.added, anime: animeStanding })
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
