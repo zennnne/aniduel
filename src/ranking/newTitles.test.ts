@@ -2,6 +2,7 @@
 // against an Anchor, and a plain search over the Anchor score levels places each title. Driven through `replay`.
 import { describe, expect, it } from 'vitest'
 import type { ScoreFormat } from '../anilist/types.ts'
+import { estimateNewTitlesDuels } from '../pool/anchors.ts'
 import { ReplayError, appendEvent, replay, startLog, startNewTitlesLog, type AnchorScore, type DuelLog, type LogEvent, type RankingState } from './engine.ts'
 
 /** Small seeded PRNG (mulberry32), so every case is reproducible. */
@@ -120,6 +121,29 @@ describe('placing new titles against Anchor score levels', () => {
       // Anchor: about twice the plain search (ADR 0009).
       expect(duels).toBeLessThanOrEqual(2 * ids.length * Math.ceil(Math.log2(2 * used.length + 1)))
     }
+  })
+
+  it("takes about the Duels Start estimates: twice a plain binary search over the Anchor scores", () => {
+    const random = rng(36)
+    let asked = 0
+    let estimated = 0
+    for (let trial = 0; trial < 40; trial++) {
+      const all = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]
+      const scale = all.filter(() => random() < 0.6)
+      while (scale.length < 3) scale.push(all.find((l) => !scale.includes(l))!)
+      scale.sort((x, y) => y - x)
+      const anchors = scale.flatMap((level, i) =>
+        Array.from({ length: 2 + Math.floor(random() * 5) }, (_, n) => ({ id: 1000 + 10 * i + n, level })),
+      )
+      const ids = Array.from({ length: 1 + Math.floor(random() * 20) }, (_, i) => 1 + i)
+      // On an Anchor score, or between two (half a point above one).
+      const truth = new Map(ids.map((id) => [id, scale[Math.floor(random() * scale.length)] + (random() < 0.5 ? 0.5 : 0)]))
+      const log = startNewTitlesLog({ seed: Math.floor(random() * 2 ** 32), userId: 1, mediaType: 'ANIME', format: 'POINT_10', anchors, ids })
+      asked += play(log, anchors, truth, random).duels
+      estimated += estimateNewTitlesDuels(ids.length, scale.length)
+    }
+    expect(asked / estimated).toBeGreaterThan(0.7)
+    expect(asked / estimated).toBeLessThan(1.05)
   })
 
   it('settles a title that ties no Anchor by the closer-to prompt, or one step past the extreme Anchor', () => {

@@ -52,9 +52,10 @@ export function newTitlesList(
 }
 
 /**
- * About how many Duels `n` new titles take against `levels` Anchor scores: a binary search over the levels and the
- * gaps around them for each title.
+ * About how many Duels `n` new titles take against `levels` Anchor scores: for each title a binary search over the
+ * scores, each step confirmed by a second Anchor (ADR 0009), so about twice the plain search: 2 log2(levels + 1).
+ * The oracle runs in src/ranking/newTitles.test.ts take a little less than this.
  */
 export function estimateNewTitlesDuels(n: number, levels: number): number {
-  return levels === 0 ? 0 : n * Math.ceil(Math.log2(2 * levels + 1))
+  return Math.round(2 * n * Math.log2(levels + 1))
 }
