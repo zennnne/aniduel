@@ -5,6 +5,12 @@
 // A title's place is searched over 2k+1 positions for k Anchor levels (best first): position 2m+1 is level m itself
 // ("about the same" as an Anchor on it), and position 2g is the gap above level g (gap 0 is above every Anchor, gap
 // k below every one). A title knows the positions lo..hi it can still be at; it is settled once lo = hi.
+//
+// Confirmation (#45): the positions are split by 2k boundaries; boundary j lies between positions j-1 and j. Every
+// boundary touches exactly one level: j = 2m+1 is the top of level m, j = 2m+2 its bottom. lo..hi only narrows when
+// a boundary is decided, and a boundary is decided by the votes of different Anchors: two agreeing, or the majority
+// once they disagree. The level's own Anchors vote first; once every one of them has answered (a single-Anchor level,
+// or a split pair), the Anchors of the neighbouring levels vote too.
 import type { ScoreFormat } from '../anilist/types.ts'
 import { sideHash } from './hash.ts'
 import { levels as levelsOf } from './scoring.ts'
@@ -28,8 +34,20 @@ export type NewTitlesState = {
   titles: readonly NewTitle[]
 }
 
-/** A new title being placed: the positions lo..hi it can still be at. */
-type Placement = { id: number; lo: number; hi: number }
+/** One answered Duel of a new title: the Anchor, its level index, and how the title did against it. */
+type AnchorAnswer = { anchor: number; level: number; result: 'win' | 'tie' | 'loss' }
+
+/**
+ * A new title being placed: the positions lo..hi it can still be at, and every answer it was given against an
+ * Anchor, in order (never the same Anchor twice).
+ */
+type Placement = { id: number; lo: number; hi: number; answers: AnchorAnswer[] }
+
+/** Which side of boundary j a vote puts the title: 'above' = a position before j, 'below' = j or after. */
+type Side = 'above' | 'below'
+
+/** An Anchor that may be asked, with its level index. */
+type Voter = { anchor: number; level: number }
 
 export type NewTitles = {
   format: ScoreFormat
@@ -40,7 +58,7 @@ export type NewTitles = {
   queue: Placement[]
 }
 
-/** The next Duel: new title `a` against Anchor `b`, at Anchor level index `level`. */
+/** The next Duel: new title `a` against Anchor `b`, which is on Anchor level index `level`. */
 export type AnchorDuel = { a: number; b: number; level: number }
 
 /**
@@ -75,7 +93,7 @@ export function returnNewTitle(state: NewTitles, id: number): void {
 }
 
 function fresh(state: NewTitles, id: number): Placement {
-  return { id, lo: 0, hi: 2 * state.levels.length }
+  return { id, lo: 0, hi: 2 * state.levels.length, answers: [] }
 }
 
 /** Takes a title out (Forgotten, or it left the Pool). Every other title keeps what it knows. */
@@ -85,13 +103,19 @@ export function takeOutNewTitle(state: NewTitles, id: number): void {
 }
 
 /**
- * The next Duel: the first title that isn't settled, against an Anchor of the middle level it can still be on
- * (a plain binary search over the positions). Null once every title is settled.
+ * The next Duel: the first title that isn't settled, at the middle Anchor level it can still be on (a binary search
+ * over the positions), against the next Anchor that may vote on that level's first open boundary. Null once every
+ * title is settled.
  */
 export function nextAnchorDuel(state: NewTitles): AnchorDuel | null {
   for (const placement of state.queue) {
     const level = nextLevel(placement)
-    if (level !== null) return { a: placement.id, b: chooseAnchor(state, placement.id, level), level }
+    if (level === null) continue
+    // The level's own position is open, so at least one of its boundaries is inside lo..hi and still open: a
+    // decided one would have moved lo or hi past it.
+    const boundary = [2 * level + 1, 2 * level + 2].find((j) => isOpen(placement, j) && !decide(state, placement, j))!
+    const voter = nextVoter(state, placement, boundary)!
+    return { a: placement.id, b: voter.anchor, level: voter.level }
   }
   return null
 }
@@ -105,14 +129,92 @@ function nextLevel({ lo, hi }: Placement): number | null {
   return Math.floor((first + last) / 2)
 }
 
+/** Whether boundary j still splits the positions the title can be at. */
+const isOpen = ({ lo, hi }: Placement, j: number) => lo < j && j <= hi
+
+/** The level boundary j touches: 2m+1 is the top of level m, 2m+2 its bottom. */
+const levelOfBoundary = (j: number) => Math.floor((j - 1) / 2)
+
 /**
- * The Anchor a title meets on a level: picked from the seed, the title and the level only, so replay asks the same
- * Duel (ADR 0005), while different titles meet different Anchors. The place to leave out Anchors that may no longer
- * be used, or that already gave their answer for this boundary.
+ * The levels whose Anchors may vote on boundary j, in the order they are asked: its own level, then the neighbouring
+ * level across it (above a top, below a bottom), then the other neighbour.
  */
-function chooseAnchor(state: NewTitles, id: number, level: number): number {
+function voterLevels(state: NewTitles, j: number): number[] {
+  const m = levelOfBoundary(j)
+  const across = j % 2 === 1 ? m - 1 : m + 1
+  const other = j % 2 === 1 ? m + 1 : m - 1
+  return [m, across, other].filter((level) => state.levels[level] !== undefined)
+}
+
+/**
+ * Who may vote on boundary j, in the order they are asked. Each level's Anchors start at a point picked from the
+ * seed, the title and the level only, so replay asks the same Duels (ADR 0005) while different titles meet
+ * different Anchors. The one place to leave out Anchors that may no longer be used (Forgotten, Suspect).
+ */
+function voters(state: NewTitles, id: number, j: number): Voter[] {
+  return voterLevels(state, j).flatMap((level) => rotated(state, id, level))
+}
+
+function rotated(state: NewTitles, id: number, level: number): Voter[] {
   const { anchors } = state.levels[level]
-  return anchors[sideHash(state.seed, id, 0xa0c4 + level) % anchors.length]
+  const start = sideHash(state.seed, id, 0xa0c4 + level) % anchors.length
+  return anchors.map((_, i) => ({ anchor: anchors[(start + i) % anchors.length], level }))
+}
+
+/** The first voter on boundary j the title hasn't met yet, or null once every one has answered. */
+function nextVoter(state: NewTitles, placement: Placement, j: number): Voter | null {
+  const met = new Set(placement.answers.map((answer) => answer.anchor))
+  return voters(state, placement.id, j).find((voter) => !met.has(voter.anchor)) ?? null
+}
+
+/**
+ * How an answer against an Anchor of one of boundary j's voter levels votes on it. An Anchor of the boundary's own
+ * level m tells it directly. An Anchor of a neighbouring level stands in for level m together with the gap between
+ * them: one above votes 'above' when the title is at least as good as it, one below when the title beats it.
+ */
+function vote(j: number, { level, result }: AnchorAnswer): Side {
+  const m = levelOfBoundary(j)
+  if (level === m && j % 2 === 1) return result === 'win' ? 'above' : 'below'
+  if (level === m) return result === 'loss' ? 'below' : 'above'
+  if (level < m) return result === 'loss' ? 'below' : 'above'
+  return result === 'win' ? 'above' : 'below'
+}
+
+/**
+ * Boundary j's verdict from the answers so far, or null while it is open. Two votes on one side, and more than the
+ * other side has, decide it: two agreeing Anchors, or 2 of 3. The voter levels count in turn: a neighbour's votes
+ * count only once every Anchor of the levels before it has answered and they left the boundary open. Once every voter has answered without a
+ * verdict, the side with more votes wins, and an even split goes to the own level's first answer.
+ */
+function decide(state: NewTitles, placement: Placement, j: number): Side | null {
+  const own = placement.answers.filter((answer) => answer.level === levelOfBoundary(j))
+  let above = 0
+  let below = 0
+  for (const level of voterLevels(state, j)) {
+    const answers = placement.answers.filter((answer) => answer.level === level)
+    for (const answer of answers) {
+      if (vote(j, answer) === 'above') above++
+      else below++
+    }
+    if (above >= 2 && above > below) return 'above'
+    if (below >= 2 && below > above) return 'below'
+    if (answers.length < state.levels[level].anchors.length) break
+  }
+  if (nextVoter(state, placement, j)) return null
+  if (above !== below) return above > below ? 'above' : 'below'
+  return own.length > 0 ? vote(j, own[0]) : null
+}
+
+/**
+ * Narrows lo..hi by every boundary inside it that the answers now decide, from the top down. A decided boundary is
+ * never reopened, so a settled title stays settled whatever later answers would say.
+ */
+function narrow(state: NewTitles, placement: Placement): void {
+  for (let j = placement.lo + 1; j <= placement.hi; j++) {
+    const side = decide(state, placement, j)
+    if (side === 'below') placement.lo = j
+    else if (side === 'above') placement.hi = j - 1
+  }
 }
 
 /**
@@ -123,10 +225,9 @@ export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner:
   const duel = nextAnchorDuel(state)
   if (!duel || !((duel.a === a && duel.b === b) || (duel.a === b && duel.b === a))) return false
   const placement = state.queue.find((p) => p.id === duel.a)!
-  const at = 2 * duel.level + 1
-  if (winner === null) placement.lo = placement.hi = at
-  else if (winner === duel.a) placement.hi = at - 1
-  else placement.lo = at + 1
+  const result = winner === null ? 'tie' : winner === duel.a ? 'win' : 'loss'
+  placement.answers.push({ anchor: duel.b, level: duel.level, result })
+  narrow(state, placement)
   return true
 }
 

@@ -28,22 +28,34 @@ const logOf = (anchors: AnchorScore[], ids: number[], format: ScoreFormat = 'POI
 /** The Anchor's score, looked up in the snapshot the test made. */
 const levelOf = (anchors: AnchorScore[], id: number) => anchors.find((a) => a.id === id)?.level
 
+/** One Duel the oracle answered: new title `title` against Anchor `anchor`, and how the title did. */
+type Met = { title: number; anchor: number; result: 'win' | 'tie' | 'loss' }
+
 /**
  * Answers every prompt with an oracle that knows each new title's true score: about the same as an Anchor on that
- * score, better than a lower one. Returns the final state and how many Duels it took.
+ * score, better than a lower one. An Anchor in `drift` is judged by that true score instead of its own (its old
+ * score drifted). Returns the final state, how many Duels it took, and every Duel answered.
  */
-function play(log: DuelLog, anchors: AnchorScore[], truth: ReadonlyMap<number, number>, random = rng(1)) {
+function play(
+  log: DuelLog,
+  anchors: AnchorScore[],
+  truth: ReadonlyMap<number, number>,
+  random = rng(1),
+  drift: ReadonlyMap<number, number> = new Map(),
+) {
   let duels = 0
+  const met: Met[] = []
   for (let state = replay(log); ; state = replay(log)) {
     const p = state.prompt
-    if (p.kind === 'all-complete') return { state, log, duels }
+    if (p.kind === 'all-complete') return { state, log, duels, met }
     if (p.kind !== 'anchor-duel') throw new Error(`unexpected ${p.kind}`)
     const mine = truth.get(p.a)!
-    const theirs = levelOf(anchors, p.b)!
+    const theirs = drift.get(p.b) ?? levelOf(anchors, p.b)!
     // Name the pair in a random order: the answer is by id, so order must not matter.
     const [x, y] = random() < 0.5 ? [p.a, p.b] : [p.b, p.a]
     const better = mine === theirs ? null : mine > theirs ? p.a : p.b
     log = appendEvent(log, { type: 'duel-answered', a: x, b: y, result: better === null ? 'tie' : better === x ? 'a' : 'b' })
+    met.push({ title: p.a, anchor: p.b, result: better === null ? 'tie' : better === p.a ? 'win' : 'loss' })
     if (++duels > 10_000) throw new Error('runaway')
   }
 }
@@ -91,8 +103,9 @@ describe('placing new titles against Anchor score levels', () => {
       const { state, duels } = play(log, anchors, truth, random)
       expect(settledScores(state)).toEqual(truth)
       expect(state.progress.ranked).toEqual({ done: ids.length, total: ids.length })
-      // A plain binary search over 2k+1 places (k levels and the gaps around them).
-      expect(duels).toBeLessThanOrEqual(ids.length * Math.ceil(Math.log2(2 * used.length + 1)))
+      // A binary search over 2k+1 places (k levels and the gaps around them), each step confirmed by a second
+      // Anchor: about twice the plain search (ADR 0009).
+      expect(duels).toBeLessThanOrEqual(2 * ids.length * Math.ceil(Math.log2(2 * used.length + 1)))
     }
   })
 
@@ -113,24 +126,35 @@ describe('placing new titles against Anchor score levels', () => {
     expect([6, 5]).toContain(scores.get(4))
   })
 
-  it("gives a new title the Anchor's score at once when it is about the same", () => {
-    const anchors = anchorsOn(9, 8, 7, 6, 5)
+  it("gives a new title an Anchor's score once a second Anchor of that score agrees it is about the same", () => {
+    const anchors = anchorsOn(9, 8, 7, 7, 7, 6, 5)
     const log = logOf(anchors, [1])
-    const p = replay(log).prompt as Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
-    const state = replay(plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: 'tie' }))
+    const first = replay(log).prompt as Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
+    expect(levelOf(anchors, first.b)).toBe(7)
+    const once = plus(log, { type: 'duel-answered', a: first.a, b: first.b, result: 'tie' })
+    const unconfirmed = replay(once)
+    expect(unconfirmed.newTitles!.titles).toMatchObject([{ id: 1, settled: false }])
+    const second = unconfirmed.prompt as Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
+    expect(second).toMatchObject({ kind: 'anchor-duel', a: 1 })
+    expect(levelOf(anchors, second.b)).toBe(7)
+    expect(second.b).not.toBe(first.b)
+    const state = replay(plus(once, { type: 'duel-answered', a: second.a, b: second.b, result: 'tie' }))
     expect(state.prompt).toEqual({ kind: 'all-complete' })
-    expect(state.newTitles!.titles).toEqual([{ id: 1, settled: true, levels: [levelOf(anchors, p.b)] }])
+    expect(state.newTitles!.titles).toEqual([{ id: 1, settled: true, levels: [7] }])
   })
 
   it('shows the scores a title can still get while it is being placed', () => {
-    const anchors = anchorsOn(9, 8, 7, 6, 5)
+    const anchors = anchorsOn(9, 8, 7, 7, 6, 5)
     const log = logOf(anchors, [1, 2])
     const before = replay(log)
     expect(before.newTitles!.levels.map((l) => l.level)).toEqual([9, 8, 7, 6, 5])
     expect(before.newTitles!.titles[0]).toEqual({ id: 1, settled: false, levels: [9, 8, 7, 6, 5] })
     const p = before.prompt as Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
     expect(levelOf(anchors, p.b)).toBe(7)
-    const won = replay(plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: 'a' }))
+    const once = plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: 'a' })
+    expect(replay(once).newTitles!.titles[0]).toEqual({ id: 1, settled: false, levels: [9, 8, 7, 6, 5] })
+    const q = replay(once).prompt as Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
+    const won = replay(plus(once, { type: 'duel-answered', a: q.a, b: q.b, result: 'a' }))
     expect(won.newTitles!.titles[0]).toEqual({ id: 1, settled: false, levels: [9, 8, 7] })
   })
 
@@ -155,6 +179,112 @@ describe('placing new titles against Anchor score levels', () => {
     }
     expect(settledScores(replay(log))).toEqual(new Map(ids.map((id) => [id, 8])))
     expect(met.size).toBeGreaterThan(2)
+  })
+})
+
+describe('confirming every boundary with two Anchors', () => {
+  const metOn = (met: Met[], anchors: AnchorScore[], title: number, level: number) =>
+    met.filter((m) => m.title === title && levelOf(anchors, m.anchor) === level)
+
+  it('asks a third Anchor of a score when the first two disagree, and the two that agree decide', () => {
+    const anchors = anchorsOn(9, 9, 9, 8, 8, 8, 7, 7, 7)
+    const truth = new Map([[1, 8]])
+    // Drift whichever Anchor on 8 the title meets first: it now plays like a 6.
+    const firstOn8 = metOn(play(logOf(anchors, [1]), anchors, truth).met, anchors, 1, 8)[0].anchor
+    const { state, met } = play(logOf(anchors, [1]), anchors, truth, rng(1), new Map([[firstOn8, 6]]))
+    expect(settledScores(state)).toEqual(truth)
+    const on8 = metOn(met, anchors, 1, 8)
+    expect(on8.map((m) => m.anchor).sort()).toEqual([104, 105, 106])
+    expect(on8.map((m) => m.result).sort()).toEqual(['tie', 'tie', 'win'])
+  })
+
+  it('confirms a score that has a single Anchor against the Anchors of the scores next to it', () => {
+    const anchors = anchorsOn(9, 9, 9, 8, 7, 7, 7)
+    const truth = new Map([[1, 8]])
+    let log = logOf(anchors, [1])
+    for (let state = replay(log); levelOf(anchors, (state.prompt as { b: number }).b) !== 8; state = replay(log)) {
+      const p = state.prompt as Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
+      log = plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: levelOf(anchors, p.b)! > 8 ? 'b' : 'a' })
+    }
+    const tied = replay(plus(log, { type: 'duel-answered', a: 1, b: 104, result: 'tie' }))
+    expect(tied.newTitles!.titles).toMatchObject([{ id: 1, settled: false }])
+    const { state, met } = play(log, anchors, truth)
+    expect(settledScores(state)).toEqual(truth)
+    expect(metOn(met, anchors, 1, 9).length).toBeGreaterThan(0)
+    expect(metOn(met, anchors, 1, 7).length).toBeGreaterThan(0)
+  })
+
+  it('does not let the drifted single Anchor of a score put a new title on the wrong score', () => {
+    const anchors = anchorsOn(9, 9, 9, 8, 7, 7, 7, 6, 6, 6)
+    const truth = new Map([
+      [1, 7],
+      [2, 8],
+      [3, 9],
+      [4, 6],
+    ])
+    for (const plays of [6, 7.5, 9]) {
+      const { state } = play(logOf(anchors, [1, 2, 3, 4]), anchors, truth, rng(plays), new Map([[104, plays]]))
+      expect(settledScores(state)).toEqual(truth)
+    }
+  })
+
+  it('settles every new title on its true score despite drifted Anchors, each score backed by two Anchors', () => {
+    const random = rng(45)
+    const formats: [ScoreFormat, number[]][] = [
+      ['POINT_10', [10, 9, 8, 7, 6, 5, 4, 3]],
+      ['POINT_100', [95, 90, 85, 80, 72, 60, 45]],
+      ['POINT_10_DECIMAL', [9.5, 9, 8.5, 8, 7, 6.3]],
+      ['POINT_5', [5, 4, 3, 2, 1]],
+    ]
+    let drifted = 0
+    for (let trial = 0; trial < 60; trial++) {
+      const [format, scale] = formats[trial % formats.length]
+      const used = scale.filter(() => random() < 0.8)
+      while (used.length < 3) used.push(scale.find((s) => !used.includes(s))!)
+      used.sort((x, y) => y - x)
+      // Each score has one Anchor or three to six. One Anchor on a score, or a single-Anchor score inside the
+      // scale, may drift: a drifted single Anchor needs clean neighbours to be outvoted, so a score next to a
+      // single-Anchor score never drifts.
+      const counts = used.map(() => (random() < 0.3 ? 1 : 3 + Math.floor(random() * 4)))
+      const single = (i: number) => counts[i] === 1
+      const drifts = used.map((_, i) => {
+        const inside = i > 0 && i < used.length - 1
+        if (single(i)) return inside && !single(i - 1) && !single(i + 1) && random() < 0.5
+        return !single(i - 1) && !single(i + 1) && random() < 0.5
+      })
+      for (let i = 0; i < used.length; i++) if (single(i) && drifts[i]) drifts[i - 1] = drifts[i + 1] = false
+      const anchors: AnchorScore[] = []
+      const drift = new Map<number, number>()
+      used.forEach((level, i) => {
+        for (let n = 0; n < counts[i]; n++) anchors.push({ id: 500 + anchors.length, level })
+        if (drifts[i]) {
+          const others = used.filter((l) => l !== level)
+          drift.set(500 + anchors.length - 1 - Math.floor(random() * counts[i]), others[Math.floor(random() * others.length)])
+        }
+      })
+      drifted += drift.size
+      const ids = Array.from({ length: 1 + Math.floor(random() * 20) }, (_, i) => 1 + i)
+      const truth = new Map(ids.map((id) => [id, used[Math.floor(random() * used.length)]]))
+      const log = startNewTitlesLog({ seed: Math.floor(random() * 2 ** 32), userId: 1, mediaType: 'ANIME', format, anchors, ids })
+      const { state, met, duels } = play(log, anchors, truth, random, drift)
+      expect(settledScores(state)).toEqual(truth)
+      expect(duels).toBeLessThanOrEqual(3 * ids.length * Math.ceil(Math.log2(2 * used.length + 1)))
+      for (const id of ids) {
+        const mine = met.filter((m) => m.title === id)
+        expect(new Set(mine.map((m) => m.anchor)).size).toBe(mine.length)
+        const s = truth.get(id)!
+        const i = used.indexOf(s)
+        if (single(i)) {
+          // Confirmed against the neighbouring scores' Anchors.
+          for (const n of [i - 1, i + 1].filter((n) => n >= 0 && n < used.length)) {
+            expect(mine.some((m) => levelOf(anchors, m.anchor) === used[n])).toBe(true)
+          }
+        } else {
+          expect(metOn(met, anchors, id, s).filter((m) => m.result === 'tie' && !drift.has(m.anchor)).length).toBeGreaterThanOrEqual(2)
+        }
+      }
+    }
+    expect(drifted).toBeGreaterThan(30)
   })
 })
 
