@@ -12,7 +12,7 @@
 // once they disagree. The level's own Anchors vote first; once every one of them has answered (a single-Anchor level,
 // or a split pair), the Anchors of the neighbouring levels vote too.
 import type { ScoreFormat } from '../anilist/types.ts'
-import { sideHash } from './hash.ts'
+import { seededHash } from './hash.ts'
 import { humanStepPast, levels as levelsOf } from './scoring.ts'
 
 /** One Anchor in the snapshot (ADR 0009): its id and its score as a level of the snapshot's Score Format. */
@@ -304,6 +304,12 @@ function voterLevels(state: NewTitles, j: number): number[] {
 }
 
 /**
+ * Added to the level index in `seededHash`'s third word when picking where a level's Anchors start, so the pick never
+ * repeats another seeded choice (left/right sides hash two title ids). Changing it changes replay (ADR 0005).
+ */
+const VOTER_SALT = 0xa0c4
+
+/**
  * The first usable Anchor on boundary j the title hasn't met yet, or null once every one has answered. Each level's
  * Anchors start at a point picked from the seed, the title and the level only, so replay asks the same Duels
  * (ADR 0005) while different titles meet different Anchors.
@@ -312,7 +318,7 @@ function nextVoter(state: NewTitles, placement: Placement, j: number): Voter | n
   const met = new Set(placement.answers.map((answer) => answer.anchor))
   const unmet = (level: number): Voter | null => {
     const anchors = usable(state, level)
-    const start = sideHash(state.seed, placement.id, 0xa0c4 + level) % Math.max(anchors.length, 1)
+    const start = seededHash(state.seed, placement.id, VOTER_SALT + level) % Math.max(anchors.length, 1)
     for (let i = 0; i < anchors.length; i++) {
       const anchor = anchors[(start + i) % anchors.length]
       if (!met.has(anchor)) return { anchor, level }

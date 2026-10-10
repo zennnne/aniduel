@@ -1,7 +1,7 @@
 // Ranking Engine (ADR 0001, ADR 0005): pure, no I/O. The Duel log is the source of truth;
 // every derived thing (next prompt, the Ranking, progress) is rebuilt by replaying it.
 import type { MediaType, ScoreFormat } from '../anilist/types.ts'
-import { sideHash } from './hash.ts'
+import { seededHash } from './hash.ts'
 import { intervalOf, knowledgeOf, nextLevelDuel, tierIndex, type LevelContext, type PositionRange, type SegmentKnowledge } from './levelSelect.ts'
 import {
   addNewTitles,
@@ -221,6 +221,23 @@ export type Prompt =
    */
   | { kind: 'closer-to'; id: number; upper: number; lower: number }
   | { kind: 'all-complete' }
+
+/**
+ * The title a prompt is placing: Rough Sort's title, a Duel's or Anchor Duel's `a`, a closer-to prompt's title; null
+ * once the Ranking is complete.
+ */
+export function promptedTitle(prompt: Prompt): number | null {
+  switch (prompt.kind) {
+    case 'rough-sort':
+    case 'closer-to':
+      return prompt.id
+    case 'duel':
+    case 'anchor-duel':
+      return prompt.a
+    case 'all-complete':
+      return null
+  }
+}
 
 export type SubBandState = {
   /** The Ranking inside this Sub-band: Tiers best first. */
@@ -860,7 +877,7 @@ function layoutNow(machine: Machine & { scoring: SavedScoring }): ScoresLayout {
       return level
     },
     // Which titles are sorted first: from the seed and the id only, so replay asks the same Duels.
-    priority: (id) => sideHash(seed, id, 0x5c0e5),
+    priority: (id) => seededHash(seed, id, 0x5c0e5),
   }
 }
 
@@ -1081,7 +1098,7 @@ function nextPrompt(machine: Machine): Prompt {
 function sides(seed: number, a: number, b: number): [number, number] {
   const low = Math.min(a, b)
   const high = Math.max(a, b)
-  return sideHash(seed, low, high) & 1 ? [high, low] : [low, high]
+  return seededHash(seed, low, high) & 1 ? [high, low] : [low, high]
 }
 
 /** Under Scores: every title's possible positions, and which are settled. */

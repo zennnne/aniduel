@@ -1,9 +1,5 @@
 import type { SortGoal } from '../ranking/engine.ts'
-
-const GOALS: readonly { goal: SortGoal; label: string }[] = [
-  { goal: 'scores', label: 'Scores' },
-  { goal: 'full-ranking', label: 'Full Ranking' },
-]
+import { SORT_GOAL_LABEL } from './meta.ts'
 
 /**
  * Start's third button, Score New Titles (ADR 0009): `count` titles have no score (the badge, null while unknown);
@@ -18,7 +14,7 @@ export type NewTitlesButton = { count: number | null; enabled: boolean }
  */
 export function SortGoalSeg(props: { goal: SortGoal; onGoal: (goal: SortGoal) => void; newTitles?: NewTitlesButton; locked?: boolean }) {
   const { goal: current, onGoal, newTitles, locked = false } = props
-  const button = (goal: SortGoal, label: string, enabled = true, badge: number | null = null) => (
+  const button = (goal: SortGoal, enabled = true, badge: number | null = null) => (
     <button
       key={goal}
       role="radio"
@@ -28,14 +24,15 @@ export function SortGoalSeg(props: { goal: SortGoal; onGoal: (goal: SortGoal) =>
       onClick={() => current !== goal && onGoal(goal)}
     >
       {!enabled && current !== goal && '🔒 '}
-      {label}
+      {SORT_GOAL_LABEL[goal]}
       {badge !== null && <span className="badge">{badge}</span>}
     </button>
   )
   return (
     <div className={newTitles ? 'seg tight' : 'seg'} role="radiogroup" aria-label="Sort Goal">
-      {GOALS.map(({ goal, label }) => button(goal, label))}
-      {newTitles && button('score-new-titles', 'New Titles', newTitles.enabled, newTitles.count)}
+      {button('scores')}
+      {button('full-ranking')}
+      {newTitles && button('score-new-titles', newTitles.enabled, newTitles.count)}
     </div>
   )
 }

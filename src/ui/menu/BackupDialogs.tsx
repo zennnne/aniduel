@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import type { MediaType } from '../../anilist/types.ts'
+import type { SortGoal } from '../../ranking/engine.ts'
 import { BackupError, readBackup, type Backup } from '../../persistence/backup.ts'
 import { Dialog } from '../Dialog.tsx'
-import { MEDIA_LABEL, count } from '../meta.ts'
+import { MEDIA_LABEL, SORT_GOAL_LABEL, count } from '../meta.ts'
 
 /**
  * Restore from Backup: drop or choose a file; it is checked straight away and the Restore button only
@@ -154,7 +155,7 @@ export function StartOverDialog(props: {
 export function ReplaceWithNewTitlesDialog(props: {
   mediaType: MediaType
   /** The saved Ranking's Sort Goal and Duels; null when it can't be read (it is thrown away all the same). */
-  saved: { goal: string; duels: number } | null
+  saved: { goal: SortGoal; duels: number } | null
   onConfirm: () => void
   onSaveBackup?: () => void
   onCancel: () => void
@@ -182,7 +183,7 @@ export function ReplaceWithNewTitlesDialog(props: {
         Score New Titles starts a new {media} Ranking. Your saved{' '}
         {saved ? (
           <>
-            <b>{saved.goal}</b> Ranking and its <b>{count(saved.duels, 'Duel')}</b> are
+            <b>{SORT_GOAL_LABEL[saved.goal]}</b> Ranking and its <b>{count(saved.duels, 'Duel')}</b> are
           </>
         ) : (
           <>{media} progress in this browser is</>

@@ -2,7 +2,7 @@
 // left, which titles are sorted first, which Anchor a new title meets. Never `Math.random`.
 
 /** `hash(seed, a, b)`: 32-bit FNV-1a over the three words, then a final mix. */
-export function sideHash(seed: number, low: number, high: number): number {
+export function seededHash(seed: number, low: number, high: number): number {
   let h = 0x811c9dc5
   for (const word of [seed, low, high]) {
     for (let shift = 0; shift < 32; shift += 8) {
