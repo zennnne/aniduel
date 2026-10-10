@@ -2,7 +2,19 @@
 // seeded oracle, like scores.test.ts.
 import { describe, expect, it } from 'vitest'
 import type { ScoreFormat } from '../anilist/types.ts'
-import { BANDS, appendEvent, replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from './engine.ts'
+import {
+  BANDS,
+  ReplayError,
+  appendEvent,
+  replay,
+  startLog,
+  startNewTitlesLog,
+  type BandIndex,
+  type DuelLog,
+  type LogEvent,
+  type RankingState,
+  type SwitchableGoal,
+} from './engine.ts'
 import { defaultSettings, score, type SavedScoring, type ScoringSettings } from './scoring.ts'
 import { switchGoalEvents } from './sortGoal.ts'
 
@@ -102,6 +114,34 @@ describe('switching the Sort Goal', () => {
     expect(undone.scoring).toEqual(before.scoring)
     expect(undone.prompt).toEqual(before.prompt)
     expect(undone.bands).toEqual(before.bands)
+  })
+})
+
+describe('Score New Titles never switches (ADR 0009)', () => {
+  const anchors = [9, 8, 7].map((level, i) => ({ id: 101 + i, level }))
+  const newTitlesLog = () => startNewTitlesLog({ seed: 1, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids: [1, 2] })
+
+  it('to Scores or Full Ranking: no events, and the engine refuses one written by hand at any point', () => {
+    let log = newTitlesLog()
+    for (let answered = 0; answered < 3; answered++) {
+      const state = replay(log)
+      for (const goal of ['scores', 'full-ranking'] as const) {
+        expect(switchGoalEvents(state, null, 'POINT_10', goal)).toEqual([])
+        expect(() => replay(appendEvent(log, { type: 'sort-goal-set', goal }))).toThrow(ReplayError)
+      }
+      if (state.prompt.kind !== 'anchor-duel') break
+      log = appendEvent(log, { type: 'duel-answered', a: state.prompt.a, b: state.prompt.b, result: 'a' })
+    }
+  })
+
+  it('from Scores or Full Ranking: no Sort Goal event reaches it, and Anchors set can only start a Ranking', () => {
+    const scores = startLog({ seed: 1, userId: 7, mediaType: 'ANIME', ids: [1, 2], scoreFormat: 'POINT_10' })
+    const full = switched(scores, 'full-ranking', 'POINT_10')
+    for (const log of [scores, full]) {
+      const goal = 'score-new-titles' as unknown as SwitchableGoal
+      expect(() => replay(appendEvent(log, { type: 'sort-goal-set', goal }))).toThrow(ReplayError)
+      expect(() => replay(appendEvent(log, { type: 'anchors-set', format: 'POINT_10', anchors }))).toThrow(ReplayError)
+    }
   })
 })
 

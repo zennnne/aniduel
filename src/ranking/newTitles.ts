@@ -53,6 +53,8 @@ export type NewTitles = {
   format: ScoreFormat
   levels: AnchorLevel[]
   anchorIds: ReadonlySet<number>
+  /** Anchors no longer used as a reference (Forgotten): never chosen for a Duel, their levels and scores unchanged. */
+  excluded: Set<number>
   seed: number
   /** Every new title, in the order they joined (Unforgotten ones at the front). */
   queue: Placement[]
@@ -79,7 +81,7 @@ export function startNewTitles(format: ScoreFormat, anchors: readonly AnchorScor
   const levels = [...byLevel]
     .sort((x, y) => y[0] - x[0])
     .map(([level, members]) => ({ level, anchors: members.sort((x, y) => x - y) }))
-  return { format, levels, anchorIds: ids, seed, queue: [] }
+  return { format, levels, anchorIds: ids, excluded: new Set(), seed, queue: [] }
 }
 
 /** New titles join at the back, knowing nothing yet. */
@@ -102,6 +104,16 @@ export function takeOutNewTitle(state: NewTitles, id: number): void {
   if (at >= 0) state.queue.splice(at, 1)
 }
 
+/** Forgotten on an Anchor: it stops being chosen for Duels. What titles learnt from it before still counts. */
+export function excludeAnchor(state: NewTitles, id: number): void {
+  state.excluded.add(id)
+}
+
+/** Unforgotten on an Anchor: it can be chosen again. */
+export function includeAnchor(state: NewTitles, id: number): void {
+  state.excluded.delete(id)
+}
+
 /**
  * The next Duel: the first title that isn't settled, at the middle Anchor level it can still be on (a binary search
  * over the positions), against the next Anchor that may vote on that level's first open boundary. Null once every
@@ -109,28 +121,60 @@ export function takeOutNewTitle(state: NewTitles, id: number): void {
  */
 export function nextAnchorDuel(state: NewTitles): AnchorDuel | null {
   for (const placement of state.queue) {
-    const level = nextLevel(placement)
+    const at = range(state, placement)
+    const level = nextLevel(state, at)
     if (level === null) continue
-    // The level's own position is open, so at least one of its boundaries is inside lo..hi and still open: a
-    // decided one would have moved lo or hi past it.
-    const boundary = [2 * level + 1, 2 * level + 2].find((j) => isOpen(placement, j) && !decide(state, placement, j))!
+    // The level's own position is inside lo..hi, so at least one of its boundaries is too, and every boundary inside
+    // lo..hi is still open. An open boundary of a level with a usable Anchor always has a voter left.
+    const boundary = [2 * level + 1, 2 * level + 2].find((j) => at.lo < j && j <= at.hi)!
     const voter = nextVoter(state, placement, boundary)!
     return { a: placement.id, b: voter.anchor, level: voter.level }
   }
   return null
 }
 
-/** The middle Anchor level whose own position is still open to the title, or null once it is settled. */
-function nextLevel({ lo, hi }: Placement): number | null {
+/** Positions lo..hi a title can be at. */
+type Range = { lo: number; hi: number }
+
+/** The level indexes whose own position is still open to the title (none once lo = hi), and the middle one. */
+function openLevels({ lo, hi }: Range): { first: number; last: number; middle: number } | null {
   if (lo === hi) return null
   // Two or more positions always hold a level's own position (an odd one).
   const first = Math.ceil((lo - 1) / 2)
   const last = Math.floor((hi - 1) / 2)
-  return Math.floor((first + last) / 2)
+  return { first, last, middle: Math.floor((first + last) / 2) }
 }
 
-/** Whether boundary j still splits the positions the title can be at. */
-const isOpen = ({ lo, hi }: Placement, j: number) => lo < j && j <= hi
+/**
+ * The open level to ask next: the middle one, or when every Anchor on it is Forgotten the nearest open level that
+ * still has one (the upper first). Null once the title is settled, or when no open level has an Anchor left.
+ */
+function nextLevel(state: NewTitles, at: Range): number | null {
+  const open = openLevels(at)
+  if (!open) return null
+  const { first, last, middle } = open
+  for (let d = 0; middle - d >= first || middle + d <= last; d++) {
+    for (const level of [middle - d, middle + d]) {
+      if (level >= first && level <= last && usable(state, level).length > 0) return level
+    }
+  }
+  return null
+}
+
+/**
+ * Where a title is settled, or null while Duels can still move it: lo = hi, or no open level has an Anchor left to
+ * ask (every one Forgotten), and then it takes the middle open level, the score it can't be told apart from.
+ */
+function settledPosition(state: NewTitles, at: Range): number | null {
+  const open = openLevels(at)
+  if (!open) return at.lo
+  return nextLevel(state, at) === null ? 2 * open.middle + 1 : null
+}
+
+/** A level's Anchors that may still be chosen, by id ascending. */
+function usable(state: NewTitles, level: number): readonly number[] {
+  return state.levels[level].anchors.filter((id) => !state.excluded.has(id))
+}
 
 /** The level boundary j touches: 2m+1 is the top of level m, 2m+2 its bottom. */
 const levelOfBoundary = (j: number) => Math.floor((j - 1) / 2)
@@ -147,24 +191,21 @@ function voterLevels(state: NewTitles, j: number): number[] {
 }
 
 /**
- * Who may vote on boundary j, in the order they are asked. Each level's Anchors start at a point picked from the
- * seed, the title and the level only, so replay asks the same Duels (ADR 0005) while different titles meet
- * different Anchors. The one place to leave out Anchors that may no longer be used (Forgotten, Suspect).
+ * The first usable Anchor on boundary j the title hasn't met yet, or null once every one has answered. Each level's
+ * Anchors start at a point picked from the seed, the title and the level only, so replay asks the same Duels
+ * (ADR 0005) while different titles meet different Anchors.
  */
-function voters(state: NewTitles, id: number, j: number): Voter[] {
-  return voterLevels(state, j).flatMap((level) => rotated(state, id, level))
-}
-
-function rotated(state: NewTitles, id: number, level: number): Voter[] {
-  const { anchors } = state.levels[level]
-  const start = sideHash(state.seed, id, 0xa0c4 + level) % anchors.length
-  return anchors.map((_, i) => ({ anchor: anchors[(start + i) % anchors.length], level }))
-}
-
-/** The first voter on boundary j the title hasn't met yet, or null once every one has answered. */
 function nextVoter(state: NewTitles, placement: Placement, j: number): Voter | null {
   const met = new Set(placement.answers.map((answer) => answer.anchor))
-  return voters(state, placement.id, j).find((voter) => !met.has(voter.anchor)) ?? null
+  for (const level of voterLevels(state, j)) {
+    const anchors = usable(state, level)
+    const start = sideHash(state.seed, placement.id, 0xa0c4 + level) % Math.max(anchors.length, 1)
+    for (let i = 0; i < anchors.length; i++) {
+      const anchor = anchors[(start + i) % anchors.length]
+      if (!met.has(anchor)) return { anchor, level }
+    }
+  }
+  return null
 }
 
 /**
@@ -183,22 +224,24 @@ function vote(j: number, { level, result }: AnchorAnswer): Side {
 /**
  * Boundary j's verdict from the answers so far, or null while it is open. Two votes on one side, and more than the
  * other side has, decide it: two agreeing Anchors, or 2 of 3. The voter levels count in turn: a neighbour's votes
- * count only once every Anchor of the levels before it has answered and they left the boundary open. Once every voter has answered without a
- * verdict, the side with more votes wins, and an even split goes to the own level's first answer.
+ * count only once every usable Anchor of the levels before it has answered and left the boundary open. Once every
+ * voter has answered without a verdict, the side with more votes wins, and an even split goes to the own level's
+ * first answer. Answers from Forgotten Anchors don't count.
  */
 function decide(state: NewTitles, placement: Placement, j: number): Side | null {
-  const own = placement.answers.filter((answer) => answer.level === levelOfBoundary(j))
+  const counts = placement.answers.filter((answer) => !state.excluded.has(answer.anchor))
+  const own = counts.filter((answer) => answer.level === levelOfBoundary(j))
   let above = 0
   let below = 0
   for (const level of voterLevels(state, j)) {
-    const answers = placement.answers.filter((answer) => answer.level === level)
+    const answers = counts.filter((answer) => answer.level === level)
     for (const answer of answers) {
       if (vote(j, answer) === 'above') above++
       else below++
     }
     if (above >= 2 && above > below) return 'above'
     if (below >= 2 && below > above) return 'below'
-    if (answers.length < state.levels[level].anchors.length) break
+    if (answers.length < usable(state, level).length) break
   }
   if (nextVoter(state, placement, j)) return null
   if (above !== below) return above > below ? 'above' : 'below'
@@ -206,20 +249,23 @@ function decide(state: NewTitles, placement: Placement, j: number): Side | null 
 }
 
 /**
- * Narrows lo..hi by every boundary inside it that the answers now decide, from the top down. A decided boundary is
- * never reopened, so a settled title stays settled whatever later answers would say.
+ * The positions a title can be at now: its stored lo..hi narrowed, from the top down, by every boundary inside it
+ * that the answers decide. Derived, so a Forgotten or Brought back Anchor changes it without an answer.
  */
-function narrow(state: NewTitles, placement: Placement): void {
-  for (let j = placement.lo + 1; j <= placement.hi; j++) {
+function range(state: NewTitles, placement: Placement): Range {
+  let { lo, hi } = placement
+  for (let j = lo + 1; j <= hi; j++) {
     const side = decide(state, placement, j)
-    if (side === 'below') placement.lo = j
-    else if (side === 'above') placement.hi = j - 1
+    if (side === 'below') lo = j
+    else if (side === 'above') hi = j - 1
   }
+  return { lo, hi }
 }
 
 /**
  * Applies an answer between `a` and `b` (`winner` = the better one, null = about the same). Returns false when it
- * isn't the Duel the engine prompts now, so replay can refuse it.
+ * isn't the Duel the engine prompts now, so replay can refuse it. What the answer decides is kept in lo..hi: a
+ * decided boundary is never reopened by later answers.
  */
 export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner: number | null): boolean {
   const duel = nextAnchorDuel(state)
@@ -227,7 +273,7 @@ export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner:
   const placement = state.queue.find((p) => p.id === duel.a)!
   const result = winner === null ? 'tie' : winner === duel.a ? 'win' : 'loss'
   placement.answers.push({ anchor: duel.b, level: duel.level, result })
-  narrow(state, placement)
+  Object.assign(placement, range(state, placement))
   return true
 }
 
@@ -251,8 +297,12 @@ function levelsNear(state: NewTitles, position: number): number[] {
 }
 
 export function newTitlesView(state: NewTitles): NewTitlesState {
-  const titles = state.queue.map(({ id, lo, hi }): NewTitle => {
-    if (lo === hi) return { id, settled: true, levels: [settledLevel(state, lo)] }
+  const titles = state.queue.map((placement): NewTitle => {
+    const { id } = placement
+    const at = range(state, placement)
+    const { lo, hi } = at
+    const settled = settledPosition(state, at)
+    if (settled !== null) return { id, settled: true, levels: [settledLevel(state, settled)] }
     const levels = new Set<number>()
     for (let p = lo; p <= hi; p++) for (const level of levelsNear(state, p)) levels.add(level)
     return { id, settled: false, levels: [...levels].sort((x, y) => y - x) }

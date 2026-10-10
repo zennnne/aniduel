@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { appendEvent, replay, startLog, type DuelLog } from '../ranking/engine.ts'
+import { appendEvent, replay, startLog, startNewTitlesLog, type DuelLog } from '../ranking/engine.ts'
 import { score, scoringFor } from '../ranking/scoring.ts'
 import { createBackup, readBackup, restoreBackup } from './backup.ts'
 import {
@@ -91,6 +91,28 @@ describe('Backup and Restore', () => {
     saveScoringSettings(elsewhere, anime, { format: 'POINT_10', settings: { ...chosen, distribution: 'bell', best: 10, worst: 1 } })
     restoreBackup(elsewhere, readBackup(createBackup(here, { ...anime, userName: 'zen' }, now)!.json, anime))
     expect(scoresIn(elsewhere)).toEqual(scoresIn(here))
+  })
+
+  it('a Score New Titles Ranking restores to the same Anchors, answers, Forgotten titles and prompt', () => {
+    const anchors = [9, 8, 8, 7, 6].map((level, i) => ({ id: 101 + i, level }))
+    let log = startNewTitlesLog({ ...anime, seed: 42, format: 'POINT_10', anchors, ids: [1, 2, 3] })
+    const first = replay(log).prompt
+    if (first.kind !== 'anchor-duel') throw new Error(first.kind)
+    log = appendEvent(log, { type: 'duel-answered', a: first.a, b: first.b, result: 'a' })
+    log = appendEvent(log, { type: 'forgotten', id: 3 })
+    const next = replay(log).prompt
+    if (next.kind !== 'anchor-duel') throw new Error(next.kind)
+    log = appendEvent(log, { type: 'forgotten', id: next.b })
+
+    const here = memoryStorage()
+    saveDuelLog(here, log)
+    const elsewhere = memoryStorage()
+    restoreBackup(elsewhere, readBackup(createBackup(here, { ...anime, userName: 'zen' }, now)!.json, anime))
+    const restored = replay(loadDuelLog(elsewhere, anime)!)
+    expect(restored).toEqual(replay(log))
+    expect(restored.sortGoal).toBe('score-new-titles')
+    expect(restored.forgotten).toEqual([3, next.b])
+    expect(restored.newTitles!.levels.flatMap((l) => l.anchors)).toEqual([101, 102, 103, 104, 105])
   })
 
   it('names the file after the user, Media Type and day', () => {
