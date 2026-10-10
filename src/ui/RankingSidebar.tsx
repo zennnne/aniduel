@@ -138,7 +138,8 @@ function NewTitlesSidebar(props: {
   const newTitles = state.newTitles!
   const { done, total } = state.progress.ranked
   const prompt = state.prompt
-  const current = prompt.kind === 'anchor-duel' ? newTitles.titles.find((t) => t.id === prompt.a) : undefined
+  const asked = prompt.kind === 'anchor-duel' ? prompt.a : prompt.kind === 'closer-to' ? prompt.id : null
+  const current = newTitles.titles.find((t) => t.id === asked)
   const open = current ? new Set(current.levels) : null
   const mark = (level: number) => formatLevel(newTitles.format, level)
   const lines = newTitlesLines(state, name)
@@ -162,9 +163,11 @@ function NewTitlesSidebar(props: {
         </div>
       </div>
       <div className="small hide-m">
-        {current
-          ? `${name(current.id)} · ${current.levels.length > 1 ? `between ${mark(current.levels[0])} and ${mark(current.levels[current.levels.length - 1])}` : mark(current.levels[0])}`
-          : 'Your scores'}
+        {prompt.kind === 'closer-to'
+          ? `${name(prompt.id)} · ${mark(prompt.upper)} or ${mark(prompt.lower)}`
+          : current
+            ? `${name(current.id)} · ${current.levels.length > 1 ? `between ${mark(current.levels[0])} and ${mark(current.levels[current.levels.length - 1])}` : mark(current.levels[0])}`
+            : 'Your scores'}
       </div>
       <div className="rank hide-m">
         {lines.map((line) => (

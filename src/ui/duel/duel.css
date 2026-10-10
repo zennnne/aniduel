@@ -160,6 +160,73 @@
   z-index: 6;
 }
 
+/* Closer-to prompt (#48): the new title over two columns, one per score it sits between. */
+.closer {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--on-overlay);
+}
+.closer > .cv {
+  width: 110px;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  box-shadow: 0 10px 40px var(--overlay-strong);
+}
+.closer .fh {
+  font-size: 22px;
+  font-weight: 800;
+}
+.closer .cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: min(760px, 100%);
+}
+.closer .col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--overlay-soft);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.closer .col:hover,
+.closer .col:focus-visible {
+  background: var(--blue);
+}
+.closer .col .n {
+  font-size: 64px;
+  font-weight: 900;
+  line-height: 1;
+}
+.closer .exs {
+  display: flex;
+  gap: 8px;
+}
+.closer .exs .cv {
+  width: 64px;
+  aspect-ratio: 2 / 3;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px var(--overlay-strong);
+}
+.closer .small {
+  color: inherit;
+  opacity: 0.85;
+}
+
 @media (max-width: 720px) {
   .pair {
     grid-template-columns: 1fr;
@@ -191,10 +258,23 @@
     height: 48px;
   }
   /* Every answer is a large touch target on a phone: the cards are whole halves, the seam is 66px. */
-  .float-undo .pill {
+  .float-undo .pill,
+  .closer .pill {
     min-height: 48px;
     padding: 10px 18px;
     font-size: 14px;
+  }
+  .closer .cols {
+    gap: 10px;
+  }
+  .closer .col {
+    padding: 14px 10px;
+  }
+  .closer .col .n {
+    font-size: 44px;
+  }
+  .closer .exs .cv {
+    width: 44px;
   }
 }
 

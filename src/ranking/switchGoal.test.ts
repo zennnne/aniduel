@@ -47,6 +47,7 @@ function play(c: Case, log: DuelLog, stopAfter = Infinity): { state: RankingStat
   const pairs: string[] = []
   for (let state = replay(log); ; state = replay(log)) {
     const p = state.prompt
+    if (p.kind === 'closer-to') throw new Error('a closer-to prompt is Score New Titles only')
     if (p.kind === 'all-complete' || pairs.length >= stopAfter) return { state, log, pairs }
     if (p.kind === 'rough-sort') {
       log = appendEvent(log, { type: 'band-assigned', id: p.id, band: c.band.get(p.id)! })

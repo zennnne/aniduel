@@ -8,8 +8,9 @@ import {
   excludeAnchor,
   includeAnchor,
   answerAnchorDuel,
+  answerCloserTo,
   newTitlesView,
-  nextAnchorDuel,
+  nextQuestion,
   returnNewTitle,
   startNewTitles,
   takeOutNewTitle,
@@ -25,9 +26,10 @@ export const LOG_FORMAT_VERSION = 1
  * did, so all of 1..ENGINE_VERSION are accepted, but a log may not contain events newer than its header says
  * (`EVENT_RULES[type].since`). `appendEvent` stamps the current version, so an older app refuses a log it would
  * replay differently (ADR 0005). Adding an event kind or changing replay means bumping this and, for a new kind,
- * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006).
+ * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006). 9 added the closer-to prompt
+ * and the scores past the extreme Anchors to Score New Titles (#48); 8 was never released, so no log replays differently.
  */
-export const ENGINE_VERSION = 8
+export const ENGINE_VERSION = 9
 const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VERSION }, (_, i) => i + 1)
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
@@ -124,6 +126,11 @@ export type LogEvent =
    * added after it are the new titles, never an Anchor. Undo never reaches past it.
    */
   | { type: 'anchors-set'; format: ScoreFormat; anchors: AnchorScore[] }
+  /**
+   * The answer to the closer-to prompt (GLOSSARY, ADR 0009): new title `id` takes `level`, one of the two Anchor scores
+   * it sits strictly between. Refused unless that prompt is asked now.
+   */
+  | { type: 'closer-to-answered'; id: number; level: number }
   | { type: 'undo' }
 
 export type DuelLog = { header: LogHeader; events: LogEvent[] }
@@ -160,6 +167,7 @@ const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; nam
   'sort-goal-set': { since: 7, name: 'Sort Goal set', undoRole: 'setting' },
   'scoring-set': { since: 7, name: 'Scoring settings set', undoRole: 'setting' },
   'anchors-set': { since: 8, name: 'Anchors set', undoRole: 'barrier' },
+  'closer-to-answered': { since: 9, name: 'Closer-to answered', undoRole: 'user' },
 }
 
 /**
@@ -207,6 +215,11 @@ export type Prompt =
    * `left` / `right` are display only, as for a Duel; nothing on screen says which side is the Anchor.
    */
   | { kind: 'anchor-duel'; a: number; b: number; left: number; right: number }
+  /**
+   * Score New Titles: new title `id` beat every Anchor on score `lower` and lost to every Anchor on score `upper`, so
+   * which of the two is it closer to? Answered with `closer-to-answered`.
+   */
+  | { kind: 'closer-to'; id: number; upper: number; lower: number }
   | { kind: 'all-complete' }
 
 export type SubBandState = {
@@ -692,6 +705,13 @@ function apply(machine: Machine, event: RecordedEvent): void {
       machine.sortGoal = 'score-new-titles'
       return
     }
+    case 'closer-to-answered':
+      if (!machine.newTitles || !answerCloserTo(machine.newTitles, event.id, event.level)) {
+        const prompt = nextPrompt(machine)
+        const expected = prompt.kind === 'closer-to' ? `${prompt.id}: ${prompt.upper} or ${prompt.lower}` : prompt.kind
+        throw new ReplayError(`Closer-to answer ${event.level} for ${event.id}, but the engine prompts ${expected}`)
+      }
+      return
   }
 }
 
@@ -1034,8 +1054,9 @@ function nextPrompt(machine: Machine): Prompt {
   const roughSort = machine.roughSortQueue[0]
   if (roughSort !== undefined) return { kind: 'rough-sort', id: roughSort }
   if (machine.newTitles) {
-    const duel = nextAnchorDuel(machine.newTitles)
+    const duel = nextQuestion(machine.newTitles)
     if (!duel) return { kind: 'all-complete' }
+    if (duel.kind === 'closer-to') return { kind: 'closer-to', id: duel.id, upper: duel.upper, lower: duel.lower }
     const [left, right] = sides(machine.seed, duel.a, duel.b)
     return { kind: 'anchor-duel', a: duel.a, b: duel.b, left, right }
   }

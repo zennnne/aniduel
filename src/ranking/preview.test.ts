@@ -168,6 +168,26 @@ describe('Preview rows on Score New Titles', () => {
     expect(state.prompt.kind).toBe('anchor-duel')
     expect(previewOpen(state.prompt)).toBe(true)
   })
+
+  it('stays open on a closer-to prompt, and plans a title past the extreme Anchors on its own score', () => {
+    const scale = [9, 9, 8, 8, 7, 7].map((level, i) => ({ id: 201 + i, level }))
+    let between: DuelLog = startNewTitlesLog({ seed: 42, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors: scale, ids: [1, 2] })
+    const truth = new Map([
+      [1, 9.5],
+      [2, 8.5],
+    ])
+    for (let s = replay(between); s.prompt.kind === 'anchor-duel'; s = replay(between)) {
+      const { a, b } = s.prompt
+      const mine = truth.get(a)!
+      const theirs = scale.find((x) => x.id === b)!.level
+      between = appendEvent(between, { type: 'duel-answered', a, b, result: mine > theirs ? 'a' : 'b' })
+    }
+    const asked = replay(between)
+    expect(asked.prompt).toEqual({ kind: 'closer-to', id: 2, upper: 9, lower: 8 })
+    expect(previewOpen(asked.prompt)).toBe(true)
+    const rows = previewRows(asked, score(asked, 'POINT_10', defaultSettings('POINT_10', 'whole')), new Map([[1, 0], [2, 0]]), 'POINT_10', idName)
+    expect(importPlan(rows, new Map()).map((w) => [w.mediaId, w.scoreRaw])).toEqual([[1, 100]])
+  })
 })
 
 describe('Suspect Anchors on Preview', () => {

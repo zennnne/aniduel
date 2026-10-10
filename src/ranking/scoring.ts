@@ -92,6 +92,16 @@ export function hasHumanStep(format: ScoreFormat): boolean {
   return SCALES[format].humanPerUnit !== undefined
 }
 
+/**
+ * The level one human Score Step above (`direction` 1) or below (-1) `level`, or the next level for a Score Format
+ * without a human step, never past the Score Format's ends (ADR 0009: the score past the extreme Anchors).
+ */
+export function humanStepPast(format: ScoreFormat, level: number, direction: 1 | -1): number {
+  const { perUnit, humanPerUnit, min, max } = SCALES[format]
+  const value = Math.round((level + direction / (humanPerUnit ?? perUnit)) * perUnit) / perUnit
+  return Math.min(max, Math.max(min, value))
+}
+
 /** The gap between levels at this Score Step, as the Score Format shows it: "0.1", "0.5", "1", "5". */
 export function stepLabel(format: ScoreFormat, step: ScoreStep): string {
   return String(1 / stepOf(format, step).perUnit)

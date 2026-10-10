@@ -77,4 +77,17 @@ describe('score lines on Score New Titles', () => {
       { level: 7, mark: '7', anchors: 1, ids: [3] },
     ])
   })
+
+  it('adds the score one step past the extreme Anchors only once a title landed on it', () => {
+    let above: DuelLog = startNewTitlesLog({ seed: 5, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids: [5] })
+    for (let s = replay(above); s.prompt.kind === 'anchor-duel'; s = replay(above)) {
+      above = appendEvent(above, { type: 'duel-answered', a: s.prompt.a, b: s.prompt.b, result: 'a' })
+    }
+    expect(newTitlesLines(replay(above), name)).toEqual([
+      { level: 10, mark: '10', anchors: 0, ids: [5] },
+      { level: 9, mark: '9', anchors: 2, ids: [] },
+      { level: 8, mark: '8', anchors: 1, ids: [] },
+      { level: 7, mark: '7', anchors: 1, ids: [] },
+    ])
+  })
 })

@@ -86,7 +86,7 @@ describe('a log from engine version 6 (fixture)', () => {
 
   it('takes the new events once appended to, and is stamped with the current engine version', () => {
     const next = plus(log, scoringSet())
-    expect(next.header.engine).toBe(8)
+    expect(next.header.engine).toBe(9)
     expect(replay(next).scoring).toEqual({ format: 'POINT_10', settings: bell })
   })
 
