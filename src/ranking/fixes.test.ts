@@ -258,6 +258,7 @@ describe('a consistent oracle that keeps fixing the Ranking', () => {
       let fixes = 0
       for (let s = replay(log); s.prompt.kind !== 'all-complete' || fixes < 3; s = replay(log)) {
         const p = s.prompt
+        if (p.kind === 'closer-to') throw new Error('a closer-to prompt is Score New Titles only')
         if (p.kind === 'rough-sort') {
           log = plus(log, assign(p.id, bandOf.get(p.id)!))
           continue

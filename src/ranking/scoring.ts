@@ -92,6 +92,22 @@ export function hasHumanStep(format: ScoreFormat): boolean {
   return SCALES[format].humanPerUnit !== undefined
 }
 
+/**
+ * The next point of the human Score Step grid strictly above (`direction` 1) or below (-1) `level` (every 0.5 on 10
+ * point decimal, every 5 on 100 point: 9.3 → 9.5, 9 → 9.5, 9.5 → 10), or the next level for a Score Format without a
+ * human step, never past the Score Format's ends (ADR 0009: the score past the extreme Anchors). At an end it is
+ * that end.
+ */
+export function humanStepPast(format: ScoreFormat, level: number, direction: 1 | -1): number {
+  const { perUnit, humanPerUnit, min, max } = SCALES[format]
+  const grid = humanPerUnit ?? perUnit
+  // `level` in grid steps, rounded off float noise (9.3 * 2 = 18.6000…01).
+  const steps = Math.round(level * grid * 1e6) / 1e6
+  const next = direction === 1 ? Math.floor(steps) + 1 : Math.ceil(steps) - 1
+  const value = Math.round((next / grid) * perUnit) / perUnit
+  return Math.min(max, Math.max(min, value))
+}
+
 /** The gap between levels at this Score Step, as the Score Format shows it: "0.1", "0.5", "1", "5". */
 export function stepLabel(format: ScoreFormat, step: ScoreStep): string {
   return String(1 / stepOf(format, step).perUnit)

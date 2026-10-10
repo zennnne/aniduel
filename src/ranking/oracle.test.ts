@@ -38,6 +38,7 @@ function play(c: Case, random: () => number, forgetChance = 0): { state: Ranking
   let duels = 0
   for (let state = replay(log); ; state = replay(log)) {
     const p = state.prompt
+    if (p.kind === 'closer-to') throw new Error('a closer-to prompt is Score New Titles only')
     if (p.kind === 'all-complete') return { state, duels, log }
     if (p.kind === 'rough-sort') {
       push({ type: 'band-assigned', id: p.id, band: c.band.get(p.id)! })
@@ -147,6 +148,7 @@ describe('a consistent oracle answering every Duel', () => {
       for (let state = replay(log), steps = 0; ; state = replay(log), steps++) {
         if (steps > 10_000) throw new Error('runaway')
         const p = state.prompt
+        if (p.kind === 'closer-to') throw new Error('a closer-to prompt is Score New Titles only')
         if (random() < 0.08) {
           const inPool = c.ids.filter((id) => !outside.includes(id))
           if (outside.length > 0 && random() < 0.5) {

@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react'
 import type { MediaType } from '../../anilist/types.ts'
+import type { SortGoal } from '../../ranking/engine.ts'
 import { BackupError, readBackup, type Backup } from '../../persistence/backup.ts'
 import { Dialog } from '../Dialog.tsx'
-import { MEDIA_LABEL, count } from '../meta.ts'
+import { MEDIA_LABEL, SORT_GOAL_LABEL, count } from '../meta.ts'
 
 /**
  * Restore from Backup: drop or choose a file; it is checked straight away and the Restore button only
@@ -143,6 +144,53 @@ export function StartOverDialog(props: {
           </>
         )}
       </p>
+    </Dialog>
+  )
+}
+
+/**
+ * Score New Titles picked on Start while a Scores / Full Ranking Ranking is saved (#46): there is one Ranking per
+ * Media Type, so starting it throws the saved one away. A red confirm, with the Backup one tap away.
+ */
+export function ReplaceWithNewTitlesDialog(props: {
+  mediaType: MediaType
+  /** The saved Ranking's Sort Goal and Duels; null when it can't be read (it is thrown away all the same). */
+  saved: { goal: SortGoal; duels: number } | null
+  onConfirm: () => void
+  onSaveBackup?: () => void
+  onCancel: () => void
+}) {
+  const media = MEDIA_LABEL[props.mediaType]
+  const { saved } = props
+  return (
+    <Dialog
+      title="Replace your saved Ranking?"
+      onCancel={props.onCancel}
+      actions={
+        <>
+          {props.onSaveBackup && (
+            <button className="go" onClick={props.onSaveBackup}>
+              Save Backup file
+            </button>
+          )}
+          <button className="go danger" onClick={props.onConfirm}>
+            Replace and start
+          </button>
+        </>
+      }
+    >
+      <p>
+        Score New Titles starts a new {media} Ranking. Your saved{' '}
+        {saved ? (
+          <>
+            <b>{SORT_GOAL_LABEL[saved.goal]}</b> Ranking and its <b>{count(saved.duels, 'Duel')}</b> are
+          </>
+        ) : (
+          <>{media} progress in this browser is</>
+        )}{' '}
+        thrown away. Your AniList scores are not touched.
+      </p>
+      <p className="small">Save a Backup first if you might want that Ranking back.</p>
     </Dialog>
   )
 }

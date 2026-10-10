@@ -1,9 +1,9 @@
 // The Ranking as lines on the Band choice, Complete and sidebar (#25, #27): by Tier on Full Ranking, by score level
 // with names sorted on Scores.
 import { describe, expect, it } from 'vitest'
-import { replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
+import { appendEvent, replay, startLog, startNewTitlesLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
 import { rankingOf } from '../ranking/testRanking.ts'
-import { rankingLines } from './rankingLines.ts'
+import { newTitlesLines, rankingLines } from './rankingLines.ts'
 
 const NAMES: Record<number, string> = { 1: 'Zeta', 2: 'alpha', 3: 'Mu', 4: 'beta 10', 5: 'beta 9', 6: 'Ébène', 7: 'Solo' }
 const name = (id: number) => NAMES[id]
@@ -54,6 +54,40 @@ describe('ranking lines on Full Ranking', () => {
     expect(rankingLines(state, 2, name)).toEqual([
       { key: 6, mark: '3', ids: [6], note: null },
       { key: 5, mark: '4', ids: [5], note: null },
+    ])
+  })
+})
+
+describe('score lines on Score New Titles', () => {
+  // Anchors on 9 (two), 8 and 7; new titles 1 and 2 tie an Anchor on 9, title 3 one on 7, title 4 is not settled.
+  const anchors = [9, 9, 8, 7].map((level, i) => ({ id: 101 + i, level }))
+  const truth: Record<number, number> = { 1: 9, 2: 9, 3: 7 }
+  let log: DuelLog = startNewTitlesLog({ seed: 5, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids: [1, 2, 3, 4] })
+  for (let s = replay(log); s.prompt.kind === 'anchor-duel' && s.prompt.a !== 4; s = replay(log)) {
+    const { a, b } = s.prompt
+    const theirs = anchors.find((x) => x.id === b)!.level
+    log = appendEvent(log, { type: 'duel-answered', a, b, result: truth[a] === theirs ? 'tie' : truth[a] > theirs ? 'a' : 'b' })
+  }
+  const state = replay(log)
+
+  it('has one line per Anchor score, best first, with its Anchor count and its settled new titles by name', () => {
+    expect(newTitlesLines(state, name)).toEqual([
+      { level: 9, mark: '9', anchors: 2, ids: [2, 1] },
+      { level: 8, mark: '8', anchors: 1, ids: [] },
+      { level: 7, mark: '7', anchors: 1, ids: [3] },
+    ])
+  })
+
+  it('adds the score one step past the extreme Anchors only once a title landed on it', () => {
+    let above: DuelLog = startNewTitlesLog({ seed: 5, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids: [5] })
+    for (let s = replay(above); s.prompt.kind === 'anchor-duel'; s = replay(above)) {
+      above = appendEvent(above, { type: 'duel-answered', a: s.prompt.a, b: s.prompt.b, result: 'a' })
+    }
+    expect(newTitlesLines(replay(above), name)).toEqual([
+      { level: 10, mark: '10', anchors: 0, ids: [5] },
+      { level: 9, mark: '9', anchors: 2, ids: [] },
+      { level: 8, mark: '8', anchors: 1, ids: [] },
+      { level: 7, mark: '7', anchors: 1, ids: [] },
     ])
   })
 })
