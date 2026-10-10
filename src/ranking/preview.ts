@@ -12,7 +12,8 @@ import { isScores } from './sortGoal.ts'
  * Under Score New Titles every settled new title can be imported at any time (ADR 0009), so Preview is always open.
  */
 export function previewOpen(prompt: Prompt): boolean {
-  return prompt.kind === 'all-complete' || prompt.kind === 'anchor-duel' || (prompt.kind === 'duel' && prompt.refine === true)
+  const newTitles = prompt.kind === 'anchor-duel' || prompt.kind === 'closer-to'
+  return prompt.kind === 'all-complete' || newTitles || (prompt.kind === 'duel' && prompt.refine === true)
 }
 
 type RowBase = {

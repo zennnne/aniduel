@@ -55,6 +55,7 @@ import { useCatchUp } from './catchup/useCatchUp.ts'
 import { BoardScreen } from './board/BoardScreen.tsx'
 import { lastCheckDue } from './board/lastCheck.ts'
 import { SplitScreen } from './split/SplitScreen.tsx'
+import { CloserToScreen } from './duel/CloserToScreen.tsx'
 import { CompleteScreen } from './duel/CompleteScreen.tsx'
 import { DuelScreen } from './duel/DuelScreen.tsx'
 import { Kao, SubPill } from './Kao.tsx'
@@ -102,7 +103,8 @@ function loginRedirect() {
  */
 function fixDone(state: RankingState, id: number): boolean {
   const { prompt } = state
-  return previewOpen(prompt) && ((prompt.kind !== 'duel' && prompt.kind !== 'anchor-duel') || prompt.a !== id)
+  const asked = prompt.kind === 'duel' || prompt.kind === 'anchor-duel' ? prompt.a : prompt.kind === 'closer-to' ? prompt.id : null
+  return previewOpen(prompt) && asked !== id
 }
 
 function newSeed(): number {
@@ -516,7 +518,8 @@ export function App() {
 
   /** "Go to Duels →" on Preview (#29): the Refine Duels, from the top Band that has some. */
   function refineFromPreview() {
-    if (!ranking || (ranking.prompt.kind !== 'duel' && ranking.prompt.kind !== 'anchor-duel')) return
+    const kind = ranking?.prompt.kind
+    if (!ranking || (kind !== 'duel' && kind !== 'anchor-duel' && kind !== 'closer-to')) return
     setRefining(true)
     if (ranking.bandChoice) chooseBand(ranking.bandChoice.next)
     else goTo('ranking')
@@ -966,6 +969,19 @@ export function App() {
             onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
             onForget={(id) => answer({ type: 'forgotten', id })}
             note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : undefined}
+          />
+        )
+      case 'closer-to':
+        // Score New Titles (#48): which of the two scores the title sits between is it closer to.
+        return (
+          <CloserToScreen
+            key={prompt.id}
+            state={state}
+            prompt={prompt}
+            entries={entries}
+            titleLanguage={titleLanguage}
+            onPick={(level) => answer({ type: 'closer-to-answered', id: prompt.id, level })}
+            onUndo={shared.onUndo}
           />
         )
       case 'all-complete':

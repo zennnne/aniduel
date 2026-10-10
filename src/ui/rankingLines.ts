@@ -26,7 +26,7 @@ export type NewTitlesLine = {
 
 /**
  * Under Score New Titles: one line per Anchor score, best first, plus any score a settled title got that no Anchor
- * has (none yet; the levels past the extremes, #48, will be). Empty on any other Sort Goal.
+ * has: a score one step past the extreme Anchors (#48), once a title landed on it. Empty on any other Sort Goal.
  */
 export function newTitlesLines(state: RankingState, name: (id: number) => string): NewTitlesLine[] {
   const newTitles = state.newTitles
