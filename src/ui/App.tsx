@@ -63,7 +63,7 @@ import { LogoutDialog } from './LogoutDialog.tsx'
 import { FullRankingDialog } from './menu/FullRankingDialog.tsx'
 import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
 import { buildMenuItems } from './menu/buildMenuItems.ts'
-import { RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
+import { ReplaceWithNewTitlesDialog, RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
 import { ImportScreen } from './import/ImportScreen.tsx'
 import { useImport } from './import/useImport.ts'
 import { useWriteQueue } from './useWriteQueue.ts'
@@ -85,7 +85,7 @@ import { useDuelLog } from './useDuelLog.ts'
 type Screen = 'start' | 'ranking' | 'bands' | 'board' | 'preview' | 'import' | 'catchup'
 const SCREENS: readonly Screen[] = ['start', 'ranking', 'bands', 'board', 'preview', 'import', 'catchup']
 
-type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed'
+type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-new-titles'
 
 const TOAST_MS = 4000
 
@@ -542,11 +542,7 @@ export function App() {
     if (!duelLog.latest()) {
       if (!startOrder) return
       if (newGoal === 'score-new-titles') {
-        // Score New Titles (ADR 0009): the Anchors are snapshotted into the log now; Duels start straight away.
-        if (!anchors || !eligibility?.eligible) return
-        const ids = startOrder
-        duelLog.save(startNewTitlesLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids }))
-        goTo('ranking')
+        startNewTitles(startOrder)
         return
       }
       // The new log carries its own Sort Goal and default scoring settings (ADR 0007).
@@ -683,6 +679,30 @@ export function App() {
     showToast(summary ? `${restored} · ${summary}` : restored)
   }
 
+  /** Score New Titles (ADR 0009): the Anchors are snapshotted into a new log now; Duels start straight away. */
+  function startNewTitles(ids: number[]) {
+    if (!viewer || !anchors || !eligibility?.eligible) return
+    duelLog.save(startNewTitlesLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids }))
+    goTo('ranking')
+  }
+
+  /**
+   * Runs only after the user confirmed in the Replace dialog (#46): the saved Scores / Full Ranking Ranking is thrown
+   * away and a Score New Titles one starts on the unscored titles of the chosen statuses.
+   */
+  function replaceWithNewTitles() {
+    if (!rankingKey || !viewer || !list || !eligibility?.eligible) return
+    const ids = roughSortOrder(buildPool(newTitlesList(list, null), statuses).titles, viewer.titleLanguage)
+    deleteDuelLog(localStorage, rankingKey)
+    imports.discard(rankingKey)
+    setDialog(null)
+    setNotice(null)
+    openRanking(rankingKey, false)
+    setPickedGoal('score-new-titles')
+    startNewTitles(ids)
+    showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was replaced by Score New Titles.`)
+  }
+
   /** Runs only after the user confirmed in the Start over dialog. */
   function startOver() {
     if (!rankingKey) return
@@ -764,12 +784,8 @@ export function App() {
     () => (list ? buildPool(newTitlesList(list, savedNewTitles), statuses).titles.length : null),
     [list, savedNewTitles, statuses],
   )
-  const newTitlesReason =
-    ranking && !isNewTitles(ranking)
-      ? 'Can only be chosen when a Ranking starts. Start this Ranking over (in the menu) to use it.'
-      : eligibility && !eligibility.eligible
-        ? eligibility.reason
-        : null
+  // With a Scores / Full Ranking Ranking saved, New Titles stays clickable: it asks to replace that Ranking (#46).
+  const newTitlesReason = eligibility && !eligibility.eligible ? eligibility.reason : null
 
   const form = viewer
     ? {
@@ -786,6 +802,7 @@ export function App() {
         onGoal: (goal: SortGoal) => {
           if (!ranking) setPickedGoal(goal)
           else if (goal !== 'score-new-titles') requestSortGoal(goal)
+          else if (!isNewTitles(ranking)) setDialog('replace-with-new-titles')
         },
         poolDuels: onNewTitles ? newTitlesDuels : pool && shownGoal === 'scores' ? pool.expectedDuels : fullPoolDuels,
         extraDuels:
@@ -1108,6 +1125,15 @@ export function App() {
             catchUp.clearPassed()
             showToast('Catch-up’s Passed list is cleared')
           }}
+        />
+      )}
+      {dialog === 'replace-with-new-titles' && viewer && (
+        <ReplaceWithNewTitlesDialog
+          mediaType={mediaType}
+          saved={ranking && log ? { goal: goalOf(ranking) === 'scores' ? 'Scores' : 'Full Ranking', duels: answeredDuels(log) } : null}
+          onConfirm={replaceWithNewTitles}
+          onSaveBackup={log ? saveBackup : undefined}
+          onCancel={() => setDialog(null)}
         />
       )}
       {dialog === 'start-over' && viewer && (

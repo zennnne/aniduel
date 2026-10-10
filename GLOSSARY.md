@@ -49,7 +49,7 @@ A group of titles the user considers equal, all sharing one position in the Rank
 _Avoid_: Tie group, bucket
 
 **Forgotten**:
-A title the user can no longer remember well enough to judge, marked during Rough Sort or a Duel; it is removed from the Ranking and its existing AniList score is left untouched.
+A title the user can no longer remember well enough to judge, marked during Rough Sort or a Duel; it is removed from the Ranking and its existing AniList score is left untouched. An Anchor marked Forgotten just stops being used as a reference; another Anchor is chosen instead.
 _Avoid_: Skipped, excluded
 
 **Undo**:
