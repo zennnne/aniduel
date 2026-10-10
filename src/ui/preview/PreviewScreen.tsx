@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import { BANDS, type RankingState, type SortGoal } from '../../ranking/engine.ts'
+import { BANDS, type RankingState, type SwitchableGoal } from '../../ranking/engine.ts'
 import { refineDuels } from '../../ranking/estimate.ts'
 import {
   importPlan,
@@ -13,7 +13,7 @@ import {
   type TickOverrides,
   type UnsettledRow,
 } from '../../ranking/preview.ts'
-import { goalOf, isScores } from '../../ranking/sortGoal.ts'
+import { goalOf, isNewTitles, isScores } from '../../ranking/sortGoal.ts'
 import { formatLevel, hasHumanStep, levelOfRaw, levels, score, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
@@ -32,6 +32,8 @@ type Filter = 'changing' | 'all'
  * Re-rank, Move Band, Bring back and Import are disabled while their handler is not passed (Import while one runs).
  * On Scores, titles a settings change left unsettled show in an orange card instead, with the way to their Refine
  * Duels (#25, #29); every settled title can still be imported.
+ * Score New Titles (ADR 0009): only new titles, grouped by the Anchor score they settled on; no settings, Sort Goal,
+ * filter, Band or Re-rank (there is nothing to change but the Duels), and Preview opens at any point of the Duels.
  */
 export function PreviewScreen(props: {
   state: RankingState
@@ -52,12 +54,15 @@ export function PreviewScreen(props: {
    * Asks to switch the Sort Goal, from the Sort Goal `seg` and the "Need 0.5? Switch to Full Ranking" caption under
    * Scores. To Full Ranking it opens the switch dialog (#25, #28). Without it there is no `seg` and the link is disabled.
    */
-  onSwitchGoal?: (goal: SortGoal) => void
+  onSwitchGoal?: (goal: SwitchableGoal) => void
   /** "Go to Duels →" on the unsettled card: the Refine Duels (#29). The button is disabled while it is not passed. */
   onRefine?: () => void
 }) {
   const { state, entries, oldScores, titleLanguage, format, settings, onSettings, overrides, onTick } = props
-  const [filter, setFilter] = useState<Filter>('changing')
+  const newTitles = isNewTitles(state)
+  // Score New Titles shows every row: its titles had no score, so nearly all of them change.
+  const [chosenFilter, setFilter] = useState<Filter>('changing')
+  const filter: Filter = newTitles ? 'all' : chosenFilter
   const [open, setOpen] = useState<number | null>(null)
   const [showUnsettled, setShowUnsettled] = useState(false)
 
@@ -96,7 +101,7 @@ export function PreviewScreen(props: {
     return (
       <div
         key={row.id}
-        className={`tlcard b${row.band}${ticked || !row.settled ? '' : ' off'}`}
+        className={`tlcard${row.band === null ? '' : ` b${row.band}`}${ticked || !row.settled ? '' : ' off'}`}
         onClick={() => setOpen(open === row.id ? null : row.id)}
         title={name(row.id)}
       >
@@ -111,13 +116,19 @@ export function PreviewScreen(props: {
           <div className="tlpop" onClick={(e) => e.stopPropagation()}>
             <b>{name(row.id)}</b>
             <span className="small">
-              <Kao band={row.band} size={9} /> · AniList {row.oldLevel === null ? 'no score' : label(row.oldLevel)} →{' '}
+              {row.band !== null && (
+                <>
+                  <Kao band={row.band} size={9} /> ·{' '}
+                </>
+              )}
+              AniList {row.oldLevel === null ? 'no score' : label(row.oldLevel)} →{' '}
               <b>{row.settled ? label(row.level) : `${between(row)}?`}</b>
             </span>
             {!row.settled ? (
               <>
                 <span className="small uns-why">
-                  Not settled yet: a few Refine Duels decide between {between(row)}. Can't be imported until then.
+                  Not settled yet: a few {newTitles ? 'Duels' : 'Refine Duels'} decide between {between(row)}. Can't be
+                  imported until then.
                 </span>
                 <label className="row small uns-off">
                   <input type="checkbox" checked={false} disabled /> Import this
@@ -130,14 +141,16 @@ export function PreviewScreen(props: {
             ) : (
               <span className="small">No change</span>
             )}
-            <div className="row">
-              <button className="mini-b" disabled={!props.onRerank} onClick={() => props.onRerank?.(row.id)}>
-                Re-rank
-              </button>
-              <button className="mini-b" disabled={!props.onMove} onClick={() => props.onMove?.(row.id)} title="Move Band">
-                {MOVE_ICON}
-              </button>
-            </div>
+            {!newTitles && (
+              <div className="row">
+                <button className="mini-b" disabled={!props.onRerank} onClick={() => props.onRerank?.(row.id)}>
+                  Re-rank
+                </button>
+                <button className="mini-b" disabled={!props.onMove} onClick={() => props.onMove?.(row.id)} title="Move Band">
+                  {MOVE_ICON}
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -150,7 +163,10 @@ export function PreviewScreen(props: {
         <div>
           <div className="h1">Preview</div>
           <div className="small">
-            {rows.length} ranked · {changing} change at your Score Format · {plan.length} ticked for Import
+            {newTitles
+              ? `${rows.length} new ${rows.length === 1 ? 'title' : 'titles'} scored`
+              : `${rows.length} ranked · ${changing} change at your Score Format`}{' '}
+            · {plan.length} ticked for Import
             {unsettled.length > 0 && (
               <>
                 {' '}
@@ -165,64 +181,73 @@ export function PreviewScreen(props: {
         </button>
       </div>
 
-      <div className="pv-set">
-        <label>
-          Best
-          <select className="lsel" value={settings.best} onChange={(e) => pick('best', Number(e.target.value))}>
-            {options.map((l) => (
-              <option key={l} value={l} disabled={l <= settings.worst}>
-                {label(l)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Worst
-          <select className="lsel" value={settings.worst} onChange={(e) => pick('worst', Number(e.target.value))}>
-            {options.map((l) => (
-              <option key={l} value={l} disabled={l >= settings.best}>
-                {label(l)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="seg">
-          {(['linear', 'bell'] as const).map((d) => (
-            <button key={d} className={settings.distribution === d ? 'on' : ''} onClick={() => onSettings({ ...settings, distribution: d })}>
-              {d === 'linear' ? 'Linear' : 'Bell'}
-            </button>
-          ))}
+      {newTitles ? (
+        <div className="pv-set">
+          <span className="small">
+            Score New Titles · Score Format: {SCORE_FORMAT_LABEL[format]} · your{' '}
+            {state.newTitles?.levels.reduce((sum, level) => sum + level.anchors.length, 0)} scored titles are never changed
+          </span>
         </div>
-        {props.onSwitchGoal && <SortGoalSeg goal={goalOf(state)} onGoal={props.onSwitchGoal} />}
-        {hasHumanStep(format) && isScores(state) && (
-          // Scores always uses whole points (ADR 0007): the Step is locked on Whole, and the caption gives the way out (#25).
-          <>
-            <div className="seg lock" title="Score Step: Scores always uses whole points">
-              {(['whole', 'human', 'fine'] as const).map((s) => (
-                <button key={s} className={s === 'whole' ? 'on' : ''} disabled>
-                  {s === 'whole' ? 'Whole' : stepLabel(format, s)}
-                </button>
+      ) : (
+        <div className="pv-set">
+          <label>
+            Best
+            <select className="lsel" value={settings.best} onChange={(e) => pick('best', Number(e.target.value))}>
+              {options.map((l) => (
+                <option key={l} value={l} disabled={l <= settings.worst}>
+                  {label(l)}
+                </option>
               ))}
-            </div>
-            <span className="small">
-              Need {stepLabel(format, 'human')}?{' '}
-              <button className="link small" disabled={!props.onSwitchGoal} onClick={() => props.onSwitchGoal?.('full-ranking')}>
-                Switch to Full Ranking
-              </button>
-            </span>
-          </>
-        )}
-        {hasHumanStep(format) && !isScores(state) && (
-          <div className="seg" title="Score Step">
-            {(['fine', 'human'] as const).map((s) => (
-              <button key={s} className={settings.step === s ? 'on' : ''} onClick={() => onSettings(withStep(settings, format, s))}>
-                {stepLabel(format, s)}
+            </select>
+          </label>
+          <label>
+            Worst
+            <select className="lsel" value={settings.worst} onChange={(e) => pick('worst', Number(e.target.value))}>
+              {options.map((l) => (
+                <option key={l} value={l} disabled={l >= settings.best}>
+                  {label(l)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="seg">
+            {(['linear', 'bell'] as const).map((d) => (
+              <button key={d} className={settings.distribution === d ? 'on' : ''} onClick={() => onSettings({ ...settings, distribution: d })}>
+                {d === 'linear' ? 'Linear' : 'Bell'}
               </button>
             ))}
           </div>
-        )}
-        <span className="small">Score Format: {SCORE_FORMAT_LABEL[format]}</span>
-      </div>
+          {props.onSwitchGoal && <SortGoalSeg goal={goalOf(state)} onGoal={(goal) => goal !== 'score-new-titles' && props.onSwitchGoal?.(goal)} />}
+          {hasHumanStep(format) && isScores(state) && (
+            // Scores always uses whole points (ADR 0007): the Step is locked on Whole, and the caption gives the way out (#25).
+            <>
+              <div className="seg lock" title="Score Step: Scores always uses whole points">
+                {(['whole', 'human', 'fine'] as const).map((s) => (
+                  <button key={s} className={s === 'whole' ? 'on' : ''} disabled>
+                    {s === 'whole' ? 'Whole' : stepLabel(format, s)}
+                  </button>
+                ))}
+              </div>
+              <span className="small">
+                Need {stepLabel(format, 'human')}?{' '}
+                <button className="link small" disabled={!props.onSwitchGoal} onClick={() => props.onSwitchGoal?.('full-ranking')}>
+                  Switch to Full Ranking
+                </button>
+              </span>
+            </>
+          )}
+          {hasHumanStep(format) && !isScores(state) && (
+            <div className="seg" title="Score Step">
+              {(['fine', 'human'] as const).map((s) => (
+                <button key={s} className={settings.step === s ? 'on' : ''} onClick={() => onSettings(withStep(settings, format, s))}>
+                  {stepLabel(format, s)}
+                </button>
+              ))}
+            </div>
+          )}
+          <span className="small">Score Format: {SCORE_FORMAT_LABEL[format]}</span>
+        </div>
+      )}
 
       {unsettled.length > 0 && (
         // Never on Full Ranking: every title there has a level (#25).
@@ -231,7 +256,7 @@ export function PreviewScreen(props: {
             ⚠
           </span>
           <span className="small strong grow">
-            {unsettledSummary(unsettled.length, refine)} ·{' '}
+            {newTitles ? `${count(unsettled.length, 'title')} not settled yet · a few more Duels decide` : unsettledSummary(unsettled.length, refine)} ·{' '}
             <button className="link small" onClick={() => setShowUnsettled(!showUnsettled)}>
               {showUnsettled ? 'hide' : 'show'}
             </button>
@@ -243,14 +268,16 @@ export function PreviewScreen(props: {
         </div>
       )}
 
-      <div className="seg pv-filter">
-        <button className={filter === 'changing' ? 'on' : ''} onClick={() => setFilter('changing')}>
-          Changing ({changing})
-        </button>
-        <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>
-          All ({rows.length})
-        </button>
-      </div>
+      {!newTitles && (
+        <div className="seg pv-filter">
+          <button className={filter === 'changing' ? 'on' : ''} onClick={() => setFilter('changing')}>
+            Changing ({changing})
+          </button>
+          <button className={filter === 'all' ? 'on' : ''} onClick={() => setFilter('all')}>
+            All ({rows.length})
+          </button>
+        </div>
+      )}
 
       <div className="tl">
         {scoreRows.map(([level, members]) => {
@@ -280,17 +307,19 @@ export function PreviewScreen(props: {
         })}
       </div>
 
-      <div className="rng">
-        {BANDS.map((band) => {
-          const range = scores.bands[band]
-          return (
-            <span key={band}>
-              <Kao band={band} size={10} /> spans{' '}
-              <b>{range === null ? '—' : range.min === range.max ? label(range.min) : `${label(range.min)}–${label(range.max)}`}</b>
-            </span>
-          )
-        })}
-      </div>
+      {!newTitles && (
+        <div className="rng">
+          {BANDS.map((band) => {
+            const range = scores.bands[band]
+            return (
+              <span key={band}>
+                <Kao band={band} size={10} /> spans{' '}
+                <b>{range === null ? '—' : range.min === range.max ? label(range.min) : `${label(range.min)}–${label(range.max)}`}</b>
+              </span>
+            )
+          })}
+        </div>
+      )}
 
       {state.forgotten.length > 0 && (
         <div className="forg">

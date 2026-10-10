@@ -10,6 +10,8 @@ import { useHesitation } from './hesitation.ts'
 import './duel.css'
 
 type DuelPrompt = Extract<Prompt, { kind: 'duel' }>
+/** Score New Titles (ADR 0009): the same two cards; neither says which is the Anchor. */
+type AnchorDuelPrompt = Extract<Prompt, { kind: 'anchor-duel' }>
 
 /** Duels left for this insertion at most: binary search over the remaining lo..hi slots (Full Ranking only). */
 function spotsLeft(bounds: NonNullable<DuelPrompt['bounds']>): number {
@@ -75,7 +77,7 @@ function Card(props: {
  */
 export function DuelScreen(props: {
   state: RankingState
-  prompt: DuelPrompt
+  prompt: DuelPrompt | AnchorDuelPrompt
   entries: ReadonlyMap<number, ListEntry>
   titleLanguage: TitleLanguage
   mediaType: MediaType
@@ -95,10 +97,11 @@ export function DuelScreen(props: {
   // `M` waits for ← / →; then the sheet is open for that card.
   const [movePending, setMovePending] = useState(false)
   const [moving, setMoving] = useState<number | null>(null)
-  // Inside a split Band the pill counts the current Sub-band only.
-  const part = prompt.sub !== undefined ? state.bands[prompt.band].subBands?.[prompt.sub] : undefined
-  const progress = part ? progressOf(state, part) : state.progress.bands[prompt.band]
+  // Inside a split Band the pill counts the current Sub-band only; Score New Titles counts every new title.
+  const bandDuel = prompt.kind === 'duel' ? prompt : null
+  const part = bandDuel?.sub !== undefined ? state.bands[bandDuel.band].subBands?.[bandDuel.sub] : undefined
   const overall = state.progress.ranked
+  const progress = part ? progressOf(state, part) : bandDuel ? state.progress.bands[bandDuel.band] : overall
   // Every answer, Undo or move replays into a new state, so the clock restarts with each Duel shown.
   // No nudge while F / M or the Move sheet says the user has already chosen to do something else.
   const nudge = useHesitation(state) && !forgetting && !movePending && moving === null
@@ -158,7 +161,7 @@ export function DuelScreen(props: {
     />
   )
   // Scores has no insertion bounds, so no "spots left" (#25).
-  const spots = prompt.bounds ? spotsLeft(prompt.bounds) : null
+  const spots = bandDuel?.bounds ? spotsLeft(bandDuel.bounds) : null
 
   return (
     <div className="duel">
@@ -168,12 +171,18 @@ export function DuelScreen(props: {
       <div className="float-info">
         <button className="pill" aria-live="polite" onClick={onChooseBand} disabled={!onChooseBand} title="Choose another Band">
           {note && <>{note} · </>}
-          <Kao band={prompt.band} size={10} /> {BAND_UI[prompt.band].label}
-          {prompt.sub !== undefined && (
+          {bandDuel ? (
             <>
-              {' › '}
-              <SubPill sub={prompt.sub} size={10} />
+              <Kao band={bandDuel.band} size={10} /> {BAND_UI[bandDuel.band].label}
+              {bandDuel.sub !== undefined && (
+                <>
+                  {' › '}
+                  <SubPill sub={bandDuel.sub} size={10} />
+                </>
+              )}
             </>
+          ) : (
+            'Score New Titles'
           )}{' '}
           · {progress.done}/{progress.total}
           {spots !== null && <> · {count(spots, 'spot')} left</>}

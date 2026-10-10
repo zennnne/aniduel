@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { appendEvent, replay, startLog, type DuelLog, type LogEvent } from './engine.ts'
-import { importPlan, isTicked, previewRows, settledRows } from './preview.ts'
+import { appendEvent, replay, startLog, startNewTitlesLog, type DuelLog, type LogEvent } from './engine.ts'
+import { importPlan, isTicked, previewOpen, previewRows, settledRows } from './preview.ts'
 import { defaultSettings, score } from './scoring.ts'
 import { rankingOf } from './testRanking.ts'
 
@@ -130,6 +130,43 @@ describe('Unsettled rows on Scores', () => {
     const planned = importPlan(rows, overrides).map((w) => w.mediaId)
     expect(planned.length).toBe(ids.length - unsettled.length)
     expect(planned.filter((id) => unsettled.includes(id))).toEqual([])
+  })
+})
+
+describe('Preview rows on Score New Titles', () => {
+  // Anchors 101.. on 9, 8, 7 (two each); new titles 1..4 with these true scores. Title 4 is left mid-search.
+  const anchors = [9, 9, 8, 8, 7, 7].map((level, i) => ({ id: 101 + i, level }))
+  const truth = new Map([[1, 7], [2, 9], [3, 7], [4, 8]])
+  const names = new Map([[1, 'Zeta'], [2, 'Mid'], [3, 'Alpha'], [4, 'Beta']])
+  let log: DuelLog = startNewTitlesLog({ seed: 3, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids: [1, 2, 3, 4] })
+  for (let s = replay(log); s.prompt.kind === 'anchor-duel'; s = replay(log)) {
+    const { a, b } = s.prompt
+    if (a === 4) break
+    const mine = truth.get(a)!
+    const theirs = anchors.find((x) => x.id === b)!.level
+    log = appendEvent(log, { type: 'duel-answered', a, b, result: mine === theirs ? 'tie' : mine > theirs ? 'a' : 'b' })
+  }
+  const state = replay(log)
+  // Anchors are on the list with their scores; title 3 was scored 50 on AniList meanwhile.
+  const oldScores = new Map([[1, 0], [2, 0], [3, 50], [4, 0], ...anchors.map((a): [number, number] => [a.id, a.level * 10])])
+  const rows = previewRows(state, score(state, 'POINT_10', defaultSettings('POINT_10', 'whole')), oldScores, 'POINT_10', (id) => names.get(id)!)
+
+  it('groups settled new titles by score, best first, by name inside a score, then the unsettled ones', () => {
+    expect(rows.map((r) => r.id)).toEqual([2, 3, 1, 4])
+    expect(rows[0]).toEqual({ id: 2, band: null, settled: true, level: 9, scoreRaw: 90, oldScore100: 0, oldLevel: null, changed: true })
+    expect(rows[1]).toMatchObject({ id: 3, level: 7, scoreRaw: 70, oldLevel: 5, changed: true })
+    expect(rows[3]).toMatchObject({ id: 4, settled: false })
+  })
+
+  it('never shows or plans an Anchor, and only settled titles can be ticked', () => {
+    const everything = new Map([...anchors.map((a): [number, boolean] => [a.id, true]), [4, true]])
+    expect(importPlan(rows, everything).map((w) => w.mediaId)).toEqual([2, 3, 1])
+    expect(rows.filter((r) => isTicked(r, everything)).map((r) => r.id)).toEqual([2, 3, 1])
+  })
+
+  it('opens Preview while Duels are left, since every settled title can already be imported', () => {
+    expect(state.prompt.kind).toBe('anchor-duel')
+    expect(previewOpen(state.prompt)).toBe(true)
   })
 })
 
