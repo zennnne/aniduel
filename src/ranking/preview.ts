@@ -119,6 +119,21 @@ function newTitlesRows(
   return byLevelThenName(rows, name)
 }
 
+/**
+ * Score New Titles (ADR 0009, #47): the Suspect Anchors Preview lists under the score rows, read-only. `level` is the
+ * Anchor's old score, shown at the Score Format AniList reports now (`format`); it is never written. Empty on any
+ * other Sort Goal.
+ */
+export function suspectAnchors(ranking: RankingState, format: ScoreFormat): { id: number; level: number; contradicted: number }[] {
+  const newTitles = ranking.newTitles
+  if (!newTitles) return []
+  return newTitles.suspect.map(({ id, level, contradicted }) => ({
+    id,
+    level: levelOfRaw(format, scoreRawOf(newTitles.format, level)),
+    contradicted,
+  }))
+}
+
 /** The settled rows, in the same order: the ones that have a new score (Preview's score rows). */
 export function settledRows(rows: readonly PreviewRow[]): SettledRow[] {
   return rows.filter((row) => row.settled)

@@ -7,6 +7,7 @@ import {
   isTicked,
   previewRows,
   settledRows,
+  suspectAnchors,
   type PendingWrite,
   type PreviewRow,
   type SettledRow,
@@ -34,6 +35,7 @@ type Filter = 'changing' | 'all'
  * Duels (#25, #29); every settled title can still be imported.
  * Score New Titles (ADR 0009): only new titles, grouped by the Anchor score they settled on; no settings, Sort Goal,
  * filter, Band or Re-rank (there is nothing to change but the Duels), and Preview opens at any point of the Duels.
+ * Its Suspect Anchors (#47) are listed read-only under the score rows, above the Forgotten titles.
  */
 export function PreviewScreen(props: {
   state: RankingState
@@ -79,6 +81,7 @@ export function PreviewScreen(props: {
   const label = (level: number) => formatLevel(format, level)
   const unsettled = allRows.filter((r): r is UnsettledRow => !r.settled)
   const refine = useMemo(() => refineDuels(state), [state])
+  const suspects = suspectAnchors(state, format)
   /** The levels an unsettled title can still get: "8 or 7", or "9–6" for more. */
   const between = (row: UnsettledRow) =>
     row.levels.length === 2 ? `${label(row.levels[0])} or ${label(row.levels[1])}` : `${label(row.levels[0])}–${label(row.levels[row.levels.length - 1])}`
@@ -316,6 +319,31 @@ export function PreviewScreen(props: {
                 <Kao band={band} size={10} /> spans{' '}
                 <b>{range === null ? '—' : range.min === range.max ? label(range.min) : `${label(range.min)}–${label(range.max)}`}</b>
               </span>
+            )
+          })}
+        </div>
+      )}
+
+      {suspects.length > 0 && (
+        <div className="forg">
+          <b className="strong">Suspect Anchors ({suspects.length}) — no longer used as a reference, score kept</b>
+          {suspects.map(({ id, level, contradicted }) => {
+            const entry = entries.get(id)
+            return (
+              <div key={id} className="frow">
+                {entry?.coverUrl ? <img className="cv" src={entry.coverUrl} alt="" /> : <div className="cv ph" />}
+                <span className="grow">
+                  {name(id)}
+                  <br />
+                  <span className="small">Your Duels disagreed with its score for {count(contradicted, 'new title')}</span>
+                </span>
+                <span className="small">Your score: {label(level)}</span>
+                {entry?.siteUrl && (
+                  <a className="mini-b" href={entry.siteUrl} target="_blank" rel="noreferrer" aria-label={`Open ${name(id)} on AniList`}>
+                    AniList
+                  </a>
+                )}
+              </div>
             )
           })}
         </div>

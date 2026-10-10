@@ -641,6 +641,105 @@ describe('scores past the extreme Anchors (#48)', () => {
   })
 })
 
+describe('Suspect Anchors', () => {
+  const suspects = (state: RankingState) => state.newTitles!.suspect.map((s) => s.id)
+  // 105 is scored 8 but plays like a 6: titles on 8 and 7 beat it.
+  const anchors = anchorsOn(9, 9, 9, 8, 8, 8, 7, 7, 7)
+  const drift = new Map([[105, 6]])
+
+  it('an Anchor that two settled titles contradict becomes Suspect, with its old score; the honest ones never do', () => {
+    const ids = Array.from({ length: 8 }, (_, i) => 1 + i)
+    const truth = new Map(ids.map((id) => [id, id % 2 === 0 ? 8 : 7]))
+    const { state, met } = play(logOf(anchors, ids), anchors, truth, rng(3), drift)
+    expect(settledScores(state)).toEqual(truth)
+    expect(met.filter((m) => m.anchor === 105).length).toBeGreaterThanOrEqual(2)
+    expect(state.newTitles!.suspect).toEqual([{ id: 105, level: 8, contradicted: met.filter((m) => m.anchor === 105).length }])
+  })
+
+  it('is not Suspect after a single contradiction', () => {
+    // A single new title on 8, whichever id makes it meet 105.
+    const runs = Array.from({ length: 20 }, (_, i) => {
+      const id = 1 + i
+      return { id, ...play(logOf(anchors, [id]), anchors, new Map([[id, 8]]), rng(1), drift) }
+    })
+    const witnessed = runs.find((run) => run.met.some((m) => m.anchor === 105 && m.result === 'win'))!
+    expect(settledScores(witnessed.state)).toEqual(new Map([[witnessed.id, 8]]))
+    expect(suspects(witnessed.state)).toEqual([])
+  })
+
+  it('is never chosen for a later Duel, and an answer against it is refused', () => {
+    const ids = Array.from({ length: 12 }, (_, i) => 1 + i)
+    const truth = new Map(ids.map((id) => [id, [9, 8, 7][id % 3]]))
+    let log = logOf(anchors, ids)
+    let suspectSeen = false
+    for (let state = replay(log); state.prompt.kind === 'anchor-duel'; state = replay(log)) {
+      const p = state.prompt
+      if (suspects(state).includes(105)) {
+        suspectSeen = true
+        expect(p.b).not.toBe(105)
+        expect(() => replay(plus(log, { type: 'duel-answered', a: p.a, b: 105, result: 'tie' }))).toThrow(ReplayError)
+      }
+      const mine = truth.get(p.a)!
+      const theirs = drift.get(p.b) ?? levelOf(anchors, p.b)!
+      log = plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: mine === theirs ? 'tie' : mine > theirs ? 'a' : 'b' })
+    }
+    expect(suspectSeen).toBe(true)
+    expect(settledScores(replay(log))).toEqual(truth)
+  })
+
+  it('stops being Suspect when a title that contradicted it is Forgotten; Undo makes it Suspect again', () => {
+    const ids = Array.from({ length: 8 }, (_, i) => 1 + i)
+    const truth = new Map(ids.map((id) => [id, id % 2 === 0 ? 8 : 7]))
+    const { log, met, state } = play(logOf(anchors, ids), anchors, truth, rng(3), drift)
+    const witnesses = met.filter((m) => m.anchor === 105).map((m) => m.title)
+    expect(suspects(state)).toEqual([105])
+    // Forget every witness but one: a single contradiction is left.
+    const forgot = plus(log, ...witnesses.slice(1).map((id): LogEvent => ({ type: 'forgotten', id })))
+    expect(suspects(replay(forgot))).toEqual([])
+    expect(suspects(replay(plus(forgot, { type: 'undo' })))).toEqual([105])
+  })
+
+  it('is listed under Forgotten instead once Forgotten', () => {
+    const ids = Array.from({ length: 8 }, (_, i) => 1 + i)
+    const truth = new Map(ids.map((id) => [id, id % 2 === 0 ? 8 : 7]))
+    const { log } = play(logOf(anchors, ids), anchors, truth, rng(3), drift)
+    const forgot = replay(plus(log, { type: 'forgotten', id: 105 }))
+    expect(suspects(forgot)).toEqual([])
+    expect(forgot.forgotten).toEqual([105])
+  })
+
+  it('in drifted oracle runs, catches far-drifted Anchors met twice and never an honest one', () => {
+    const random = rng(47)
+    const scale = [10, 9, 8, 7, 6, 5, 4]
+    let caught = 0
+    for (let trial = 0; trial < 30; trial++) {
+      const used = scale.filter(() => random() < 0.8)
+      while (used.length < 4) used.push(scale.find((s) => !used.includes(s))!)
+      used.sort((x, y) => y - x)
+      const all: AnchorScore[] = []
+      for (const level of used) for (let n = 0, k = 3 + Math.floor(random() * 3); n < k; n++) all.push({ id: 500 + all.length, level })
+      // One Anchor drifts two scores or more away.
+      const victim = all[Math.floor(random() * all.length)]
+      const far = used.filter((l) => Math.abs(used.indexOf(l) - used.indexOf(victim.level)) >= 2)
+      const drifted = new Map([[victim.id, far[Math.floor(random() * far.length)]]])
+      const ids = Array.from({ length: 20 }, (_, i) => 1 + i)
+      const truth = new Map(ids.map((id) => [id, used[Math.floor(random() * used.length)]]))
+      const log = startNewTitlesLog({ seed: Math.floor(random() * 2 ** 32), userId: 1, mediaType: 'ANIME', format: 'POINT_10', anchors: all, ids })
+      const { state, met } = play(log, all, truth, random, drifted)
+      expect(settledScores(state)).toEqual(truth)
+      // Every answer the victim gave against its own score, by the titles' true scores.
+      const honest = (title: number) => {
+        const s = truth.get(title)!
+        return s === victim.level ? 'tie' : s > victim.level ? 'win' : 'loss'
+      }
+      const against = met.filter((m) => m.anchor === victim.id && m.result !== honest(m.title)).length
+      expect(suspects(state)).toEqual(against >= 2 ? [victim.id] : [])
+      if (against >= 2) caught++
+    }
+    expect(caught).toBeGreaterThan(8)
+  }, 30_000)
+})
+
 /**
  * Like `play`, and on every prompt checks that an answer against `avoid` instead is refused. Returns the Anchors met.
  */

@@ -24,6 +24,9 @@ export type AnchorLevel = { level: number; anchors: readonly number[] }
 /** A new title's standing: the levels it can still get, best first. Settled = exactly one level is left. */
 export type NewTitle = { id: number; settled: boolean; levels: readonly number[] }
 
+/** An Anchor no longer used as a reference: its old score (a level), and how many settled titles contradicted it. */
+export type SuspectAnchor = { id: number; level: number; contradicted: number }
+
 /** What replay shows of a Score New Titles Ranking. */
 export type NewTitlesState = {
   /** The Score Format the Anchor snapshot was taken in: every level here is one of its levels. */
@@ -32,6 +35,8 @@ export type NewTitlesState = {
   levels: readonly AnchorLevel[]
   /** Every new title in the Ranking (Forgotten ones are not), in the order Duels work on them. */
   titles: readonly NewTitle[]
+  /** Suspect Anchors (not Forgotten ones), best score first, then by id. Their scores are never changed. */
+  suspect: readonly SuspectAnchor[]
 }
 
 /** One answered Duel of a new title: the Anchor, its level index, and how the title did against it. */
@@ -40,9 +45,17 @@ type AnchorAnswer = { anchor: number; level: number; result: 'win' | 'tie' | 'lo
 /**
  * A new title being placed: the positions lo..hi it can still be at, every answer it was given against an Anchor, in
  * order (never the same Anchor twice), and its closer-to answer once given: the gap position it was asked at and the
- * score chosen. That answer counts only while the title is still at that gap.
+ * score chosen, which counts only while the title is still at that gap. Once an answer settles it (lo = hi),
+ * `contradicts` holds the Anchors whose answers disagree with where it settled; it is kept as it was then.
  */
-type Placement = { id: number; lo: number; hi: number; answers: AnchorAnswer[]; closer?: { position: number; level: number } }
+type Placement = {
+  id: number
+  lo: number
+  hi: number
+  answers: AnchorAnswer[]
+  closer?: { position: number; level: number }
+  contradicts?: readonly number[]
+}
 
 /** Which side of boundary j a vote puts the title: 'above' = a position before j, 'below' = j or after. */
 type Side = 'above' | 'below'
@@ -56,6 +69,11 @@ export type NewTitles = {
   anchorIds: ReadonlySet<number>
   /** Anchors no longer used as a reference (Forgotten): never chosen for a Duel, their levels and scores unchanged. */
   excluded: Set<number>
+  /**
+   * Suspect Anchors: contradicted by at least two titles still in the queue. Derived from the queue's `contradicts`
+   * and refreshed whenever they change; never chosen for a Duel, and their answers stop counting, as if Forgotten.
+   */
+  suspect: Map<number, number>
   seed: number
   /** Every new title, in the order they joined (Unforgotten ones at the front). */
   queue: Placement[]
@@ -88,7 +106,7 @@ export function startNewTitles(format: ScoreFormat, anchors: readonly AnchorScor
   const levels = [...byLevel]
     .sort((x, y) => y[0] - x[0])
     .map(([level, members]) => ({ level, anchors: members.sort((x, y) => x - y) }))
-  return { format, levels, anchorIds: ids, excluded: new Set(), seed, queue: [] }
+  return { format, levels, anchorIds: ids, excluded: new Set(), suspect: new Map(), seed, queue: [] }
 }
 
 /** New titles join at the back, knowing nothing yet. */
@@ -109,6 +127,35 @@ function fresh(state: NewTitles, id: number): Placement {
 export function takeOutNewTitle(state: NewTitles, id: number): void {
   const at = state.queue.findIndex((p) => p.id === id)
   if (at >= 0) state.queue.splice(at, 1)
+  refreshSuspects(state)
+}
+
+/** An Anchor contradicted by this many titles becomes Suspect (ADR 0009). */
+const SUSPECT_AFTER = 2
+
+/**
+ * Suspect Anchors (#47). A title records its contradictions when an answer settles it, and keeps them, so whether an
+ * Anchor is Suspect depends only on answers already given, in log order, never on where other titles would settle
+ * without it: suspicion can't feed back into the placements it was judged from. Forgotten or Unforgotten titles take
+ * their record with them.
+ */
+function refreshSuspects(state: NewTitles): void {
+  state.suspect.clear()
+  for (const placement of state.queue) {
+    for (const anchor of placement.contradicts ?? []) state.suspect.set(anchor, (state.suspect.get(anchor) ?? 0) + 1)
+  }
+  for (const [anchor, times] of state.suspect) if (times < SUSPECT_AFTER) state.suspect.delete(anchor)
+}
+
+/**
+ * Whether an answer disagrees with the Anchor's own score, for a title settled at `position`: it beat an Anchor it
+ * isn't above, lost to one it isn't below, or was about the same as one whose score it didn't get.
+ */
+function contradicts(position: number, { level, result }: AnchorAnswer): boolean {
+  const own = 2 * level + 1
+  if (result === 'win') return position >= own
+  if (result === 'loss') return position <= own
+  return position !== own
 }
 
 /** Forgotten on an Anchor: it stops being chosen for Duels. What titles learnt from it before still counts. */
@@ -193,7 +240,7 @@ function settledPosition(state: NewTitles, at: Range): number | null {
 
 /** A level's Anchors that may still be chosen, by id ascending. */
 function usable(state: NewTitles, level: number): readonly number[] {
-  return state.levels[level].anchors.filter((id) => !state.excluded.has(id))
+  return state.levels[level].anchors.filter((id) => !state.excluded.has(id) && !state.suspect.has(id))
 }
 
 /** The level boundary j touches: 2m+1 is the top of level m, 2m+2 its bottom. */
@@ -260,10 +307,10 @@ function vote(j: number, { level, result }: AnchorAnswer): Side | null {
  * single-Anchor level, or a split). Then the side the own level leans to (more votes, or its first answer on an even
  * split) stands once each neighbour has been asked and it still has more votes: the neighbours confirm it by not
  * contradicting it. Once every voter has answered without a verdict, the side with more votes wins, and an even split
- * goes to the own level's lean. Answers from Forgotten Anchors don't count.
+ * goes to the own level's lean. Answers from Forgotten or Suspect Anchors don't count.
  */
 function decide(state: NewTitles, placement: Placement, j: number): Side | null {
-  const counts = placement.answers.filter((answer) => !state.excluded.has(answer.anchor))
+  const counts = placement.answers.filter((answer) => !state.excluded.has(answer.anchor) && !state.suspect.has(answer.anchor))
   const [ownLevel, ...neighbours] = voterLevels(state, j)
   const own = counts.filter((answer) => answer.level === ownLevel)
   const tally = { above: 0, below: 0 }
@@ -310,6 +357,10 @@ export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner:
   const result = winner === null ? 'tie' : winner === duel.a ? 'win' : 'loss'
   placement.answers.push({ anchor: duel.b, level: duel.level, result })
   Object.assign(placement, range(state, placement))
+  if (placement.lo === placement.hi) {
+    placement.contradicts = placement.answers.filter((answer) => contradicts(placement.lo, answer)).map((answer) => answer.anchor)
+    refreshSuspects(state)
+  }
   return true
 }
 
@@ -360,5 +411,10 @@ export function newTitlesView(state: NewTitles): NewTitlesState {
     for (let p = lo; p <= hi; p++) for (const level of levelsNear(state, p)) levels.add(level)
     return { id, settled: false, levels: [...levels].sort((x, y) => y - x) }
   })
-  return { format: state.format, levels: state.levels, titles }
+  const suspect = state.levels.flatMap(({ level, anchors }) =>
+    anchors
+      .filter((id) => state.suspect.has(id) && !state.excluded.has(id))
+      .map((id): SuspectAnchor => ({ id, level, contradicted: state.suspect.get(id)! })),
+  )
+  return { format: state.format, levels: state.levels, titles, suspect }
 }
