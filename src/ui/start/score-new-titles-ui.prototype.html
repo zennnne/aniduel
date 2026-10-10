@@ -1,0 +1,323 @@
+<!doctype html>
+<!-- PROTOTYPE (#39): Score New Titles UI. Five designs of the whole flow (Start, Duel, closer-to, Preview), switched from the floating picker. Throwaway. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PROTOTYPE #39 · Score New Titles</title>
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc;--danger:#e05555;--warn:#f2b13d;--on-accent:#fff;--shadow:#0002;--good:#3fae5a;--overlay:#0007;--overlay-strong:#000a;--overlay-soft:#ffffff26;--on-overlay:#fff;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1622;--fg:#151f2e;--fg2:#1f2a3c;--tx:#9fadbd;--tx-strong:#edf1f5;--nav:#0b1622;--navtx:#9fadbd;color-scheme:dark}}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#app{height:100%}
+body{font-family:Overpass,system-ui,'Segoe UI',sans-serif;font-size:14px;background:var(--bg);color:var(--tx)}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+a{color:inherit;text-decoration:none}
+.row{display:flex;gap:8px;align-items:center}.grow{flex:1;min-width:0}.small{font-size:12px}.strong{color:var(--tx-strong)}.fine{opacity:.7}
+.link{color:var(--blue);text-decoration:underline}
+.go{background:var(--blue);color:var(--on-accent);font-weight:800;padding:13px 22px;border-radius:12px;display:inline-flex;gap:10px;align-items:center;justify-content:center;align-self:flex-start}
+.go:disabled{opacity:.4;cursor:not-allowed}.go.sm{padding:7px 12px;font-size:12px;border-radius:8px}
+.shell{height:100%;display:grid;grid-template-columns:260px 1fr;background:var(--bg)}
+.side{background:var(--nav);color:var(--navtx);padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0;min-height:0}
+.main{display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
+.logo{font-weight:900;color:#fff;font-size:18px}.logo b{color:var(--blue)}
+.bandrow{display:grid;grid-template-columns:92px 1fr 40px;gap:8px;align-items:center;font-size:12px;padding:5px 6px;border-radius:8px}
+.bar{height:6px;border-radius:3px;background:#ffffff22;overflow:hidden}.bar>i{display:block;height:100%;background:var(--blue)}
+.rank{display:flex;flex-direction:column;gap:2px;font-size:12px;overflow:auto;flex:1;min-height:0}
+.rank>div{padding:4px 6px;border-radius:4px;flex-shrink:0}
+.rank .inb{background:#3db4f222;color:#fff}.rank .piv{background:var(--blue);color:var(--nav);font-weight:700}.rank .out{opacity:.35}
+.rank .lvl{display:grid;grid-template-columns:22px 1fr;gap:6px;align-items:start}.rank .lvl b{color:#fff}
+.lvchips{display:flex;flex-wrap:wrap;gap:3px}.lvchips span{background:#ffffff14;border-radius:4px;padding:1px 5px;font-size:11px}
+.kbd{display:inline-flex;align-items:center;justify-content:center;font:700 11px ui-monospace,monospace;min-width:20px;height:20px;padding:0 5px;border-radius:5px;background:#0006;color:#fff}
+.cv{object-fit:cover;display:block;background:var(--blue)}
+.t{font-size:24px;font-weight:800;color:#fff;max-width:90%;line-height:1.15}.m{color:#fffc}
+.pill{display:inline-flex;gap:6px;align-items:center;font-size:12px;padding:5px 10px;border-radius:999px;background:#0008;color:#fff;backdrop-filter:blur(6px);white-space:nowrap}
+.topline{position:absolute;top:0;left:0;right:0;height:4px;z-index:6;background:#0006}.topline i{display:block;height:100%;background:var(--blue)}
+.float-info{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6}
+.dscrim{position:absolute;inset:0;background:#0009;z-index:60;display:flex;align-items:center;justify-content:center}
+.dlg{background:var(--fg);border-radius:16px;padding:22px;width:min(460px,92vw);display:flex;flex-direction:column;gap:10px;color:var(--tx)}
+.dlg .h2{font-size:20px;font-weight:800;color:var(--tx-strong)}
+/* Start */
+.st{height:100%;overflow:auto;position:relative}
+.st .h2{font-size:22px;font-weight:800;color:var(--tx-strong)}
+.st .panel{background:var(--fg);border-radius:18px;padding:26px;display:flex;flex-direction:column;gap:14px;box-shadow:0 10px 40px var(--shadow);width:100%;max-width:440px}
+.st-hero{display:grid;grid-template-columns:1.1fr 1fr;min-height:100%}
+.st-hero .l{position:relative;overflow:hidden;display:flex;align-items:flex-end;padding:40px}
+.st-hero .l::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent 20%,var(--bg) 95%)}
+.collage-bg{position:absolute;inset:-60px;display:grid;grid-template-columns:repeat(6,1fr);gap:8px;transform:rotate(-8deg);opacity:.55;align-content:start}
+.collage-bg .cv{width:100%;aspect-ratio:2/3;border-radius:6px}
+.hero-copy{position:relative;z-index:1;display:flex;flex-direction:column;gap:12px;color:var(--tx-strong)}.hero-copy .big{font-size:40px;font-weight:900;line-height:1.05}
+.st-hero .r{display:flex;align-items:center;justify-content:center;padding:30px}
+.ava{width:26px;height:26px;border-radius:6px;background:linear-gradient(135deg,var(--blue),#c063ff);display:inline-block}
+.userbar{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--tx-strong)}.userbar .link{margin-left:auto}
+.seg{display:inline-flex;background:var(--fg2);border-radius:10px;padding:3px;align-self:flex-start}
+.seg button{padding:7px 18px;border-radius:8px;font-weight:700;white-space:nowrap}.seg button.on{background:var(--blue);color:var(--on-accent)}
+.seg button:disabled{opacity:.45;cursor:not-allowed}
+.seg.tight button{padding:7px 12px}
+.lab2{font-size:12px;opacity:.7;margin-bottom:-6px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:7px 12px;border-radius:999px;background:var(--fg2);font-size:13px;display:inline-flex;gap:6px;align-items:center}
+.chip.on{background:var(--blue);color:var(--on-accent);font-weight:700}.chip .cnt{opacity:.7;font-size:11px}.chip.off{opacity:.45;font-size:12px}
+.est{font-size:15px;color:var(--tx-strong)}.est .small{display:block;color:var(--tx);margin-top:2px}
+.goalrow{display:flex;gap:12px;align-items:center}.gexp{font-size:12px;line-height:1.4}
+.info-i{width:20px;height:20px;border-radius:50%;background:var(--fg2);color:var(--tx-strong);font-weight:900;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.offer{border:1px solid var(--fg2);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.offer.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}.offer.dis{opacity:.55}
+.offer .swrow{display:flex;gap:12px;align-items:center;text-align:left;width:100%}
+.offer .swrow .grow{display:flex;flex-direction:column;gap:2px}
+.switch{width:38px;height:22px;border-radius:999px;background:var(--fg2);position:relative;flex-shrink:0}
+.switch i{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px #0004;transition:left .15s}
+.offer.on .switch{background:var(--blue)}.offer.on .switch i{left:19px}
+.bbars{display:flex;flex-direction:column;gap:4px}
+.bb{display:grid;grid-template-columns:28px 1fr 34px;gap:8px;align-items:center;font-size:12px;color:var(--tx-strong)}
+.bb .track{height:10px;border-radius:5px;background:var(--fg2);overflow:hidden}.bb .track i{display:block;height:100%;border-radius:5px;background:var(--blue)}.bb b:last-child{text-align:right}
+/* prototype-only Start bits */
+.gcards{display:flex;flex-direction:column;gap:6px}
+.gcard{display:grid;grid-template-columns:18px 1fr auto;gap:10px;align-items:center;text-align:left;border:1px solid var(--fg2);border-radius:12px;padding:10px 12px}
+.gcard.on{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}.gcard:disabled{opacity:.5;cursor:not-allowed}
+.gcard .rd{width:16px;height:16px;border-radius:50%;border:2px solid var(--tx)}.gcard.on .rd{border:5px solid var(--blue)}
+.gcard b{color:var(--tx-strong);display:block}.gcard .n{font-weight:800;color:var(--tx-strong);font-size:12px;white-space:nowrap}
+.hintbar{background:color-mix(in srgb,var(--blue) 14%,var(--fg));border:1px solid var(--blue);border-radius:12px;padding:10px 12px;display:flex;gap:10px;align-items:center;font-size:13px;color:var(--tx-strong);text-align:left;width:100%}
+.modechip{display:inline-flex;gap:8px;align-items:center;background:var(--blue);color:#fff;font-weight:700;padding:7px 12px;border-radius:999px;align-self:flex-start}
+.badge{background:#fff3;border-radius:999px;padding:0 6px;font-size:11px;margin-left:4px}.seg button:not(.on) .badge{background:var(--blue);color:#fff}
+.scale{display:flex;gap:4px;align-items:flex-end;height:54px}
+.scale div{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;justify-content:flex-end;height:100%}
+.scale i{display:block;width:100%;background:var(--blue);border-radius:3px 3px 0 0;opacity:.8}.scale b{color:var(--tx-strong)}
+/* Duel */
+.duel{flex:1;min-height:0;position:relative;display:flex;flex-direction:column;overflow:hidden;background:var(--nav)}
+.pair{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;position:relative}
+.card{position:relative;min-height:0;min-width:0;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center}
+.card>*:not(.bg){position:relative;z-index:1}
+.card .bg{position:absolute;inset:-20px;background-size:cover;background-position:center;filter:blur(14px) brightness(.45);z-index:0}
+.card>.cv{height:60%;aspect-ratio:2/3;border-radius:8px;box-shadow:0 10px 40px var(--overlay-strong)}
+.card .info{display:flex;flex-direction:column;align-items:center;gap:6px}
+.card:hover{box-shadow:inset 0 0 0 4px var(--blue)}
+.seam{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;width:84px;height:84px;border-radius:50%;background:var(--blue);color:#fff;font-weight:800;box-shadow:0 0 0 6px var(--nav);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px;gap:2px}
+.corner{position:absolute!important;bottom:14px;display:flex;gap:8px;z-index:3}.corner.l{left:14px}.corner.r{right:14px}
+.ibtn{width:38px;height:38px;border-radius:50%;background:#0009;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:900}
+.float-undo{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);z-index:6}
+/* prototype-only Duel bits */
+.sbadge{display:inline-flex;gap:6px;align-items:center;background:#fff;color:#2b2d42;font-weight:900;border-radius:999px;padding:3px 12px;font-size:13px}
+.sbadge b{font-size:18px}
+.newtag{background:var(--blue);color:#fff;font-weight:900;border-radius:999px;padding:3px 12px;font-size:12px;letter-spacing:.08em}
+.reveal{position:absolute!important;inset:0;z-index:4!important;background:#000a;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#fff}
+.reveal b{font-size:96px;font-weight:900;line-height:1}
+.pair.fixed{grid-template-columns:1.5fr 1fr}.pair.fixed .seam{left:60%}
+.card.anchor>.cv{height:44%;filter:saturate(.7)}.card.anchor .t{font-size:18px}
+.ribbon{position:absolute!important;top:44px;right:0;background:#fff;color:#2b2d42;font-weight:800;padding:5px 14px 5px 12px;border-radius:999px 0 0 999px;font-size:12px}
+.ribbon b{font-size:16px}
+.track{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:6;background:#0008;backdrop-filter:blur(6px);border-radius:999px;padding:6px 16px;display:flex;gap:4px;align-items:center;color:#fff;font-size:12px}
+.track .tk{width:34px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:800;opacity:.3}
+.track .tk.in{opacity:1;background:#3db4f233}.track .tk.at{opacity:1;background:var(--blue);color:var(--nav)}
+.track.big{top:50px;padding:14px 22px;gap:8px}.track.big .tk{width:64px;height:56px;font-size:26px;border-radius:12px}
+.track.big .tk.ask{opacity:1;background:#fff;color:#2b2d42;cursor:pointer;animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 8px #3db4f255}}
+.ladder>div{display:grid;grid-template-columns:26px 1fr 30px;gap:8px;align-items:center}
+.ladder .mini{display:flex;gap:2px;overflow:hidden}.ladder .mini .cv{width:16px;height:22px;border-radius:2px;flex-shrink:0}
+/* closer-to */
+.half{position:relative;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff}
+.half:hover{box-shadow:inset 0 0 0 4px var(--blue)}.half>*:not(.bg){position:relative;z-index:1}
+.half .bg{position:absolute;inset:-20px;background-size:cover;background-position:center;filter:blur(14px) brightness(.4)}
+.half .big{font-size:150px;font-weight:900;line-height:.9}
+.exs{display:flex;gap:8px}.exs .cv{width:64px;height:92px;border-radius:6px;box-shadow:0 6px 20px #000a}
+.mid{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:5;display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;color:#fff}
+.mid .cv{width:150px;height:214px;border-radius:8px;box-shadow:0 0 0 6px var(--nav),0 10px 40px #000}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;background:var(--fg);border-radius:18px 18px 0 0;padding:18px 22px 22px;display:flex;gap:16px;align-items:center;box-shadow:0 -10px 40px #0008;color:var(--tx)}
+.sheet .cv{width:52px;height:74px;border-radius:5px}
+.sheet .sb{font-size:26px;font-weight:900;background:var(--blue);color:#fff;border-radius:14px;padding:12px 26px;display:flex;gap:10px;align-items:center}
+.full{position:absolute;inset:0;z-index:20;background:#0b1622f2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;color:#fff;padding:20px}
+.full .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:min(760px,100%)}
+.full .col{background:#ffffff12;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:12px;align-items:center;cursor:pointer}
+.full .col:hover{background:var(--blue)}.full .col .n{font-size:64px;font-weight:900;line-height:1}
+/* Preview */
+.pv{flex:1;min-height:0;overflow:auto;padding:22px 28px 30px}
+.pv .h1{font-size:28px;font-weight:900;color:var(--tx-strong)}
+.pv-head{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.pv-set{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-bottom:14px}
+.tl{display:flex;flex-direction:column;gap:4px}
+.tlrow{display:grid;grid-template-columns:64px 1fr;background:var(--fg);border-radius:10px;min-height:86px}
+.tlk{display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:var(--tx-strong);background:var(--fg2);border-radius:10px 0 0 10px}
+.tlc{display:flex;flex-wrap:wrap;gap:6px;padding:6px;align-items:flex-start}
+.tlcard{position:relative;width:52px;border-radius:5px}.tlcard .cv{width:52px;height:74px;border-radius:5px}
+.tlcard .ob{position:absolute;bottom:2px;left:2px;font-size:9px;padding:0 3px;border-radius:3px;background:#000b;color:#fff}
+.tlcard .rbadge{position:absolute;top:30px;left:50%;transform:translateX(-50%);font-size:10px;font-weight:900;padding:0 4px;border-radius:4px;background:var(--warn);color:#2b2d42;white-space:nowrap}
+.unscard{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:color-mix(in srgb,var(--warn) 18%,var(--fg));border:1px solid var(--warn);border-radius:12px;padding:10px 12px;margin-bottom:12px}
+.forg{margin-top:16px;background:var(--fg);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px}
+.frow{display:flex;gap:10px;align-items:center;font-size:13px}.frow .cv{width:28px;height:40px;border-radius:3px}
+.mini-b{font-size:11px;padding:4px 8px;border-radius:6px;background:var(--fg2);color:var(--tx-strong)}
+.among{display:flex;gap:3px;align-items:center;margin-left:auto;padding:6px 10px;opacity:.55;font-size:11px}.among .cv{width:26px;height:37px;border-radius:3px;filter:grayscale(.6)}
+.tbl{background:var(--fg);border-radius:14px;overflow:hidden}
+.tbl .gh{background:var(--fg2);padding:6px 14px;font-weight:900;color:var(--tx-strong);display:flex;gap:10px;align-items:baseline}
+.tbl .tr{display:grid;grid-template-columns:20px 28px 1fr auto;gap:10px;align-items:center;padding:5px 14px;border-bottom:1px solid var(--fg2);font-size:13px}.tbl .tr .cv{width:28px;height:40px;border-radius:3px}
+.kan{display:flex;gap:8px;align-items:flex-start;overflow:auto}
+.kcol{background:var(--fg);border-radius:12px;padding:10px;min-width:170px;flex:1;display:flex;flex-direction:column;gap:6px}
+.kcol .kh{font-size:26px;font-weight:900;color:var(--tx-strong);display:flex;align-items:baseline;gap:8px}
+/* picker (not part of the design) */
+#pk{position:fixed;right:16px;bottom:16px;z-index:999;background:#111;color:#fff;border-radius:14px;padding:10px 12px;font:12px/1.3 system-ui;box-shadow:0 8px 30px #000a;display:flex;flex-direction:column;gap:6px;cursor:grab;user-select:none;border:2px solid #f2b13d;max-width:330px}
+#pk .r{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+#pk button{background:#333;color:#fff;border-radius:6px;padding:4px 8px;font:inherit}#pk button.on{background:#f2b13d;color:#111;font-weight:700}
+#pk .nm{flex:1;text-align:center;font-weight:700;font-size:13px}#pk .ds{opacity:.75}
+/* round 2 */
+.callout{position:relative;background:var(--nav);color:#fff;border-radius:10px;padding:9px 12px;font-size:12px;line-height:1.4;margin-top:-4px}
+.callout::before{content:'';position:absolute;top:-6px;left:250px;width:12px;height:12px;background:var(--nav);transform:rotate(45deg)}
+.rank .lvl.inb b,.rank .inb b{color:#fff}
+.brk{position:relative;overflow:visible}.brk>div{display:grid;grid-template-columns:26px 1fr;gap:8px;height:26px;align-items:center;width:110px}
+.brk>div.br{border-right:3px solid var(--blue);background:#3db4f222;color:#fff;border-radius:4px 0 0 4px}
+.brlab{position:absolute;left:120px;display:flex;gap:8px;align-items:center;color:#fff;font-size:11px;line-height:1.3}.brlab .cv{width:34px;height:48px;border-radius:3px}
+.nowbox{background:#3db4f222;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;color:#fff}.nowbox b{font-size:18px}
+.acc .open{background:#3db4f222;color:#fff;display:flex;flex-direction:column;gap:6px;padding:8px}
+.mini.big{display:flex;gap:4px}.mini.big .cv{width:38px;height:54px;border-radius:3px}
+.fh{font-size:24px;font-weight:800}
+.exs.wall{flex-wrap:wrap;justify-content:center;gap:5px}.exs.wall .cv{width:50px;height:71px}
+.slot{display:flex;flex-direction:column;gap:12px;width:min(620px,100%)}
+.slot .col{flex-direction:row;align-items:center;gap:16px;padding:12px 18px}.slot .col .n{width:60px;text-align:center}
+.slot .exs .cv{width:46px;height:66px}
+.full .dlg .sb{font-size:26px;font-weight:900;background:var(--blue);color:#fff;border-radius:14px;padding:12px 30px;display:flex;gap:10px;align-items:center}
+.evs{display:flex;flex-direction:column;gap:3px;margin-top:4px}
+.ev{display:flex;gap:6px;align-items:center;font-size:12px}.ev .cv{width:18px!important;height:26px!important;border-radius:2px}
+/* round 3 */
+.mochi{position:absolute;top:-16px;right:-14px;background:#fff;color:#4a3b52;font-weight:700;font-size:12px;border-radius:999px;padding:5px 12px;box-shadow:0 4px 14px #0003}
+.amenu{position:absolute;left:12px;bottom:52px;width:280px;z-index:30;background:var(--fg);color:var(--tx-strong);border-radius:12px;padding:12px;box-shadow:0 10px 30px #0008;display:flex;flex-direction:column;gap:7px;font-size:13px}
+.ranked{flex:1;overflow:auto;padding:46px 40px 30px;display:flex;flex-direction:column;gap:14px;max-width:760px}
+.ranked .h1{font-size:28px;font-weight:800;color:var(--tx-strong)}
+.ranked .res{background:var(--fg);border-radius:16px;padding:16px}
+.ranked .ln{display:grid;grid-template-columns:28px 1fr;gap:10px;padding:6px 0;border-bottom:1px solid var(--fg2)}.ranked .ln b{color:var(--tx-strong)}
+.tlpop{position:absolute;top:80px;left:0;z-index:20;width:220px;background:var(--fg);border-radius:10px;padding:10px;box-shadow:0 10px 30px #0008;display:flex;flex-direction:column;gap:6px;color:var(--tx-strong)}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="pk"></div>
+<script>
+const T = [{"n": "Attack on Titan", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx16498-buvcRTBx4NSm.jpg", "k": "#f1a143", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/16498-8jpFCOcDmneX.jpg", "m": "TV · 2013 · 25 eps"}, {"n": "Demon Slayer: Kimetsu no Yaiba", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx101922-WBsBl0ClmgYL.jpg", "k": "#f1c9ae", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/101922-33MtJGsUSxga.jpg", "m": "TV · 2019 · 26 eps"}, {"n": "JUJUTSU KAISEN", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx113415-LHBAeoZDIsnF.jpg", "k": "#e45d5d", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/113415-jQBSkxWAAk83.jpg", "m": "TV · 2020 · 24 eps"}, {"n": "Death Note", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx1535-kUgkcrfOrkUM.jpg", "k": null, "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/1535.jpg", "m": "TV · 2006 · 37 eps"}, {"n": "My Hero Academia", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21459-nYh85uj2Fuwr.jpg", "k": "#f1d643", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21459-yeVkolGKdGUV.jpg", "m": "TV · 2016 · 13 eps"}, {"n": "Hunter x Hunter (2011)", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx11061-y5gsT1hoHuHw.png", "k": "#f1d65d", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/11061-8WkkTZ6duKpq.jpg", "m": "TV · 2011 · 148 eps"}, {"n": "One-Punch Man", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21087-B5DHjqZ3kW4b.jpg", "k": "#e4ae5d", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21087-sHb9zUZFsHe1.jpg", "m": "TV · 2015 · 12 eps"}, {"n": "ONE PIECE", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21-ELSYx3yMPcKM.jpg", "k": "#e49335", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21-wf37VakJmZqs.jpg", "m": "TV · 1999 · None eps"}, {"n": "Tokyo Ghoul", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/b20605-k665mVkSug8D.jpg", "k": "#ff6b35", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20605-RCJ7M71zLmrh.jpg", "m": "TV · 2014 · 12 eps"}, {"n": "Attack on Titan Season 2", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20958-HuFJyr54Mmir.jpg", "k": "#e47850", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20958-Y7eQdz9VENBD.jpg", "m": "TV · 2017 · 12 eps"}, {"n": "Fullmetal Alchemist: Brotherhood", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx5114-nSWCgQlmOMtj.jpg", "k": "#e4c993", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/5114-q0V5URebphSG.jpg", "m": "TV · 2009 · 64 eps"}, {"n": "Naruto", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20-dE6UHbFFg1A5.jpg", "k": "#e47850", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20-HHxhPj5JD13a.jpg", "m": "TV · 2002 · 220 eps"}, {"n": "Sword Art Online", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx11757-SxYDUzdr9rh2.jpg", "k": "#e4bb5d", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/11757-TlEEV9weG4Ag.jpg", "m": "TV · 2012 · 25 eps"}, {"n": "A Silent Voice", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20954-sYRfE5jQRtSB.jpg", "k": "#5dbbe4", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20954-f30bHMXa5Qoe.jpg", "m": "MOVIE · 2016 · 1 eps"}, {"n": "Your Name.", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21519-SUo3ZQuCbYhJ.png", "k": "#0da1e4", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21519-1ayMXgNlmByb.jpg", "m": "MOVIE · 2016 · 1 eps"}, {"n": "Attack on Titan Season 3", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx99147-AiPDD8cwlCfi.jpg", "k": "#4386e4", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/99147-HACsFVrynFf5.jpg", "m": "TV · 2018 · 12 eps"}, {"n": "My Hero Academia Season 2", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21856-gutauxhWAwn6.png", "k": "#e48643", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21856-wtSHgeHFmzdG.jpg", "m": "TV · 2017 · 25 eps"}, {"n": "Attack on Titan Final Season", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx110277-sKUNXAsWMNFw.jpg", "k": "#ae6b35", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/110277-iuGn6F5bK1U1.jpg", "m": "TV · 2021 · 16 eps"}, {"n": "Chainsaw Man", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx127230-DdP4vAdssLoz.png", "k": "#6b1a1a", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/127230-o8IRwCGVr9KW.jpg", "m": "TV · 2022 · 12 eps"}, {"n": "The Promised Neverland", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx101759-8UR7r9MNVpz2.jpg", "k": "#e4ae50", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/101759-MhlCoeqnODso.jpg", "m": "TV · 2019 · 12 eps"}, {"n": "Assassination Classroom", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20755-dWrhs569YGUO.jpg", "k": "#f1e45d", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20755-D4ipww9U8YkC.jpg", "m": "TV · 2015 · 22 eps"}, {"n": "Mob Psycho 100", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21507-6YUSbh2m0N1p.jpg", "k": "#d65d1a", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21507-Qx8bGsLXUgLo.jpg", "m": "TV · 2016 · 12 eps"}, {"n": "Re:ZERO -Starting Life in Another World-", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21355-wRVUrGxpvIQQ.jpg", "k": "#f150ae", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21355-f9SjOfEJMk5P.jpg", "m": "TV · 2016 · 25 eps"}, {"n": "Your lie in April", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20665-TLgkL8T8IRFd.png", "k": "#e4bb50", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20665-j4kSsfhfkM24.jpg", "m": "TV · 2014 · 22 eps"}, {"n": "Attack on Titan Season 3 Part 2", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx104578-k61nx3LPjvgd.jpg", "k": "#e49350", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/104578-z7SadpYEuAsy.jpg", "m": "TV · 2019 · 10 eps"}, {"n": "Naruto: Shippuden", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx1735-kGfVm0YqCPcu.png", "k": "#e4865d", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/1735.jpg", "m": "TV · 2007 · 500 eps"}, {"n": "ERASED", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21234-XmqW39aQ9o7O.jpg", "k": "#f1a150", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21234-7lfSSPoMmwr2.jpg", "m": "TV · 2016 · 12 eps"}, {"n": "My Hero Academia Season 3", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx100166-jUCZYbzn2XLw.jpg", "k": "#e4935d", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/100166-k7RXwN5vZg0r.jpg", "m": "TV · 2018 · 25 eps"}, {"n": "Steins;Gate", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx9253-tIUXF2gfU8Sg.jpg", "k": "#ffd6ae", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/n9253-JIhmKgBKsWUN.jpg", "m": "TV · 2011 · 24 eps"}, {"n": "Black Clover", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx97940-fyh8o7gNbha0.png", "k": "#d6c96b", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/97940-1URQdQ4U1a0b.jpg", "m": "TV · 2017 · 170 eps"}, {"n": "HAIKYU!!", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx20464-ooZUyBe4ptp9.png", "k": "#e48635", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/20464-PpYjO9cPN1gs.jpg", "m": "TV · 2014 · 25 eps"}, {"n": "Rascal Does Not Dream of Bunny Girl Senpai", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx101291-wfEdgPqtfU0l.jpg", "k": "#0d43f1", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/n101291-fqIUvQ6apEtD.jpg", "m": "TV · 2018 · 13 eps"}, {"n": "SPY x FAMILY", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx140960-Kb6R5nYQfjmP.jpg", "k": "#c9f1f1", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/140960-Z7xSvkRxHKfj.jpg", "m": "TV · 2022 · 12 eps"}, {"n": "Kaguya-sama: Love is War", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx101921-ufrjLzhSz7L1.jpg", "k": "#e45086", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/101921-GgvvFhlNhzlF.jpg", "m": "TV · 2019 · 12 eps"}, {"n": "Dr. STONE", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx105333-GybuoSoOZfpH.jpg", "k": "#c9d678", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/105333-KWKGvBM8Hyga.jpg", "m": "TV · 2019 · 24 eps"}, {"n": "Violet Evergarden", "c": "https://s4.anilist.co/file/anilistcdn/media/anime/cover/medium/bx21827-ubzq619ZA2E9.png", "k": "#3586e4", "b": "https://s4.anilist.co/file/anilistcdn/media/anime/banner/21827-ROucgYiiiSpR.jpg", "m": "TV · 2018 · 13 eps"}];
+const VARS = [
+  ['Locked + reason', 'Greyed out; the caption says to start the Ranking over'],
+  ['Hidden', 'No third button while a Ranking is saved'],
+  ['Asks first', 'Clickable; a dialog warns it replaces the saved Ranking, with Save Backup'],
+  ['Side by side', 'Clickable; runs as its own Ranking next to the saved one (outside #36)'],
+  ['Hint only', 'No button; one line tells you how to get there'],
+];
+const SCREENS = ['start','duel','closer','complete','preview'];
+const q = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
+const S = { s: SCREENS.includes(q.s) ? q.s : 'start', elig: q.elig !== 'false', goal: q.goal || 'scores', saved: q.saved || 'none', v: +q.v || 0, pop: false, menu: false, ask: false };
+const NEW = 18, ANCHOR = 3;
+const LEVELS = [[10,[10,5,28],21],[9,[0,13,14,12],38],[8,[3,2,1,23,8],52],[7,[4,6,20,22],41],[6,[11,29],22],[5,[7],12]];
+const GROUPS = [[9,[35,21]],[8,[32,33]],[7,[34,31,30]],[6,[19]]];
+const SUSPECT = [[12,9,'lost to 2 new titles that settled on 7'],[8,8,'lost to new titles that settled on 6 and 7']];
+const img = (i, cls='cv', st='') => `<img class="${cls}" src="${T[i].c}" title="${T[i].n}" style="${st}" alt="">`;
+const set = (k, v) => { S[k] = v; if (k !== 'ask') S.ask = false; draw(); };
+const lv = (l) => LEVELS.find(x => x[0] === l);
+
+/* ---------- Start ---------- */
+function start() {
+  const sv = S.saved, v = S.v;
+  const why = 'Needs at least 20 scored titles on 3 different scores. You have 12 on 2.';
+  const savedSnt = sv === 'snt';
+  // With a saved Scores Ranking the third button follows the variant; only "Side by side" really selects it.
+  const canPick = S.elig && (sv === 'none' || (sv === 'scores' && (v === 2 || v === 3)));
+  const snt = savedSnt || (S.goal === 'snt' && canPick && !(sv === 'scores' && v === 2));
+  const showThird = !(sv === 'scores' && (v === 1 || v === 4));
+  const pick = sv === 'scores' && v === 2 ? `set('ask',true)` : `set('goal','snt')`;
+  const b = (g, t) => `<button class="${!snt && S.goal===g?'on':''}" ${savedSnt?'disabled':''} onclick="set('goal','${g}')">${t}</button>`;
+  const third = showThird ? `<button class="${snt?'on':''}" ${canPick||savedSnt?'':'disabled'} onclick="${pick}">${canPick||savedSnt?'':'🔒 '}New Titles${S.elig?`<span class="badge">${savedSnt?33:42}</span>`:''}</button>` : '';
+  let cap = snt ? 'Only titles with no score, compared against the ones you already scored.' : S.goal === 'full' ? 'Every title gets its own place.' : 'Stops once every score is settled.';
+  if (savedSnt) cap += '<br><span class="fine">This Ranking can\'t switch to Scores or Full Ranking. Start it over to pick another Sort Goal.</span>';
+  else if (!S.elig && showThird) cap += `<br><span class="fine">🔒 Score New Titles: ${why}</span>`;
+  else if (sv === 'scores' && v === 0 && S.elig) cap += '<br><span class="fine">🔒 Score New Titles can only be chosen when a Ranking starts. Start this Ranking over (in the menu) to use it.</span>';
+  else if (sv === 'scores' && v === 4 && S.elig) cap += '<br><span class="fine">42 titles have no score. To score only those, start this Ranking over and pick New Titles.</span>';
+  else if (sv === 'scores' && v === 3 && snt) cap += '<br><span class="fine">Runs as its own Ranking. Your saved Scores Ranking stays where it is.</span>';
+  const cnt = snt ? [42,0,2,5] : [214,3,9,21];
+  const chips = ['Completed','Rewatching','Paused','Dropped'].map((s,i) => `<button class="chip ${i<2?'on':''}">${i<2?'✓ ':''}${s} <span class="cnt">${cnt[i]}</span></button>`).join('');
+  const est = snt ? `<b>42</b> new titles · about <b>${savedSnt?180:230}</b> Duels${savedSnt?' left':''}<span class="small">(each against one of your 186 scored titles, ~${savedSnt?9:12} min at 3 s each)</span>`
+    : `<b>217</b> titles · about <b>${S.goal==='full'?'2,100':'1,480'}</b> Duels<span class="small">(~${S.goal==='full'?105:74} min at 3 s each, spread over as many sittings as you like)</span>`;
+  const savedNote = savedSnt ? `<div class="small">You have a saved Ranking here: 9 of 42 new titles have a score. On Continue, titles that now match these statuses and have no score join it. Your Anchors stay as they were when it started.</div>`
+    : sv === 'scores' && !snt ? `<div class="small">You have a saved Ranking here: 217 of 217 titles have a Band. On Continue, titles that now match these statuses join Rough Sort and titles that no longer match leave the Ranking.</div>` : '';
+  const offer = !snt && sv === 'none' ? `<div class="offer"><button class="swrow"><span class="switch"><i></i></span><span class="grow"><b class="strong">Use my AniList scores for Rough Sort</b><span class="small">175 of 217 titles have a score</span></span></button></div>` : '';
+  const go = sv !== 'none' && !(sv === 'scores' && snt) ? 'Continue →' : snt ? 'Start Duels →' : 'Start Rough Sort →';
+  const ask = S.ask ? `<div class="dscrim" style="position:fixed"><div class="dlg"><div class="h2">Start a Score New Titles Ranking?</div><p>It replaces your saved Anime Ranking (<b class="strong">1,240 Duels</b>). Scores you already imported stay on AniList.</p><p class="small">Save a Backup file first if you might want that Ranking back.</p><div class="row"><button class="go sm">↓ Save Backup file</button><span class="grow"></span><button class="link small" onclick="set('ask',false)">Cancel</button><button class="go sm" style="background:var(--danger)" onclick="set('s','duel')">Replace and start</button></div></div></div>` : '';
+  return `<div class="st st-hero"><div class="l"><div class="collage-bg">${T.map((_,i)=>img(i)).join('')}</div>
+    <div class="hero-copy"><div class="big">Which one did you<br>like more?</div><div>Answer that a few hundred times.<br>Get scores that actually mean something.</div></div></div>
+    <div class="r"><div class="pwrap" style="position:relative;width:100%;max-width:440px"><div class="panel">
+      <div class="userbar"><span class="ava"></span><span>zen</span><button class="small link">Log out</button></div>
+      <div class="h2">What do you want to rank?</div>
+      <div class="seg"><button class="on">Anime</button><button>Manga</button></div>
+      <div class="lab2">List statuses${snt ? ' · titles with no score' : ''}</div>
+      <div class="chips">${chips}<span class="chip off">Planning · never ranked</span></div>
+      <div class="lab2">Sort Goal</div>
+      <div class="goalrow"><div class="seg tight">${b('scores','Scores')}${b('full','Full Ranking')}${third}</div><span class="info-i">i</span></div>
+      <span class="gexp">${cap}</span>
+      <div class="est">${est}</div>${savedNote}${offer}
+      <button class="go" onclick="set('s','duel')">${go}</button>
+      <button class="small link" style="align-self:flex-start">Restore from a Backup file</button>
+      <div class="small fine">Read-only until you confirm an Import. Your progress stays in this browser.</div>
+    </div><div class="mochi" title="Catch-up's mochi stays as it is today">(｡•ᴗ•｡) Catch-up</div></div></div>${ask}</div>`;
+}
+
+/* ---------- Sidebar ---------- */
+function side(scr) {
+  const inR = (l) => scr === 'duel' ? (l <= 9 && l >= 6) : scr === 'closer' ? (l === 8 || l === 7) : null;
+  const cls = (l) => inR(l) === null ? '' : inR(l) ? 'inb' : 'out';
+  const done = scr === 'complete' || scr === 'preview';
+  const chipsOf = (l) => (GROUPS.find(g => g[0] === l) || [0, []])[1].concat(done && l === 8 ? [NEW] : []).map(i => `<span>${T[i].n}</span>`).join('');
+  const menu = S.menu ? `<div class="amenu"><div class="small fine">This Ranking</div>${[['⇆','Switch to Manga'],['☰','Change list statuses'],['↓','Save Backup file'],['↑','Restore from Backup'],['↺','Start this Ranking over']].map(([i,t])=>`<div>${i} ${t}</div>`).join('')}<div class="small fine">App</div><div>+ Catch-up</div><div>◐ Light / dark theme</div><div class="small fine" style="border-top:1px solid #fff2;padding-top:6px">Not here under Score New Titles: Switch to Scores / Full Ranking, Choose a Band, Open the Board, Split a Band</div></div>` : '';
+  return `<aside class="side" style="position:relative"><div class="logo">Ani<b>Duel!</b></div><div class="small">zen · Anime · 42 new titles</div>
+    <div class="bandrow" style="grid-template-columns:60px 1fr 40px"><span>Scored</span><div class="bar"><i style="width:${done?100:21}%"></i></div><span>${done?'42/42':'9/42'}</span></div>
+    <div class="small">${scr==='duel' ? 'Chainsaw Man · between 9 and 6' : scr==='closer' ? 'Chainsaw Man · 8 or 7' : 'Your scores'}</div>
+    <div class="rank">${LEVELS.map(([l,,n]) => `<div class="lvl ${cls(l)}"><b>${l}</b><span><span class="fine" style="font-size:11px">${n} scored</span><span class="lvchips">${chipsOf(l)}</span></span></div>`).join('')}</div>
+    <span class="small">${done?'42/42':'9/42'} · 1 Forgotten</span>${menu}<button class="row small" onclick="set('menu',!S.menu)"><span class="ava"></span> zen ▾</button></aside>`;
+}
+
+/* ---------- Duel / closer-to / complete ---------- */
+function card(i, sd) {
+  return `<div class="card"><div class="bg" style="background-image:url('${T[i].b||T[i].c}')"></div>${img(i)}
+    <div class="info"><div class="t">${T[i].n}</div><div class="m">${T[i].m}</div><span class="kbd">${sd==='l'?'←':'→'}</span></div>
+    <div class="corner ${sd}"><button class="ibtn" title="Don't remember (F${sd==='l'?'←':'→'})">?</button><a class="ibtn" title="Open on AniList">↗</a></div></div>`;
+}
+const base = () => `<div class="topline"><i style="width:21%"></i></div><div class="float-info"><span class="pill">Score New Titles · 10/42</span></div><div class="pair">${card(NEW,'l')}${card(ANCHOR,'r')}<button class="seam">＝<span>Same</span><span class="kbd">↓</span></button></div><div class="float-undo"><span class="pill">↶ Undo <span class="kbd">⌫</span></span></div>`;
+const duel = () => `<div class="duel">${base()}</div>`;
+function closer() {
+  const done = `onclick="set('s','complete')"`;
+  const exs = (l) => `<div class="exs">${lv(l)[1].slice(0,3).map(i=>img(i)).join('')}</div>`;
+  return `<div class="duel">${base()}<div class="full">${img(NEW,'cv','width:110px;height:157px;border-radius:8px')}<div class="fh">Chainsaw Man sits between two of your scores</div><div>Which group does it belong with?</div>
+    <div class="cols"><div class="col" ${done}><div class="n">8</div>${exs(8)}<span class="small">Death Note · JUJUTSU KAISEN · Demon Slayer · 49 more</span><span class="kbd">←</span></div><div class="col" ${done}><div class="n">7</div>${exs(7)}<span class="small">My Hero Academia · One-Punch Man · Assassination Classroom · 38 more</span><span class="kbd">→</span></div></div>
+    <span class="pill">↶ Undo <span class="kbd">⌫</span></span></div></div>`;
+}
+const names = (l) => (GROUPS.find(g => g[0] === l)[1].concat(l === 8 ? [NEW] : [])).map(i => T[i].n).sort().join(' · ');
+const complete = () => `<div class="ranked"><div class="h1">Every new title has a score</div><div class="sub">42 new titles scored · 1 Forgotten · 2 Suspect Anchors · titles on the same score have no order among themselves</div>
+  <section class="res">${GROUPS.map(([l]) => `<div class="ln"><b>${l}</b><span>${names(l)}</span></div>`).join('')}<div class="ln"><b></b><span class="fine">… (mock shows 9 of 42)</span></div></section>
+  <div class="row"><button class="go" onclick="set('s','preview')">Preview my scores →</button><button class="go sm">↶ Undo last answer</button></div></div>`;
+
+/* ---------- Preview ---------- */
+function preview() {
+  const pop = `<div class="tlpop"><b>SPY x FAMILY</b><span class="small">AniList no score → <b>8</b></span><label class="row small"><input type="checkbox" checked> Import this</label><div class="row"><button class="mini-b">Re-rank</button></div><span class="small fine">No Move Band here: there are no Bands.</span></div>`;
+  const tcard = (i) => `<div class="tlcard" style="cursor:pointer" onclick="set('pop',!S.pop)">${img(i)}<span class="ob">new</span>${S.pop && i === 32 ? pop : ''}</div>`;
+  return `<div class="pv"><div class="pv-head"><div><div class="h1">Preview</div><div class="small">8 new titles scored · 8 ticked for Import · <b class="strong">1 not settled</b> · 33 still to duel</div></div><div class="grow"></div><button class="go">Import 8 scores →</button></div>
+    <div class="pv-set"><span class="small">Score New Titles · Score Format: 10 Point · your 186 scored titles are never changed</span></div>
+    <div class="unscard"><span>⚠</span><span class="small strong grow">1 title is not settled yet · a few more Duels decide · <span class="link">show</span></span><button class="go sm">Go to Duels →</button></div>
+    <div class="tl">${GROUPS.map(([l,ids]) => `<div class="tlrow"><div class="tlk">${l}<span class="small">${ids.length}</span></div><div class="tlc">${ids.map(tcard).join('')}</div></div>`).join('')}</div>
+    <div class="forg"><b class="strong">Suspect Anchors (2) — no longer used as a reference, score left as it is</b>${SUSPECT.map(([i,l,why]) => `<div class="frow">${img(i)}<span class="grow">${T[i].n}<br><span class="small fine">${why}</span></span><span class="small">Your score: <b class="strong">${l}</b></span><a class="mini-b">AniList ↗</a></div>`).join('')}</div>
+    <div class="forg"><b class="strong">Forgotten (1) — never written</b><div class="frow">${img(26)}<span class="grow">${T[26].n}</span><span class="small">AniList: no score</span><button class="mini-b">Bring back</button></div></div></div>`;
+}
+
+/* ---------- shell + picker ---------- */
+function draw() {
+  document.getElementById('app').innerHTML = S.s === 'start' ? start() : `<div class="shell">${side(S.s)}<main class="main">${{ duel, closer, complete, preview }[S.s]()}</main></div>`;
+  const btn = (k, val, t) => `<button class="${S[k]===val?'on':''}" onclick="set('${k}',${typeof val==='string'?`'${val}'`:val})">${t}</button>`;
+  const hint = { duel:'Click "zen ▾" in the sidebar for the menu.', preview:'Click a cover for its popover.', closer:'', complete:'' }[S.s];
+  document.getElementById('pk').innerHTML = `<div class="r">${SCREENS.map(s=>btn('s', s, s==='closer'?'Closer-to':s[0].toUpperCase()+s.slice(1))).join('')}</div>
+    ${S.s==='start' ? `<div class="r">${btn('saved','none','no saved Ranking')}${btn('saved','scores','saved Scores')}${btn('saved','snt','saved New Titles')}</div>
+      <div class="r">${btn('elig',true,'186 Anchors')}${btn('elig',false,'only 12')}${btn('goal','scores','Scores')}${btn('goal','snt','New Titles')}</div>
+      ${S.saved==='scores' ? `<div class="r"><button onclick="step(-1)">←</button><span class="nm">${S.v+1} · ${VARS[S.v][0]}</span><button onclick="step(1)">→</button></div><div class="ds">${VARS[S.v][1]}</div>` : `<div class="ds">←/→ variants apply to "saved Scores": what the New Titles button does when a Ranking is already saved.</div>`}`
+      : `<div class="ds">Agreed design so far. ${hint}</div>`}`;
+  history.replaceState(null, '', '#' + new URLSearchParams({ s:S.s, elig:S.elig, goal:S.goal, saved:S.saved, v:S.v }));
+}
+const step = (n) => { S.v = (S.v + n + 5) % 5; S.ask = false; if (S.s !== 'start' || S.saved !== 'scores') { S.s = 'start'; S.saved = 'scores'; } draw(); };
+addEventListener('keydown', e => { if (e.key === 'ArrowLeft') step(-1); if (e.key === 'ArrowRight') step(1); });
+const pk = document.getElementById('pk'); let drag = null;
+pk.addEventListener('pointerdown', e => { if (e.target.tagName === 'BUTTON') return; const r = pk.getBoundingClientRect(); drag = [e.clientX - r.left, e.clientY - r.top]; pk.setPointerCapture(e.pointerId); });
+pk.addEventListener('pointermove', e => { if (!drag) return; pk.style.left = e.clientX - drag[0] + 'px'; pk.style.top = e.clientY - drag[1] + 'px'; pk.style.right = pk.style.bottom = 'auto'; });
+pk.addEventListener('pointerup', () => drag = null);
+draw();
+</script>
+</body>
+</html>
