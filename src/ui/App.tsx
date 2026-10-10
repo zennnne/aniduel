@@ -170,6 +170,12 @@ export function App() {
   const eligibility = useMemo(() => (anchors ? newTitlesEligibility(anchors) : null), [anchors])
   // A New Titles pick on Start stops counting once it isn't eligible (e.g. on another Media Type).
   const newTitlesPicked = pickedGoal === 'score-new-titles' && eligibility?.eligible !== false
+  // Catch-up's exit offer (#52) asks the same of the anime list, whichever Media Type is selected.
+  const animeList = lists.ANIME
+  const animeNewTitlesEligible = useMemo(
+    () => (animeList && viewerFormat ? newTitlesEligibility(anchorsOf(animeList, viewerFormat)).eligible : null),
+    [animeList, viewerFormat],
+  )
   // A saved Score New Titles Ranking's Anchors and Pool; null for any other Ranking.
   const savedNewTitles = useMemo(() => (log ? newTitlesInLog(log) : null), [log])
   const onNewTitles = ranking ? isNewTitles(ranking) : newTitlesPicked
@@ -366,7 +372,12 @@ export function App() {
 
   /** Reads an already-loaded list again (after Catch-up wrote to it), syncing a saved Ranking like a first fetch. */
   function refreshList(type: MediaType) {
-    if (!gateway || !viewer || !lists[type]) return
+    if (!gateway || !viewer) return
+    if (!lists[type]) {
+      // A first read still in flight may have left before the write: start it again.
+      setRetries((n) => n + 1)
+      return
+    }
     gateway.mediaList({ userId: viewer.id, type, statuses: OFFERED_STATUSES }).then(
       (fetched) => {
         setLists((prev) => ({ ...prev, [type]: fetched }))
@@ -377,18 +388,20 @@ export function App() {
     )
   }
 
+  // The selected Media Type's list, and in Catch-up the anime list too: its exit offer checks the Anchors there (#52).
+  const listToFetch: MediaType | null = !lists[mediaType] ? mediaType : screen === 'catchup' && !lists.ANIME ? 'ANIME' : null
   useEffect(() => {
-    if (!gateway || !viewer || lists[mediaType]) return
+    if (!gateway || !viewer || !listToFetch) return
     let cancelled = false
     // Fetch every offered status once, so each chip can show its count and toggling needs no refetch.
-    gateway.mediaList({ userId: viewer.id, type: mediaType, statuses: OFFERED_STATUSES }).then(
-      (list) => !cancelled && onListFetched(mediaType, list),
+    gateway.mediaList({ userId: viewer.id, type: listToFetch, statuses: OFFERED_STATUSES }).then(
+      (list) => !cancelled && onListFetched(listToFetch, list),
       (e: unknown) => !cancelled && onGatewayError(e),
     )
     return () => {
       cancelled = true
     }
-  }, [gateway, viewer, mediaType, lists, retries])
+  }, [gateway, viewer, listToFetch, retries])
 
   // Band split (ADR 0006). Offered on its own after Rough Sort (also after a sync added titles), before the next
   // Duel answer, for each Band that qualifies and wasn't skipped in this session; later only from the menu. `splitView` pins the Split screen open
@@ -730,13 +743,14 @@ export function App() {
     catchUp.open()
   }
 
-  /** Leaving Catch-up through its exit offer: back to Start on anime, to pick a Sort Goal and rank. */
+  /**
+   * Leaving Catch-up through its exit offer: on to Start on anime, with Score New Titles picked, or with no pick so
+   * the Sort Goal follows the Pool size (#38). A saved anime Ranking keeps its own Sort Goal either way.
+   */
   function takeExitOffer(offer: ExitOffer) {
-    switch (offer.target) {
-      case 'sort-goal':
-        switchMediaType('ANIME')
-        goTo('start')
-    }
+    switchMediaType('ANIME')
+    setPickedGoal(offer.target === 'score-new-titles' ? 'score-new-titles' : null)
+    goTo('start')
   }
 
   const hasProgress = Boolean(log) || savedBroken
@@ -836,7 +850,7 @@ export function App() {
         },
       }
     : null
-  const offer = exitOffer({ added: catchUp.added })
+  const offer = exitOffer({ added: catchUp.added, eligibleForNewTitles: animeNewTitlesEligible })
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =

@@ -4,11 +4,21 @@ import { exitOffer } from './exitOffer.ts'
 
 describe('the exit offer', () => {
   it('is not shown before anything was saved this visit', () => {
-    expect(exitOffer({ added: 0 })).toBeNull()
+    expect(exitOffer({ added: 0, eligibleForNewTitles: true })).toBeNull()
+    expect(exitOffer({ added: 0, eligibleForNewTitles: false })).toBeNull()
   })
 
-  it('leads back to Start to pick a Sort Goal once a title was saved, whatever its mark', () => {
-    expect(exitOffer({ added: 1 })).toEqual({ target: 'sort-goal', label: 'Start ranking →' })
-    expect(exitOffer({ added: 14 })).toEqual({ target: 'sort-goal', label: 'Start ranking →' })
+  it('is not shown while the anime list, and so where the offer leads, is not known yet', () => {
+    expect(exitOffer({ added: 14, eligibleForNewTitles: null })).toBeNull()
+  })
+
+  it('offers Score New Titles, with how many titles were added, to a user who qualifies', () => {
+    expect(exitOffer({ added: 14, eligibleForNewTitles: true })).toEqual({ target: 'score-new-titles', label: 'Score 14 new titles →' })
+    expect(exitOffer({ added: 1, eligibleForNewTitles: true })).toEqual({ target: 'score-new-titles', label: 'Score 1 new title →' })
+  })
+
+  it('leads to the Pool-size default Sort Goal otherwise, so the user builds their scale first', () => {
+    expect(exitOffer({ added: 1, eligibleForNewTitles: false })).toEqual({ target: 'default-sort-goal', label: 'Start Rough Sort →' })
+    expect(exitOffer({ added: 14, eligibleForNewTitles: false })).toEqual({ target: 'default-sort-goal', label: 'Start Rough Sort →' })
   })
 })
