@@ -1,7 +1,7 @@
 import type { ListStatus, MediaType } from '../../anilist/types.ts'
-import type { BandIndex, RankingState, SortGoal } from '../../ranking/engine.ts'
+import type { BandIndex, RankingState, SwitchableGoal } from '../../ranking/engine.ts'
 import { fullRankingExtra } from '../../ranking/estimate.ts'
-import { isScores } from '../../ranking/sortGoal.ts'
+import { isNewTitles, isScores } from '../../ranking/sortGoal.ts'
 import { titlesToSort } from '../../ranking/split.ts'
 import { BAND_UI } from '../bands.ts'
 import { MEDIA_LABEL } from '../meta.ts'
@@ -38,7 +38,7 @@ export type MenuActions = {
   toggleTheme: () => void
   logout: () => void
   /** Switch the open Ranking to this Sort Goal (#28): Full Ranking asks first, Scores switches at once. */
-  switchSortGoal: (goal: SortGoal) => void
+  switchSortGoal: (goal: SwitchableGoal) => void
   /** Catch-up (anime only), whichever Media Type the open Ranking is. */
   openCatchUp: () => void
   /** Asks before emptying Catch-up's Passed history. */
@@ -67,8 +67,9 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       run: actions.changeStatuses,
     },
   ]
-  // Any Ranking can switch, older ones (on Full Ranking, without a Sort Goal) too, but nobody is told (#23).
-  if (context.hasLog && ranking) {
+  // Any Ranking can switch, older ones (on Full Ranking, without a Sort Goal) too, but nobody is told (#23). Score
+  // New Titles never switches (ADR 0009).
+  if (context.hasLog && ranking && !isNewTitles(ranking)) {
     const toFull = isScores(ranking)
     items.push({
       id: 'sort-goal',

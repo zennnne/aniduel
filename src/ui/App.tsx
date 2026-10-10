@@ -19,24 +19,27 @@ import {
   type RankingKey,
 } from '../persistence/progress.ts'
 import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, estimateDuels, roughSortOrder } from '../pool/pool.ts'
-import { syncEvents } from '../pool/sync.ts'
+import { newTitlesInLog, syncEvents } from '../pool/sync.ts'
+import { anchorsOf, estimateNewTitlesDuels, newTitlesEligibility, newTitlesList } from '../pool/anchors.ts'
 import {
   answeredDuels,
   appendEvent,
   replay,
   startLog,
+  startNewTitlesLog,
   withSub,
   type BandIndex,
   type LogEvent,
   type RankingState,
   type SortGoal,
   type SubBandIndex,
+  type SwitchableGoal,
 } from '../ranking/engine.ts'
 import { duelsFromBands, fullRankingExtra } from '../ranking/estimate.ts'
 import { planFromScores } from '../ranking/fromScores.ts'
 import { previewOpen } from '../ranking/preview.ts'
 import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
-import { goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
+import { goalOf, isNewTitles, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
@@ -98,7 +101,8 @@ function loginRedirect() {
  * only Refine Duels of other titles are left (on Scores the fixed title is worked on first, until it is settled).
  */
 function fixDone(state: RankingState, id: number): boolean {
-  return previewOpen(state.prompt) && (state.prompt.kind !== 'duel' || state.prompt.a !== id)
+  const { prompt } = state
+  return previewOpen(prompt) && ((prompt.kind !== 'duel' && prompt.kind !== 'anchor-duel') || prompt.a !== id)
 }
 
 function newSeed(): number {
@@ -159,9 +163,22 @@ export function App() {
   const list = lists[mediaType]
   // A new Ranking starts on Scores with the Score Format's defaults (ADR 0007): its estimate is for that.
   const viewerFormat = viewer ? viewer.scoreFormat : null
+  // Score New Titles (ADR 0009): the Anchors a new Ranking would snapshot, and whether there are enough of them.
+  const anchors = useMemo(() => (list && viewerFormat ? anchorsOf(list, viewerFormat) : null), [list, viewerFormat])
+  const eligibility = useMemo(() => (anchors ? newTitlesEligibility(anchors) : null), [anchors])
+  // The Sort Goal a new Ranking starts on: New Titles stops counting once it isn't eligible (e.g. on another Media Type).
+  const startGoal: SortGoal = newGoal === 'score-new-titles' && eligibility?.eligible === false ? 'scores' : newGoal
+  // A saved Score New Titles Ranking's Anchors and Pool; null for any other Ranking.
+  const savedNewTitles = useMemo(() => (log ? newTitlesInLog(log) : null), [log])
+  const onNewTitles = ranking ? isNewTitles(ranking) : startGoal === 'score-new-titles'
+  // Its Pool is the titles without a score (and the saved Ranking's new titles), never an Anchor.
+  const poolList = useMemo(() => (list && onNewTitles ? newTitlesList(list, savedNewTitles) : list), [list, onNewTitles, savedNewTitles])
   const pool = useMemo(
-    () => (list ? buildPool(list, statuses, viewerFormat ? { format: viewerFormat, settings: defaultSettings(viewerFormat, 'whole') } : undefined) : null),
-    [list, statuses, viewerFormat],
+    () =>
+      poolList
+        ? buildPool(poolList, statuses, viewerFormat ? { format: viewerFormat, settings: defaultSettings(viewerFormat, 'whole') } : undefined)
+        : null,
+    [poolList, statuses, viewerFormat],
   )
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
@@ -419,7 +436,8 @@ export function App() {
     const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
     // New titles can push a Band over the split threshold again (ADR 0006), so a skipped offer may show again.
     if (added > 0) setSkippedSplits([])
-    const changes = [added > 0 && `${count(added, 'title')} added to Rough Sort`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
+    const joined = current.events.some((e) => e.type === 'anchors-set') ? 'added' : 'added to Rough Sort'
+    const changes = [added > 0 && `${count(added, 'title')} ${joined}`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
     return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
   }
 
@@ -443,7 +461,7 @@ export function App() {
     if (refining && state.prompt.kind === 'all-complete') {
       setRefining(false)
       if (screen !== 'preview') goTo('preview')
-      showToast('Every score is settled again')
+      showToast(state.newTitles ? 'Every new title has a score' : 'Every score is settled again')
     }
     return state
   }
@@ -495,7 +513,7 @@ export function App() {
 
   /** "Go to Duels →" on Preview (#29): the Refine Duels, from the top Band that has some. */
   function refineFromPreview() {
-    if (!ranking || ranking.prompt.kind !== 'duel') return
+    if (!ranking || (ranking.prompt.kind !== 'duel' && ranking.prompt.kind !== 'anchor-duel')) return
     setRefining(true)
     if (ranking.bandChoice) chooseBand(ranking.bandChoice.next)
     else goTo('ranking')
@@ -520,10 +538,18 @@ export function App() {
     if (!viewer) return
     if (!duelLog.latest()) {
       if (!startOrder) return
+      if (startGoal === 'score-new-titles') {
+        // Score New Titles (ADR 0009): the Anchors are snapshotted into the log now; Duels start straight away.
+        if (!anchors || !eligibility?.eligible) return
+        const ids = startOrder
+        duelLog.save(startNewTitlesLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids }))
+        goTo('ranking')
+        return
+      }
       // The new log carries its own Sort Goal and default scoring settings (ADR 0007).
       const started = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder, scoreFormat: viewer.scoreFormat })
       // Full Ranking picked on Start: the same switch as from the menu, before anything is sorted.
-      const log = switchGoalEvents(replay(started), null, viewer.scoreFormat, newGoal).reduce(appendEvent, started)
+      const log = switchGoalEvents(replay(started), null, viewer.scoreFormat, startGoal).reduce(appendEvent, started)
       const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
       duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
     } else {
@@ -554,9 +580,11 @@ export function App() {
         if (event) duelLog.append(event)
         if (converted) {
           imports.dropForFormatChange(key)
+          // Score New Titles has no best / worst: its scores are the Anchors', shown in the new Score Format.
+          const check = isNewTitles(replay(current)) ? 'Check the new scores' : 'Best / Worst were converted. Check them'
           setNotice({
             tone: 'info',
-            message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[fresh.scoreFormat]}. Best / Worst were converted. Check them before importing.`,
+            message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[fresh.scoreFormat]}. ${check} before importing.`,
           })
         }
         setPreviewChecked(true)
@@ -579,7 +607,7 @@ export function App() {
    * Switches the open Ranking's Sort Goal (#28, ADR 0007): its settings move to the new goal's Score Step. Every
    * earlier answer still counts. Preview keeps showing the new settings.
    */
-  function applySortGoal(goal: SortGoal) {
+  function applySortGoal(goal: SwitchableGoal) {
     const current = duelLog.latest()
     if (!viewer || !current) return
     const key = { userId: viewer.id, mediaType }
@@ -608,7 +636,7 @@ export function App() {
   }
 
   /** The menu, Start and Preview: Scores switches at once; Full Ranking asks first, with "+~N Duels" (#25). */
-  function requestSortGoal(goal: SortGoal) {
+  function requestSortGoal(goal: SwitchableGoal) {
     if (goal === 'full-ranking') setDialog('full-ranking')
     else applySortGoal(goal)
   }
@@ -720,8 +748,25 @@ export function App() {
     : []
 
   // Start: the saved Ranking's Sort Goal, or the one a new Ranking will start on, and its estimate (#28).
-  const shownGoal: SortGoal = ranking ? goalOf(ranking) : newGoal
+  const shownGoal: SortGoal = ranking ? goalOf(ranking) : startGoal
   const fullPoolDuels = pool ? estimateDuels(pool.titles.length) : null
+  // Score New Titles: one search per new title over the Anchor scores (a saved Ranking: its unsettled titles only).
+  const newTitlesDuels = ranking?.newTitles
+    ? estimateNewTitlesDuels(ranking.progress.ranked.total - ranking.progress.ranked.done, ranking.newTitles.levels.length)
+    : pool && eligibility
+      ? estimateNewTitlesDuels(pool.titles.length, eligibility.scores)
+      : null
+  // Start's New Titles button: the titles without a score in the chosen statuses (Score New Titles' own Pool).
+  const unscored = useMemo(
+    () => (list ? buildPool(newTitlesList(list, savedNewTitles), statuses).titles.length : null),
+    [list, savedNewTitles, statuses],
+  )
+  const newTitlesReason =
+    ranking && !isNewTitles(ranking)
+      ? 'Can only be chosen when a Ranking starts. Start this Ranking over (in the menu) to use it.'
+      : eligibility && !eligibility.eligible
+        ? eligibility.reason
+        : null
 
   const form = viewer
     ? {
@@ -729,14 +774,29 @@ export function App() {
         mediaType,
         statuses,
         pool,
-        saved: ranking?.progress.roughSort ?? null,
+        // A Score New Titles Ranking has no Rough Sort: its progress is the new titles that have a score.
+        saved: (ranking?.newTitles ? ranking.progress.ranked : ranking?.progress.roughSort) ?? null,
         // Offered for a new Ranking only.
         scoresPlan: hasProgress ? null : scoresPlan,
-        bandDuels: ranking ? duelsFromBands(ranking) : null,
+        bandDuels: ranking && !onNewTitles ? duelsFromBands(ranking) : null,
         goal: shownGoal,
-        onGoal: (goal: SortGoal) => (ranking ? requestSortGoal(goal) : setNewGoal(goal)),
-        poolDuels: pool && shownGoal === 'scores' ? pool.expectedDuels : fullPoolDuels,
-        extraDuels: ranking ? fullRankingExtra(ranking) || null : pool && fullPoolDuels !== null ? fullPoolDuels - pool.expectedDuels : null,
+        onGoal: (goal: SortGoal) => {
+          if (!ranking) setNewGoal(goal)
+          else if (goal !== 'score-new-titles') requestSortGoal(goal)
+        },
+        poolDuels: onNewTitles ? newTitlesDuels : pool && shownGoal === 'scores' ? pool.expectedDuels : fullPoolDuels,
+        extraDuels:
+          ranking && !onNewTitles
+            ? fullRankingExtra(ranking) || null
+            : pool && fullPoolDuels !== null && !onNewTitles
+              ? fullPoolDuels - pool.expectedDuels
+              : null,
+        newTitles: {
+          count: unscored,
+          enabled: newTitlesReason === null && Boolean(eligibility),
+          reason: onNewTitles ? null : newTitlesReason,
+          anchors: ranking?.newTitles?.levels.reduce((sum, level) => sum + level.anchors.length, 0) ?? eligibility?.anchors ?? 0,
+        },
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
           const next = statuses.includes(s) ? statuses.filter((x) => x !== s) : [...statuses, s]
@@ -876,6 +936,18 @@ export function App() {
             note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : prompt.refine ? 'Refine' : undefined}
           />
         )
+      case 'anchor-duel':
+        // Score New Titles (ADR 0009): no Band to choose, nothing to move.
+        return (
+          <DuelScreen
+            {...shared}
+            prompt={prompt}
+            onPick={(winner) => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: winner === prompt.a ? 'a' : 'b' })}
+            onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
+            onForget={(id) => answer({ type: 'forgotten', id })}
+            note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : undefined}
+          />
+        )
       case 'all-complete':
         return <CompleteScreen {...shared} onScore={list && !openingPreview ? openPreview : undefined} />
     }
@@ -959,13 +1031,13 @@ export function App() {
           format={viewer.scoreFormat}
           settings={scoring}
           onSettings={changeScoring}
-          onSwitchGoal={requestSortGoal}
+          onSwitchGoal={isNewTitles(ranking) ? undefined : requestSortGoal}
           onRefine={refineFromPreview}
           overrides={imports.ticks}
           onTick={imports.tick}
           onImport={importView?.stage === 'running' ? undefined : (plan) => imports.plan(plan, scoring)}
-          onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
-          onMove={setPreviewMoving}
+          onRerank={isNewTitles(ranking) ? undefined : (id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
+          onMove={isNewTitles(ranking) ? undefined : setPreviewMoving}
           onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}
         />
       ) : inRanking ? (

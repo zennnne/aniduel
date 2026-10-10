@@ -2,21 +2,23 @@
 // and the Import plan the write queue writes.
 import type { ScoreFormat } from '../anilist/types.ts'
 import { compareNames } from '../names.ts'
-import { BANDS, type BandIndex, type Prompt, type RankingState } from './engine.ts'
-import { levelOfRaw, type Scores } from './scoring.ts'
+import { BANDS, type BandIndex, type NewTitlesState, type Prompt, type RankingState } from './engine.ts'
+import { levelOfRaw, scoreRawOf, type Scores } from './scoring.ts'
 import { isScores } from './sortGoal.ts'
 
 /**
  * Whether Preview can be open on this prompt: every title has its level, or only Refine Duels are left (#29). Those
  * come from a settings change on Scores and leave some titles unsettled; every settled title can still be imported.
+ * Under Score New Titles every settled new title can be imported at any time (ADR 0009), so Preview is always open.
  */
 export function previewOpen(prompt: Prompt): boolean {
-  return prompt.kind === 'all-complete' || (prompt.kind === 'duel' && prompt.refine === true)
+  return prompt.kind === 'all-complete' || prompt.kind === 'anchor-duel' || (prompt.kind === 'duel' && prompt.refine === true)
 }
 
 type RowBase = {
   id: number
-  band: BandIndex
+  /** Null under Score New Titles, which has no Bands (ADR 0009). */
+  band: BandIndex | null
   /** The title's AniList score now, on the 100-point scale (0 = no score). */
   oldScore100: number
   /** That score as the Score Format shows it, or null if the title has no score. */
@@ -59,6 +61,7 @@ export function previewRows(
   format: ScoreFormat,
   name: (id: number) => string,
 ): PreviewRow[] {
+  if (ranking.newTitles) return newTitlesRows(ranking.newTitles, oldScores, format, name)
   const rows: PreviewRow[] = []
   for (const band of BANDS) {
     const { tiers, unplaced } = ranking.bands[band]
@@ -77,9 +80,43 @@ export function previewRows(
     }
   }
   if (!isScores(ranking)) return rows
+  return byLevelThenName(rows, name)
+}
+
+/** The settled rows by level, best first, and by `name` inside a level (no order was asked there), then the unsettled. */
+function byLevelThenName(rows: readonly PreviewRow[], name: (id: number) => string): PreviewRow[] {
   const settled = settledRows(rows)
   settled.sort((x, y) => y.level - x.level || compareNames(name(x.id), name(y.id)))
   return [...settled, ...rows.filter((row) => !row.settled)]
+}
+
+/**
+ * Score New Titles (ADR 0009): one row per new title still in the Pool, with the Anchor score it settled on. Anchors
+ * are never a row, so never written. Scores are the snapshot's levels: written as that raw score, shown at the Score
+ * Format AniList reports now (`format`).
+ */
+function newTitlesRows(
+  newTitles: NewTitlesState,
+  oldScores: ReadonlyMap<number, number>,
+  format: ScoreFormat,
+  name: (id: number) => string,
+): PreviewRow[] {
+  const shown = (level: number) => levelOfRaw(format, scoreRawOf(newTitles.format, level))
+  const rows: PreviewRow[] = []
+  for (const title of newTitles.titles) {
+    const oldScore100 = oldScores.get(title.id)
+    if (oldScore100 === undefined) continue
+    const old = levelOfRaw(format, oldScore100)
+    const base = { id: title.id, band: null, oldScore100, oldLevel: old === 0 ? null : old }
+    if (title.settled) {
+      const scoreRaw = scoreRawOf(newTitles.format, title.levels[0])
+      const level = shown(title.levels[0])
+      rows.push({ ...base, settled: true, level, scoreRaw, changed: base.oldLevel !== level })
+    } else {
+      rows.push({ ...base, settled: false, levels: [...new Set(title.levels.map(shown))] })
+    }
+  }
+  return byLevelThenName(rows, name)
 }
 
 /** The settled rows, in the same order: the ones that have a new score (Preview's score rows). */

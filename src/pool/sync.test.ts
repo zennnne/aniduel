@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
-import { appendEvent, replay, startLog, type DuelLog, type LogEvent } from '../ranking/engine.ts'
+import { appendEvent, replay, startLog, startNewTitlesLog, type DuelLog, type LogEvent } from '../ranking/engine.ts'
 import { syncEvents } from './sync.ts'
 
 function entry(mediaId: number, status: ListStatus = 'COMPLETED', completedYear: number | null = null): ListEntry {
@@ -67,5 +67,26 @@ describe('syncEvents: comparing the fetched list with the Pool in the Duel log',
     const events = syncEvents(log, [entry(1), entry(2)], DEFAULT, 'ROMAJI')
     expect(events).toEqual([{ type: 'titles-added', ids: [2] }])
     expect(replay(events.reduce(appendEvent, log)).prompt).toEqual({ kind: 'rough-sort', id: 1 })
+  })
+})
+
+describe('syncEvents on a Score New Titles Ranking', () => {
+  const scored = (mediaId: number, oldScore100: number): ListEntry => ({ ...entry(mediaId), oldScore100 })
+  const anchors = [
+    { id: 101, level: 9 },
+    { id: 102, level: 8 },
+    { id: 103, level: 7 },
+  ]
+  const log = startNewTitlesLog({ ...header, format: 'POINT_10', anchors, ids: [1, 2] })
+
+  it('adds titles without a score only, and never an Anchor', () => {
+    const list = [scored(101, 90), entry(102), scored(103, 70), entry(1), entry(2), entry(3), scored(4, 60)]
+    const events = syncEvents(log, list, DEFAULT, 'ROMAJI')
+    expect(events).toEqual([{ type: 'titles-added', ids: [3] }])
+    expect(replay(events.reduce(appendEvent, log)).newTitles!.titles.map((t) => t.id)).toEqual([1, 2, 3])
+  })
+
+  it('keeps a new title that got a score since (e.g. imported)', () => {
+    expect(syncEvents(log, [scored(1, 80), entry(2)], DEFAULT, 'ROMAJI')).toEqual([])
   })
 })
