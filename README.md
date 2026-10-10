@@ -1,12 +1,12 @@
 # AniDuel!
 
-Rebuild your AniList scores from scratch by comparing titles from your own list two at a time, then write the new scores back to AniList.
+Build your AniList scores by comparing titles from your own list two at a time, then write the new scores back to AniList. Rebuild every score from scratch, or keep the scores you have and only score the titles that have none.
 
 **Live:** https://zennnne.github.io/aniduel/
 
 ## How it works
 
-1. **Log in** with AniList and pick a Media Type (Anime or Manga) and which list statuses go into the **Pool**. Pick a **Sort Goal**: **Scores** (the default) stops once every title's score is settled; **Full Ranking** keeps going until every title has its own place. You can switch either way at any time without losing answers.
+1. **Log in** with AniList and pick a Media Type (Anime or Manga) and which list statuses go into the **Pool**. Pick a **Sort Goal**: **Scores** stops once every title's score is settled; **Full Ranking** keeps going until every title has its own place. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch either way at any time without losing answers. A third Sort Goal, **Score New Titles**, works differently: see [below](#score-new-titles).
 2. **Rough Sort** — put each title into one of five **Bands** with a single tap. Or use **Rough Sort from Scores**: titles that already have an AniList score go into a Band by how far that score sits from your own average, and only unscored titles are sorted by hand. Oversized Bands can be split into three **Sub-bands**.
 3. **Board** — see every title grouped into its Band and drag any title to another Band. Open during Rough Sort and once more as a last check before the first Duel.
 4. **Duel** — pick the better of two titles from the same Band, call them equal (they share a **Tier**), or mark one **Forgotten**. Every answer can be undone. Under Scores, a change that moves a score boundary (settings, sync, Forgotten, a Band move, Re-rank) asks a few **Refine Duels** to settle the titles it affected.
@@ -15,7 +15,7 @@ Rebuild your AniList scores from scratch by comparing titles from your own list 
 
 ### Scores or Full Ranking?
 
-| | **Scores** (default) | **Full Ranking** |
+| | **Scores** (default from 100 titles) | **Full Ranking** (default under 100 titles) |
 | --- | --- | --- |
 | Duels stop when | every title's score is settled | every title has its own place |
 | Titles with the same score | grouped, no order among them (sorted by name) | each in its own place, or a Tier if you called them equal |
@@ -24,6 +24,20 @@ Rebuild your AniList scores from scratch by comparing titles from your own list 
 | Changing best/worst or Distribution later | costs Refine Duels (roughly 50–120) before the affected titles can be imported | free: the order is already complete |
 
 Pick **Scores** if you just want new scores on AniList. Pick **Full Ranking** if you also want an exact order, a finer Score Step, or to experiment with the score settings freely. Switching keeps every answer; switching to Full Ranking first shows about how many more Duels it will take.
+
+### Score New Titles
+
+For when you already have a scoring scale and don't want it changed. Titles that already have an AniList score are **Anchors**: fixed reference points whose scores are never touched. Each title without a score is put through Duels against Anchors only, and gets the score of the Anchors it sits among.
+
+- Offered on Start when your list has at least 20 Anchors on at least 3 different scores. It can only be chosen when a Ranking starts, and can't be switched with the other two Sort Goals.
+- No Rough Sort, Board or Bands: Duels start straight away, always a new title against an Anchor. A score boundary is passed only when two different Anchors agree.
+- A new title that beats every Anchor of one score and loses to every Anchor of the next gets a one-off **Closer-to prompt**: which of the two scores is it closer to.
+- An Anchor whose Duel results contradict its own score twice becomes a **Suspect Anchor**. It stops being used as a reference and is listed on Preview.
+- Preview opens as soon as one new title is settled, so you can import some scores without finishing the rest. The Ranking ends with its Import: titles still without a score start fresh next time, against Anchors that now include the ones just imported.
+
+### Catch-up
+
+A thin AniList list leaves little to rank. **Catch-up** (anime only, from Start or the menu) shows 20 anime at a time that you have probably already watched, picked from the sequels, prequels and community recommendations of what is on your list, plus popular titles from the years and formats you watch. Mark each one Completed, Dropped, Planning or Paused and save to get the next batch; saves are written to AniList in the background. Titles you leave unmarked are **Passed** and aren't suggested again for 30 days. While your list is near empty, Catch-up first asks roughly when you started watching anime. Once you have added titles, it offers to go on to Score New Titles if you qualify, or to your default Sort Goal if not.
 
 Progress is saved in your browser. Use **Backup** / **Restore** to move a Ranking to another browser. The Pool syncs with AniList when you come back, so added or removed titles are picked up.
 
@@ -47,6 +61,7 @@ npm run dev        # http://localhost:5173/aniduel/
 | `npm run typecheck` | `tsc -b` |
 | `npm run build` | Typecheck and build to `dist/` |
 | `npm run preview` | Serve the built `dist/` |
+| `npm run eval:catchup` | Holdout eval used to choose the Catch-up suggestion weights |
 
 Login uses AniList's OAuth implicit grant. Two AniList API clients are registered in `src/config.ts`: one for production (`https://zennnne.github.io/aniduel/`) and one for local dev (`http://localhost:5173/aniduel/`). The redirect URL must match exactly, so run the dev server on port 5173.
 
@@ -56,13 +71,17 @@ Login uses AniList's OAuth implicit grant. Two AniList API clients are registere
 src/
   anilist/      AniList GraphQL gateway and types
   auth/         OAuth token handling
-  pool/         Building the Pool and syncing it with AniList
+  pool/         Building the Pool, picking Anchors, and syncing with AniList
   ranking/      Ranking engine (replays the Duel log), Sort Goal, scoring, Sub-band split,
-                Rough Sort from Scores, Refine Duel estimates, Preview
-  import/       Import plan and runner (writes scores to AniList)
+                Rough Sort from Scores, Score New Titles, Refine Duel estimates, Preview
+  catchup/      Catch-up suggestions, batches, Passed titles, starting era, exit offer
+  import/       Import plan and state
+  writes/       Write queue and rate limiter shared by Import (scores) and Catch-up (list statuses)
   persistence/  Saved progress and Backup files
-  ui/           React screens (Start, Rough Sort, Board, Band choice, Duel, Split, Preview, Import)
+  ui/           React screens (Start, Rough Sort, Board, Band choice, Duel, Split, Preview, Import, Catch-up)
+scripts/        Catch-up holdout eval
 docs/adr/       Architecture decision records
+docs/research/  Research behind the Catch-up suggestions
 ```
 
 Key design decisions:
@@ -73,8 +92,10 @@ Key design decisions:
 - [ADR 0004](docs/adr/0004-no-router-on-github-pages.md) — No client-side router; screens are driven by app state.
 - [ADR 0005](docs/adr/0005-duel-log-is-never-rewritten.md) — The Duel log is never rewritten.
 - [ADR 0006](docs/adr/0006-split-oversized-bands-into-sub-bands.md) — Oversized Bands split into three Sub-bands.
-- [ADR 0007](docs/adr/0007-sort-goal-scores-with-settings-in-the-duel-log.md) — Sort Goal: Scores by default, with scoring settings in the Duel log.
+- [ADR 0007](docs/adr/0007-sort-goal-scores-with-settings-in-the-duel-log.md) — Sort Goal: Scores or Full Ranking (the default follows the Pool size), with scoring settings in the Duel log.
 - [ADR 0008](docs/adr/0008-rough-sort-from-scores-as-one-event.md) — Rough Sort from Scores is one event that carries every Band choice.
+- [ADR 0009](docs/adr/0009-score-new-titles-against-anchors.md) — Score New Titles: a third Sort Goal that scores unscored titles against fixed Anchors.
+- [ADR 0010](docs/adr/0010-score-new-titles-ends-with-its-import.md) — A Score New Titles Ranking ends with its Import.
 
 ## Deployment
 
