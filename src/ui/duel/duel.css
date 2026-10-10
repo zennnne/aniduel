@@ -152,6 +152,16 @@
   white-space: nowrap;
   z-index: 9;
 }
+/* The card clips its overflow, so a corner's tooltips open inwards from the button's outer edge. */
+.corner.l .tip:hover::after {
+  left: 0;
+  transform: none;
+}
+.corner.r .tip:hover::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
 .float-undo {
   position: absolute;
   bottom: 18px;
