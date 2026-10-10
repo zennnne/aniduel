@@ -210,4 +210,131 @@ describe('Forgotten and Undo on a new title', () => {
     expect(undone.prompt).toEqual(p)
     expect(undone.canUndo).toBe(false)
   })
+
+  it('Undo steps back one Duel at a time, and answering again lands where the first answers did', () => {
+    const anchors = anchorsOn(10, 9, 8, 7, 6, 5, 4)
+    const truth = new Map([
+      [1, 5],
+      [2, 9],
+    ])
+    const { log: done, state } = play(logOf(anchors, [1, 2]), anchors, truth)
+    const answers = done.events.filter((e) => e.type === 'duel-answered').length
+    expect(answers).toBeGreaterThan(2)
+    // Undo the last two answers: the prompt is the one the second-to-last answer replied to.
+    const undone = plus(done, { type: 'undo' }, { type: 'undo' })
+    const shortened = { ...done, events: done.events.slice(0, -2) }
+    expect(replay(undone).prompt).toEqual(replay(shortened).prompt)
+    expect(replay(undone).newTitles).toEqual(replay(shortened).newTitles)
+    expect(replay(undone).canUndo).toBe(true)
+    const again = play(undone, anchors, truth)
+    expect(settledScores(again.state)).toEqual(settledScores(state))
+  })
 })
+
+describe('Forgotten on an Anchor', () => {
+  type AnchorDuelPrompt = Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
+  const promptOf = (log: DuelLog) => replay(log).prompt as AnchorDuelPrompt
+
+  it('stops using that Anchor: the same Duel is asked against another Anchor of the same score', () => {
+    const anchors = anchorsOn(9, 8, 8, 8, 7)
+    const log = logOf(anchors, [1, 2])
+    const before = promptOf(log)
+    expect(levelOf(anchors, before.b)).toBe(8)
+    const after = replay(plus(log, { type: 'forgotten', id: before.b }))
+    expect(after.prompt).toMatchObject({ kind: 'anchor-duel', a: 1 })
+    const p = after.prompt as AnchorDuelPrompt
+    expect(p.b).not.toBe(before.b)
+    expect(levelOf(anchors, p.b)).toBe(8)
+    // The new titles are untouched; the Anchor is listed as Forgotten, so Preview can bring it back.
+    expect(after.newTitles!.titles).toEqual(replay(log).newTitles!.titles)
+    expect(after.forgotten).toEqual([before.b])
+  })
+
+  it('never meets that Anchor again, refuses an answer against it, and still settles every title', () => {
+    const anchors = anchorsOn(9, 8, 8, 8, 7)
+    const ids = Array.from({ length: 10 }, (_, i) => 1 + i)
+    const truth = new Map(ids.map((id) => [id, 8]))
+    const log = plus(logOf(anchors, ids), { type: 'forgotten', id: 102 })
+    const { state, met } = playChecked(log, anchors, truth, 102)
+    expect(met.has(102)).toBe(false)
+    expect(settledScores(state)).toEqual(truth)
+  })
+
+  it('picks the replacement from the log alone', () => {
+    const anchors = anchorsOn(9, 8, 8, 8, 8, 7)
+    const forget = (list: AnchorScore[]) => {
+      const log = logOf(list, [1, 2, 3])
+      return plus(log, { type: 'forgotten', id: promptOf(log).b })
+    }
+    expect(replay(forget([...anchors].reverse())).prompt).toEqual(replay(forget(anchors)).prompt)
+  })
+
+  it('on the only Anchor of a score, Duels go on against the other scores and a title can still land on it', () => {
+    // 8's single Anchor (102) is Forgotten: a title between 9 and 7 can't be told apart from 8 any more, so it gets 8.
+    const anchors = anchorsOn(9, 8, 7, 6, 5)
+    const truth = new Map([
+      [1, 8],
+      [2, 9],
+      [3, 6],
+      [4, 5],
+    ])
+    const log = plus(logOf(anchors, [1, 2, 3, 4]), { type: 'forgotten', id: 102 })
+    const { state } = playChecked(log, anchors, truth, 102)
+    expect(settledScores(state)).toEqual(truth)
+  })
+
+  it('with every Anchor of the middle score Forgotten, asks the next score instead', () => {
+    const anchors = anchorsOn(9, 8, 7, 7, 6, 5)
+    const log = plus(logOf(anchors, [1]), { type: 'forgotten', id: 103 }, { type: 'forgotten', id: 104 })
+    const p = promptOf(log)
+    expect([8, 6]).toContain(levelOf(anchors, p.b))
+    expect(replay(log).newTitles!.titles[0]).toEqual({ id: 1, settled: false, levels: [9, 8, 7, 6, 5] })
+  })
+
+  it('is refused for a title that is neither a new title nor an Anchor, or an Anchor already Forgotten', () => {
+    const log = logOf(anchorsOn(9, 8, 7), [1])
+    expect(() => replay(plus(log, { type: 'forgotten', id: 999 }))).toThrow(ReplayError)
+    expect(() => replay(plus(log, { type: 'forgotten', id: 102 }, { type: 'forgotten', id: 102 }))).toThrow(ReplayError)
+  })
+
+  it('Undo and Bring back both put the Anchor back in use', () => {
+    const anchors = anchorsOn(9, 8, 8, 8, 7)
+    const log = logOf(anchors, [1, 2])
+    const p = promptOf(log)
+    const forgot = plus(log, { type: 'forgotten', id: p.b })
+    const undone = replay(plus(forgot, { type: 'undo' }))
+    expect(undone.prompt).toEqual(p)
+    expect(undone.forgotten).toEqual([])
+    const back = replay(plus(forgot, { type: 'unforgotten', id: p.b }))
+    expect(back.prompt).toEqual(p)
+    expect(back.forgotten).toEqual([])
+    expect(back.newTitles!.titles).toEqual(replay(log).newTitles!.titles)
+  })
+
+  it('keeps what a title already learnt from that Anchor', () => {
+    const anchors = anchorsOn(9, 8, 8, 7, 6, 5)
+    const log = logOf(anchors, [1])
+    const p = promptOf(log)
+    const won = plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: 'a' })
+    const learnt = replay(won).newTitles!.titles
+    expect(replay(plus(won, { type: 'forgotten', id: p.b })).newTitles!.titles).toEqual(learnt)
+  })
+})
+
+/**
+ * Like `play`, and on every prompt checks that an answer against `avoid` instead is refused. Returns the Anchors met.
+ */
+function playChecked(log: DuelLog, anchors: AnchorScore[], truth: ReadonlyMap<number, number>, avoid: number) {
+  const met = new Set<number>()
+  for (let state = replay(log); ; state = replay(log)) {
+    const p = state.prompt
+    if (p.kind === 'all-complete') return { state, met }
+    if (p.kind !== 'anchor-duel' || met.size > 1000) throw new Error(`unexpected ${p.kind}`)
+    met.add(p.b)
+    expect(levelOf(anchors, p.b)).toBeDefined()
+    expect(() => replay(plus(log, { type: 'duel-answered', a: p.a, b: avoid, result: 'tie' }))).toThrow(ReplayError)
+    const mine = truth.get(p.a)!
+    const theirs = levelOf(anchors, p.b)!
+    log = plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: mine === theirs ? 'tie' : mine > theirs ? 'a' : 'b' })
+  }
+}

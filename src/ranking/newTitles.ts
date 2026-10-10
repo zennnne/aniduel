@@ -35,6 +35,8 @@ export type NewTitles = {
   format: ScoreFormat
   levels: AnchorLevel[]
   anchorIds: ReadonlySet<number>
+  /** Anchors no longer used as a reference (Forgotten): never chosen for a Duel, their levels and scores unchanged. */
+  excluded: Set<number>
   seed: number
   /** Every new title, in the order they joined (Unforgotten ones at the front). */
   queue: Placement[]
@@ -61,7 +63,7 @@ export function startNewTitles(format: ScoreFormat, anchors: readonly AnchorScor
   const levels = [...byLevel]
     .sort((x, y) => y[0] - x[0])
     .map(([level, members]) => ({ level, anchors: members.sort((x, y) => x - y) }))
-  return { format, levels, anchorIds: ids, seed, queue: [] }
+  return { format, levels, anchorIds: ids, excluded: new Set(), seed, queue: [] }
 }
 
 /** New titles join at the back, knowing nothing yet. */
@@ -84,25 +86,61 @@ export function takeOutNewTitle(state: NewTitles, id: number): void {
   if (at >= 0) state.queue.splice(at, 1)
 }
 
+/** Forgotten on an Anchor: it stops being chosen for Duels. What titles learnt from it before still counts. */
+export function excludeAnchor(state: NewTitles, id: number): void {
+  state.excluded.add(id)
+}
+
+/** Unforgotten on an Anchor: it can be chosen again. */
+export function includeAnchor(state: NewTitles, id: number): void {
+  state.excluded.delete(id)
+}
+
 /**
  * The next Duel: the first title that isn't settled, against an Anchor of the middle level it can still be on
  * (a plain binary search over the positions). Null once every title is settled.
  */
 export function nextAnchorDuel(state: NewTitles): AnchorDuel | null {
   for (const placement of state.queue) {
-    const level = nextLevel(placement)
+    const level = nextLevel(state, placement)
     if (level !== null) return { a: placement.id, b: chooseAnchor(state, placement.id, level), level }
   }
   return null
 }
 
-/** The middle Anchor level whose own position is still open to the title, or null once it is settled. */
-function nextLevel({ lo, hi }: Placement): number | null {
+/** The level indexes whose own position is still open to the title (none once lo = hi), and the middle one. */
+function openLevels({ lo, hi }: Placement): { first: number; last: number; middle: number } | null {
   if (lo === hi) return null
   // Two or more positions always hold a level's own position (an odd one).
   const first = Math.ceil((lo - 1) / 2)
   const last = Math.floor((hi - 1) / 2)
-  return Math.floor((first + last) / 2)
+  return { first, last, middle: Math.floor((first + last) / 2) }
+}
+
+/**
+ * The open level to ask next: the middle one, or when every Anchor on it is Forgotten the nearest open level that
+ * still has one (the upper first). Null once the title is settled, or when no open level has an Anchor left.
+ */
+function nextLevel(state: NewTitles, placement: Placement): number | null {
+  const open = openLevels(placement)
+  if (!open) return null
+  const { first, last, middle } = open
+  for (let d = 0; middle - d >= first || middle + d <= last; d++) {
+    for (const level of [middle - d, middle + d]) {
+      if (level >= first && level <= last && usable(state, level).length > 0) return level
+    }
+  }
+  return null
+}
+
+/**
+ * Where a title is settled, or null while Duels can still move it: lo = hi, or no open level has an Anchor left to
+ * ask (every one Forgotten), and then it takes the middle open level, the score it can't be told apart from.
+ */
+function settledPosition(state: NewTitles, placement: Placement): number | null {
+  const open = openLevels(placement)
+  if (!open) return placement.lo
+  return nextLevel(state, placement) === null ? 2 * open.middle + 1 : null
 }
 
 /**
@@ -111,8 +149,13 @@ function nextLevel({ lo, hi }: Placement): number | null {
  * be used, or that already gave their answer for this boundary.
  */
 function chooseAnchor(state: NewTitles, id: number, level: number): number {
-  const { anchors } = state.levels[level]
+  const anchors = usable(state, level)
   return anchors[sideHash(state.seed, id, 0xa0c4 + level) % anchors.length]
+}
+
+/** A level's Anchors that may still be chosen, by id ascending. */
+function usable(state: NewTitles, level: number): readonly number[] {
+  return state.levels[level].anchors.filter((id) => !state.excluded.has(id))
 }
 
 /**
@@ -150,8 +193,10 @@ function levelsNear(state: NewTitles, position: number): number[] {
 }
 
 export function newTitlesView(state: NewTitles): NewTitlesState {
-  const titles = state.queue.map(({ id, lo, hi }): NewTitle => {
-    if (lo === hi) return { id, settled: true, levels: [settledLevel(state, lo)] }
+  const titles = state.queue.map((placement): NewTitle => {
+    const { id, lo, hi } = placement
+    const settled = settledPosition(state, placement)
+    if (settled !== null) return { id, settled: true, levels: [settledLevel(state, settled)] }
     const levels = new Set<number>()
     for (let p = lo; p <= hi; p++) for (const level of levelsNear(state, p)) levels.add(level)
     return { id, settled: false, levels: [...levels].sort((x, y) => y - x) }
