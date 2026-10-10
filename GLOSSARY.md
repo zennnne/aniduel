@@ -100,6 +100,10 @@ _Avoid_: Reference, benchmark, scored title
 An Anchor whose Duel results have contradicted its own score at least twice. It stops being used as a reference, and its score is still left untouched.
 _Avoid_: Wrong anchor, outlier
 
+**Closer-to prompt**:
+The one-off question asked when a new title beats every Anchor of one score and loses to every Anchor of the next: which of the two scores is it closer to. Its answer settles the title.
+_Avoid_: Tie-break, rounding question
+
 **Catch-up**:
 The screen where a user adds titles they have already seen to their AniList list, a batch of suggestions at a time, by marking each one Completed, Dropped or Planning.
 _Avoid_: Onboarding, quick add, backfill, import
