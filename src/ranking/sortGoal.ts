@@ -7,6 +7,17 @@ import { scoringFor, withStep, type SavedScoring, type ScoreStep } from './scori
 /** The Score Step a Ranking gets on each Sort Goal: Scores always uses whole points; Full Ranking starts on human. */
 const STEP_FOR: Record<SortGoal, ScoreStep> = { scores: 'whole', 'full-ranking': 'human' }
 
+/** Below this many titles a full sort costs few enough Duels that a new Ranking defaults to Full Ranking. */
+const FULL_RANKING_BELOW = 100
+
+/**
+ * The Sort Goal a new Ranking defaults to on Start, from its Pool size (ADR 0007, V3 amendment): Full Ranking below
+ * 100 titles, Scores from 100 up. Never Score New Titles.
+ */
+export function defaultSortGoal(poolSize: number): SortGoal {
+  return poolSize < FULL_RANKING_BELOW ? 'full-ranking' : 'scores'
+}
+
 /** The Sort Goal a Ranking is on. A log without any `sort-goal-set` (an older one) is on Full Ranking. */
 export function goalOf(ranking: Pick<RankingState, 'sortGoal'>): SortGoal {
   return ranking.sortGoal ?? 'full-ranking'

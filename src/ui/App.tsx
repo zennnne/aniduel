@@ -36,7 +36,7 @@ import { duelsFromBands, fullRankingExtra } from '../ranking/estimate.ts'
 import { planFromScores } from '../ranking/fromScores.ts'
 import { previewOpen } from '../ranking/preview.ts'
 import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
-import { goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
+import { defaultSortGoal, goalOf, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
@@ -140,8 +140,9 @@ export function App() {
   const [refining, setRefining] = useState(false)
   // The title whose Move sheet is open over Preview.
   const [previewMoving, setPreviewMoving] = useState<number | null>(null)
-  // The Sort Goal a new Ranking starts on, chosen on Start (#28). A saved Ranking's goal lives in its log.
-  const [newGoal, setNewGoal] = useState<SortGoal>('scores')
+  // The Sort Goal the user picked on Start for a new Ranking (#28), or null while they haven't touched it and it
+  // follows the Pool size (#38). A saved Ranking's goal lives in its log.
+  const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
   // The write queue's requests and Catch-up's reads take turns in one limiter, so together they keep to AniList's rate limit.
@@ -157,12 +158,14 @@ export function App() {
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
   const list = lists[mediaType]
-  // A new Ranking starts on Scores with the Score Format's defaults (ADR 0007): its estimate is for that.
+  // The Pool's estimate is for Scores with the Score Format's defaults (ADR 0007); Full Ranking's is worked out below.
   const viewerFormat = viewer ? viewer.scoreFormat : null
   const pool = useMemo(
     () => (list ? buildPool(list, statuses, viewerFormat ? { format: viewerFormat, settings: defaultSettings(viewerFormat, 'whole') } : undefined) : null),
     [list, statuses, viewerFormat],
   )
+  // The Sort Goal a new Ranking starts on: the user's pick, else the default for the Pool size (ADR 0007, V3 amendment).
+  const newGoal: SortGoal = pickedGoal ?? defaultSortGoal(pool?.titles.length ?? 0)
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
   const titleLanguage = viewer?.titleLanguage
@@ -734,7 +737,7 @@ export function App() {
         scoresPlan: hasProgress ? null : scoresPlan,
         bandDuels: ranking ? duelsFromBands(ranking) : null,
         goal: shownGoal,
-        onGoal: (goal: SortGoal) => (ranking ? requestSortGoal(goal) : setNewGoal(goal)),
+        onGoal: (goal: SortGoal) => (ranking ? requestSortGoal(goal) : setPickedGoal(goal)),
         poolDuels: pool && shownGoal === 'scores' ? pool.expectedDuels : fullPoolDuels,
         extraDuels: ranking ? fullRankingExtra(ranking) || null : pool && fullPoolDuels !== null ? fullPoolDuels - pool.expectedDuels : null,
         onMediaType: switchMediaType,
