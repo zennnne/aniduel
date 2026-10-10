@@ -14,7 +14,7 @@ export type AnimeStanding = {
 export type ExitOfferInput = {
   /** Titles saved with a mark in this visit (Completed, Dropped, Planning or Paused all count). */
   added: number
-  /** Null while the anime list isn't read yet, or its saved progress can't be used. */
+  /** Null while the anime list isn't read yet or doesn't have the titles just saved, or its saved progress can't be used. */
   anime: AnimeStanding | null
 }
 

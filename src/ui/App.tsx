@@ -370,15 +370,13 @@ export function App() {
     if (summary) showToast(summary)
   })
 
-  /** Reads an already-loaded list again (after Catch-up wrote to it), syncing a saved Ranking like a first fetch. */
-  function refreshList(type: MediaType) {
-    if (!gateway || !viewer) return
-    if (!lists[type]) {
-      // A first read still in flight may have left before the write: start it again.
-      setRetries((n) => n + 1)
-      return
-    }
-    gateway.mediaList({ userId: viewer.id, type, statuses: OFFERED_STATUSES }).then(
+  /**
+   * Reads a list again (after Catch-up wrote to it), syncing a saved Ranking like a first fetch. Resolves once it is
+   * read, or couldn't be. A first read still in flight is dropped when this one lands: it may have left before the write.
+   */
+  function refreshList(type: MediaType): Promise<void> {
+    if (!gateway || !viewer) return Promise.resolve()
+    return gateway.mediaList({ userId: viewer.id, type, statuses: OFFERED_STATUSES }).then(
       (fetched) => {
         setLists((prev) => ({ ...prev, [type]: fetched }))
         const summary = syncPool(type, fetched, statuses)
@@ -876,7 +874,8 @@ export function App() {
       saved: !saved ? 'none' : inLog ? 'new-titles' : 'other',
     }
   }, [viewer, animeList, animeNewTitlesEligible, mediaType, log, statuses, savedBroken])
-  const offer = exitOffer({ added: catchUp.added, anime: animeStanding })
+  // The offer waits until the saves are written and the list read again, so it counts the titles just added.
+  const offer = exitOffer({ added: catchUp.added, anime: catchUp.listed ? animeStanding : null })
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =

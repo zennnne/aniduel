@@ -62,8 +62,11 @@ export type CatchUpDeps = {
   viewer: Viewer | null
   passedStore?: PassedStore
   onGatewayError: (error: unknown) => void
-  /** A run of the write queue ended with these titles on the user's anime list through Catch-up. */
-  onWritten: (mediaIds: number[]) => void
+  /**
+   * A run of the write queue ended with these titles on the user's anime list through Catch-up. Resolves once the
+   * app has read that list again (or couldn't).
+   */
+  onWritten: (mediaIds: number[]) => Promise<void>
 }
 
 const NO_PASSED: ReadonlyMap<number, number> = new Map()
@@ -94,7 +97,15 @@ export function useCatchUp(deps: CatchUpDeps) {
   const popular = useRef<Promise<CatchUpMedia[]> | null>(null)
   // The number of the batch the era chip is replacing.
   const replacedBatch = useRef(1)
-  const onWritten = useEffectEvent((ids: number[]) => deps.onWritten(ids))
+  // Saves with a mark, ever, and how many of them the app's anime list accounts for: the exit offer waits for the
+  // rest (#52). Never reset, so a list read that ends after a logout or a new visit can't count for a later save.
+  const [saves, setSaves] = useState(0)
+  const [listedSaves, setListedSaves] = useState(0)
+  const onRunEnded = useEffectEvent((written: number[]) => {
+    const upTo = saves
+    const listed = written.length > 0 ? deps.onWritten(written) : Promise.resolve()
+    void listed.then(() => setListedSaves((n) => Math.max(n, upTo)))
+  })
 
   // When a run of the write queue ends, the titles it added can join the anime Pool.
   const lastSnapshot = useRef<WriteQueueSnapshot | null>(null)
@@ -103,7 +114,7 @@ export function useCatchUp(deps: CatchUpDeps) {
     const before = lastSnapshot.current
     lastSnapshot.current = queueSnapshot
     const written = before && queueSnapshot ? settledByRun(before, queueSnapshot) : null
-    if (written && written.length > 0) onWritten(written)
+    if (written) onRunEnded(written)
   }, [queueSnapshot])
 
   const passed = (): ReadonlyMap<number, number> => {
@@ -231,6 +242,7 @@ export function useCatchUp(deps: CatchUpDeps) {
       'ANIME',
     )
     setAdded((n) => n + saved.writes.length)
+    if (saved.writes.length > 0) setSaves((n) => n + 1)
     deps.passedStore?.record(saved.passed, now)
     current.list = saved.list
     current.history = saved.history
@@ -284,6 +296,8 @@ export function useCatchUp(deps: CatchUpDeps) {
     queue: queueSnapshot ? catchUpSnapshot(queueSnapshot) : NO_QUEUE,
     /** Titles saved with a mark in this visit. */
     added,
+    /** Whether every save has been written (or failed) and the app's anime list read since. */
+    listed: listedSaves >= saves,
     /** Opens Catch-up for a new visit; what it shows stays as it was left. */
     open: () => {
       setAdded(0)
