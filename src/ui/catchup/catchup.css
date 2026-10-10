@@ -1,4 +1,4 @@
-/* Catch-up (#49): header, failure bar, cover grid with tap-cycle marks, footer. Visual reference: prototype #42. */
+/* Catch-up (#49): header, failure bar, cover grid with tap-cycle marks and AniList links, footer. Visual reference: prototype #42. */
 .cu {
   flex: 1;
   min-height: 0;
@@ -123,6 +123,9 @@
 .cu-dot.p {
   background: var(--m-planning);
 }
+.cu-dot.u {
+  background: var(--m-paused);
+}
 .cu-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
@@ -136,8 +139,14 @@
   user-select: none;
   min-width: 0;
 }
+.cu-art {
+  position: relative;
+  display: flex;
+}
 .cu-cover {
   position: relative;
+  flex: 1;
+  min-width: 0;
   aspect-ratio: 2 / 3;
   border-radius: 8px;
   overflow: hidden;
@@ -173,6 +182,9 @@
 .cu-cover.marked-p {
   box-shadow: 0 0 0 3px var(--m-planning);
 }
+.cu-cover.marked-u {
+  box-shadow: 0 0 0 3px var(--m-paused);
+}
 .cu-ribbon {
   position: absolute;
   top: 8px;
@@ -192,6 +204,9 @@
 }
 .cu-ribbon.p {
   background: var(--m-planning);
+}
+.cu-ribbon.u {
+  background: var(--m-paused);
 }
 /* ⋯ shows on hover or when marked on desktop, always on touch screens. */
 .cu-more {
@@ -220,6 +235,35 @@
 }
 @media (hover: none) {
   .cu-more {
+    opacity: 1;
+  }
+}
+/* ↗ opens the title on AniList: on hover on desktop, always on touch screens. */
+.cu-ext {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #0008;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cu-ext .li {
+  width: 14px;
+  height: 14px;
+}
+.cu-tile:hover .cu-ext,
+.cu-ext:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .cu-ext {
     opacity: 1;
   }
 }

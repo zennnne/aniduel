@@ -31,6 +31,7 @@
   --m-completed: #3fae5a;
   --m-dropped: #e05555;
   --m-planning: #f2a03d;
+  --m-paused: #8f67d8;
 
   /* Immersive screens (Rough Sort, Duel) sit on a dark blurred backdrop in both themes. */
   --ok: #7bd88f;

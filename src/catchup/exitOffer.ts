@@ -3,7 +3,7 @@
 
 /** What the user saved in this visit to Catch-up. */
 export type ExitOfferInput = {
-  /** Titles saved with a mark (Completed, Dropped or Planning all count). */
+  /** Titles saved with a mark (Completed, Dropped, Planning or Paused all count). */
   added: number
 }
 
