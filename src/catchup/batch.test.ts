@@ -10,6 +10,7 @@ function anime(id: number, overrides: Partial<CatchUpMedia> = {}): CatchUpMedia 
     title: { romaji: `Anime ${id}`, english: null, native: null },
     coverUrl: null,
     coverColor: null,
+    siteUrl: '',
     year: 2015,
     format: 'TV',
     status: 'FINISHED',
@@ -39,30 +40,34 @@ describe('Catch-up batch: marks', () => {
 
     expect(batch.number).toBe(1)
     expect(batch.suggestions).toHaveLength(20)
-    expect(markCounts(batch)).toEqual({ completed: 0, dropped: 0, planning: 0, passed: 20 })
+    expect(markCounts(batch)).toEqual({ completed: 0, dropped: 0, planning: 0, paused: 0, passed: 20 })
   })
 
-  it('cycles a tapped title Completed → Dropped → Planning → none', () => {
+  it('cycles a tapped title Completed → Dropped → Planning → Paused → none', () => {
     let batch = start(filler(40))
     const id = ids(batch)[0]
     const seen: Array<string | undefined> = []
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       batch = cycleMark(batch, id)
       seen.push(batch.marks.get(id))
     }
 
-    expect(seen).toEqual(['COMPLETED', 'DROPPED', 'PLANNING', undefined])
+    expect(seen).toEqual(['COMPLETED', 'DROPPED', 'PLANNING', 'PAUSED', undefined])
   })
 
   it('sets or clears a mark directly from the ⋯ menu', () => {
     let batch = start(filler(40))
-    const [a, b] = ids(batch)
+    const [a, b, c] = ids(batch)
     batch = setMark(batch, a, 'PLANNING')
     batch = setMark(batch, b, 'DROPPED')
     batch = setMark(batch, b, null)
+    batch = setMark(batch, c, 'PAUSED')
 
-    expect([...batch.marks]).toEqual([[a, 'PLANNING']])
-    expect(markCounts(batch)).toEqual({ completed: 0, dropped: 0, planning: 1, passed: 19 })
+    expect([...batch.marks]).toEqual([
+      [a, 'PLANNING'],
+      [c, 'PAUSED'],
+    ])
+    expect(markCounts(batch)).toEqual({ completed: 0, dropped: 0, planning: 1, paused: 1, passed: 18 })
   })
 
   it('ignores a title that is not in the batch', () => {
@@ -117,6 +122,17 @@ describe('Catch-up batch: Save & next', () => {
 
     expect(updated).toContainEqual({ mediaId: 500, status: 'COMPLETED', year: 2015, format: 'TV' })
     expect(ids(next)[0]).toBe(501)
+  })
+
+  it('counts a title marked Paused as watched: it is written as Paused and its sequel comes first', () => {
+    const paused = anime(500, { watched: 1_000_000, relations: [{ type: 'SEQUEL', mediaId: 501 }] })
+    const media = [paused, anime(501, { watched: 1 }), ...filler(40)]
+    const batch = setMark(start(media), 500, 'PAUSED')
+
+    const saved = saveBatch(batch, { list, media, passed: new Map(), now: NOW, seed: 2 })
+
+    expect(saved.writes).toEqual([{ mediaId: 500, listStatus: 'PAUSED' }])
+    expect(ids(saved.next)[0]).toBe(501)
   })
 
   it('keeps titles marked Planning out of later batches without counting them as watched', () => {

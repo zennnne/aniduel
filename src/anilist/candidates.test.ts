@@ -24,6 +24,7 @@ function rawMedia(id: number, overrides: Record<string, unknown> = {}) {
     id,
     title: { romaji: `Romaji ${id}`, english: null, native: null },
     coverImage: { large: `https://img/${id}.jpg`, color: '#123456' },
+    siteUrl: `https://anilist.co/anime/${id}`,
     startDate: { year: 2015 },
     format: 'TV',
     status: 'FINISHED',
@@ -60,6 +61,7 @@ describe('Catch-up candidate query', () => {
       expect(call.body.query).toMatch(/recommendations\([^)]*sort: RATING_DESC/)
       expect(call.body.query).toMatch(/tags\s*\{/)
       expect(call.body.query).toMatch(/statusDistribution\s*\{\s*status\s+amount\s*\}/)
+      expect(call.body.query).toMatch(/\bsiteUrl\b/)
     }
   })
 
@@ -119,6 +121,7 @@ describe('Catch-up candidate query', () => {
       title: { romaji: 'Shingeki no Kyojin', english: 'Attack on Titan', native: '進撃の巨人' },
       coverUrl: 'https://img/7.jpg',
       coverColor: null,
+      siteUrl: 'https://anilist.co/anime/7',
       year: 2013,
       format: 'TV',
       status: 'FINISHED',

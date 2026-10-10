@@ -6,10 +6,10 @@ import type { QueuedWrite, StatusWrite } from '../writes/writeQueue.ts'
 import { suggestCatchUp, type Suggestion } from './suggest.ts'
 
 /** What a title can be marked in Catch-up. Unmarked means Passed. */
-export type CatchUpMark = Extract<ListStatus, 'COMPLETED' | 'DROPPED' | 'PLANNING'>
+export type CatchUpMark = Extract<ListStatus, 'COMPLETED' | 'DROPPED' | 'PLANNING' | 'PAUSED'>
 
 /** Tapping a cover steps through these, then back to unmarked. */
-export const MARK_CYCLE: readonly CatchUpMark[] = ['COMPLETED', 'DROPPED', 'PLANNING']
+export const MARK_CYCLE: readonly CatchUpMark[] = ['COMPLETED', 'DROPPED', 'PLANNING', 'PAUSED']
 
 /** One title on the user's anime list, as Catch-up needs it. */
 export type CatchUpEntry = Pick<ListEntry, 'mediaId' | 'status' | 'year' | 'format'>
@@ -54,14 +54,14 @@ export function setMark(batch: CatchUpBatch, id: number, mark: CatchUpMark | nul
   return { ...batch, marks }
 }
 
-/** A tap on a cover: Completed → Dropped → Planning → unmarked. */
+/** A tap on a cover: Completed → Dropped → Planning → Paused → unmarked. */
 export function cycleMark(batch: CatchUpBatch, id: number): CatchUpBatch {
   const now = batch.marks.get(id)
   const next = now === undefined ? MARK_CYCLE[0] : (MARK_CYCLE[MARK_CYCLE.indexOf(now) + 1] ?? null)
   return setMark(batch, id, next)
 }
 
-export type MarkCounts = { completed: number; dropped: number; planning: number; passed: number }
+export type MarkCounts = { completed: number; dropped: number; planning: number; paused: number; passed: number }
 
 export function markCounts(batch: CatchUpBatch): MarkCounts {
   const marks = [...batch.marks.values()]
@@ -70,6 +70,7 @@ export function markCounts(batch: CatchUpBatch): MarkCounts {
     completed: count('COMPLETED'),
     dropped: count('DROPPED'),
     planning: count('PLANNING'),
+    paused: count('PAUSED'),
     passed: batch.suggestions.length - marks.length,
   }
 }

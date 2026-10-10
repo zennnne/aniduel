@@ -93,6 +93,7 @@ function anime(id: number): CatchUpMedia {
     title: { romaji: `Anime ${id}`, english: null, native: null },
     coverUrl: null,
     coverColor: null,
+    siteUrl: '',
     year: 2015,
     format: 'TV',
     status: 'FINISHED',

@@ -4,11 +4,12 @@ import { MARK_CYCLE, markCounts, type CatchUpMark } from '../../catchup/batch.ts
 import { queueProgress, type QueueSnapshot } from '../../catchup/queue.ts'
 import { BATCH_SIZE } from '../../catchup/suggest.ts'
 import { displayTitle } from '../../pool/pool.ts'
+import { EXT_ICON } from '../icons.tsx'
 import type { CatchUpView } from './useCatchUp.ts'
 import './catchup.css'
 
-const MARK_LABEL: Record<CatchUpMark, string> = { COMPLETED: 'Completed', DROPPED: 'Dropped', PLANNING: 'Planning' }
-const MARK_CLASS: Record<CatchUpMark, string> = { COMPLETED: 'c', DROPPED: 'd', PLANNING: 'p' }
+const MARK_LABEL: Record<CatchUpMark, string> = { COMPLETED: 'Completed', DROPPED: 'Dropped', PLANNING: 'Planning', PAUSED: 'Paused' }
+const MARK_CLASS: Record<CatchUpMark, string> = { COMPLETED: 'c', DROPPED: 'd', PLANNING: 'p', PAUSED: 'u' }
 
 /** "2013 · TV", "2016 · MOVIE". */
 function metaOf(year: number | null, format: string | null): string {
@@ -48,7 +49,8 @@ function QueueStatus(props: { queue: QueueSnapshot }) {
 
 /**
  * Catch-up (#49, UI decisions on #37 from prototype #42): a grid of 20 covers. Tapping a cover cycles Completed →
- * Dropped → Planning → none; ⋯ picks a mark directly. "Save & next 20" queues the marks and shows the next batch.
+ * Dropped → Planning → Paused → none; ⋯ picks a mark directly; ↗ opens the title on AniList (#54). "Save & next 20"
+ * queues the marks and shows the next batch.
  */
 export function CatchUpScreen(props: {
   view: CatchUpView
@@ -146,7 +148,8 @@ export function CatchUpScreen(props: {
               Tap a cover: <span className="cu-dot c" />
               Completed → <span className="cu-dot d" />
               Dropped → <span className="cu-dot p" />
-              Planning → none, or use ⋯. Leave the rest alone.
+              Planning → <span className="cu-dot u" />
+              Paused → none, or use ⋯. Leave the rest alone.
             </p>
             <div className="cu-grid">
               {view.batch.suggestions.map(({ media }) => {
@@ -154,15 +157,20 @@ export function CatchUpScreen(props: {
                 const name = displayTitle(media.title, props.titleLanguage)
                 return (
                   <div key={media.id} className={mark ? 'cu-tile has' : 'cu-tile'}>
-                    <button
-                      className={mark ? `cu-cover marked-${MARK_CLASS[mark]}` : 'cu-cover'}
-                      style={{ backgroundColor: media.coverColor ?? undefined }}
-                      aria-label={`${name}: ${mark ? MARK_LABEL[mark] : 'not marked'}. Tap to change.`}
-                      onClick={() => props.onCycle(media.id)}
-                    >
-                      {media.coverUrl ? <img src={media.coverUrl} alt="" loading="lazy" /> : <span className="cu-noimg">{name}</span>}
-                      {mark && <span className={`cu-ribbon ${MARK_CLASS[mark]}`}>{MARK_LABEL[mark]}</span>}
-                    </button>
+                    <div className="cu-art">
+                      <button
+                        className={mark ? `cu-cover marked-${MARK_CLASS[mark]}` : 'cu-cover'}
+                        style={{ backgroundColor: media.coverColor ?? undefined }}
+                        aria-label={`${name}: ${mark ? MARK_LABEL[mark] : 'not marked'}. Tap to change.`}
+                        onClick={() => props.onCycle(media.id)}
+                      >
+                        {media.coverUrl ? <img src={media.coverUrl} alt="" loading="lazy" /> : <span className="cu-noimg">{name}</span>}
+                        {mark && <span className={`cu-ribbon ${MARK_CLASS[mark]}`}>{MARK_LABEL[mark]}</span>}
+                      </button>
+                      <a className="cu-ext" aria-label={`Open ${name} on AniList`} title="Open on AniList" href={media.siteUrl} target="_blank" rel="noreferrer">
+                        {EXT_ICON}
+                      </a>
+                    </div>
                     <button
                       className="cu-more"
                       aria-label={`Mark ${name}`}
@@ -222,7 +230,8 @@ export function CatchUpScreen(props: {
             <span className="cu-dot c" />
             {counts.completed} Completed <span className="cu-dot d" />
             {counts.dropped} Dropped <span className="cu-dot p" />
-            {counts.planning} Planning <span className="cu-pass">· {counts.passed} Passed (hidden 30 days)</span>
+            {counts.planning} Planning <span className="cu-dot u" />
+            {counts.paused} Paused <span className="cu-pass">· {counts.passed} Passed (hidden 30 days)</span>
           </span>
           <span className="grow" />
           <button className="go" onClick={props.onSave}>

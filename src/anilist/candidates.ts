@@ -12,6 +12,7 @@ export type CatchUpMedia = {
   title: Title
   coverUrl: string | null
   coverColor: string | null
+  siteUrl: string
   year: number | null
   format: string | null
   /** AniList's MediaStatus: FINISHED, RELEASING, NOT_YET_RELEASED, CANCELLED or HIATUS. */
@@ -31,6 +32,7 @@ const CANDIDATE_FIELDS = `
       id
       title { romaji english native }
       coverImage { large color }
+      siteUrl
       startDate { year }
       format
       status
@@ -58,6 +60,7 @@ type RawCandidate = {
   id: number
   title: Title
   coverImage: { large: string | null; color: string | null } | null
+  siteUrl: string
   startDate: { year: number | null } | null
   format: string | null
   status: string | null
@@ -75,6 +78,7 @@ function toCatchUpMedia(raw: RawCandidate): CatchUpMedia {
     title: raw.title,
     coverUrl: raw.coverImage?.large ?? null,
     coverColor: raw.coverImage?.color ?? null,
+    siteUrl: raw.siteUrl,
     year: raw.startDate?.year ?? null,
     format: raw.format,
     status: raw.status,
