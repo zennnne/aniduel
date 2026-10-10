@@ -397,6 +397,45 @@ describe('Forgotten and Undo on a new title', () => {
   })
 })
 
+describe('Re-rank on a new title', () => {
+  it('forgets where it was placed and asks it again first, the same Duels on every replay', () => {
+    const anchors = anchorsOn(9, 9, 9, 8, 8, 8, 7, 7, 7)
+    const truth = new Map([
+      [1, 8],
+      [2, 7],
+    ])
+    const { log } = play(logOf(anchors, [1, 2]), anchors, truth)
+    const reranked = plus(log, { type: 'rerank-requested', id: 2 })
+    const state = replay(reranked)
+    expect(state.newTitles!.titles.find((t) => t.id === 2)).toEqual({ id: 2, settled: false, levels: [10, 9, 8, 7, 6] })
+    expect(state.newTitles!.titles.find((t) => t.id === 1)).toEqual({ id: 1, settled: true, levels: [8] })
+    expect(state.prompt).toMatchObject({ kind: 'anchor-duel', a: 2 })
+    expect(replay(reranked).prompt).toEqual(state.prompt)
+    // Answered again, it lands where the new answers put it.
+    expect(settledScores(play(reranked, anchors, new Map([...truth, [2, 9]])).state)).toEqual(new Map([[1, 8], [2, 9]]))
+    // Undo puts it back where it was.
+    expect(replay(plus(reranked, { type: 'undo' })).newTitles).toEqual(replay(log).newTitles)
+  })
+
+  it('takes back the contradictions it recorded', () => {
+    // 105 plays like a 6: the two titles on 8 that beat it make it Suspect; re-ranking one of them clears that.
+    const anchors = anchorsOn(9, 9, 9, 8, 8, 8, 7, 7, 7)
+    const ids = Array.from({ length: 8 }, (_, i) => 1 + i)
+    const { state, log, met } = play(logOf(anchors, ids), anchors, new Map(ids.map((id) => [id, 8])), rng(3), new Map([[105, 6]]))
+    const against = met.filter((m) => m.anchor === 105).map((m) => m.title)
+    expect(against).toHaveLength(2)
+    expect(state.newTitles!.suspect.map((s) => s.id)).toEqual([105])
+    expect(replay(plus(log, { type: 'rerank-requested', id: against[0] })).newTitles!.suspect).toEqual([])
+  })
+
+  it('is refused on an Anchor, a Forgotten new title, or a title not in the Ranking', () => {
+    const log = logOf(anchorsOn(9, 8, 7), [1, 2])
+    expect(() => replay(plus(log, { type: 'rerank-requested', id: 101 }))).toThrow(ReplayError)
+    expect(() => replay(plus(log, { type: 'forgotten', id: 2 }, { type: 'rerank-requested', id: 2 }))).toThrow(ReplayError)
+    expect(() => replay(plus(log, { type: 'rerank-requested', id: 999 }))).toThrow(ReplayError)
+  })
+})
+
 describe('Forgotten on an Anchor', () => {
   type AnchorDuelPrompt = Extract<RankingState['prompt'], { kind: 'anchor-duel' }>
   const promptOf = (log: DuelLog) => replay(log).prompt as AnchorDuelPrompt

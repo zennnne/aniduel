@@ -11,6 +11,7 @@ import {
   answerCloserTo,
   newTitlesView,
   nextQuestion,
+  rerankNewTitle,
   returnNewTitle,
   startNewTitles,
   takeOutNewTitle,
@@ -172,14 +173,13 @@ const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; nam
 
 /**
  * Events that have no meaning under Score New Titles (no Rough Sort, no Bands, no switching, ADR 0009): refused
- * there. `rerank-requested` has no Score New Titles meaning yet either.
+ * there. `rerank-requested` works on a new title only (`rerankNewTitle`), never on an Anchor.
  */
 const NOT_ON_NEW_TITLES: ReadonlySet<RecordedEvent['type']> = new Set([
   'band-assigned',
   'band-split',
   'band-selected',
   'band-moved',
-  'rerank-requested',
   'bands-from-scores',
   'sort-goal-set',
 ])
@@ -646,6 +646,13 @@ function apply(machine: Machine, event: RecordedEvent): void {
       machine.placedByHand = true
       return
     case 'rerank-requested': {
+      if (machine.newTitles) {
+        // Score New Titles: a new title's search starts over. Anchors and Forgotten titles aren't in the queue.
+        if (!rerankNewTitle(machine.newTitles, event.id)) {
+          throw new ReplayError(`Title ${event.id} can't be re-ranked: it is not a new title in the Ranking`)
+        }
+        return
+      }
       const place = placeOf(machine, event.id)
       if (!place) throw new ReplayError(`Title ${event.id} can't be re-ranked: it is not in a Band`)
       sendToFront(machine, event.id, place)

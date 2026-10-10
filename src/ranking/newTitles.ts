@@ -33,6 +33,8 @@ export type NewTitlesState = {
   format: ScoreFormat
   /** The Anchor score levels, best first. */
   levels: readonly AnchorLevel[]
+  /** How many Anchors the snapshot has, on every level (Forgotten and Suspect ones too). */
+  anchorCount: number
   /** Every new title in the Ranking (Forgotten ones are not), in the order Duels work on them. */
   titles: readonly NewTitle[]
   /** Suspect Anchors (not Forgotten ones), best score first, then by id. Their scores are never changed. */
@@ -474,5 +476,5 @@ export function newTitlesView(state: NewTitles): NewTitlesState {
       .filter((id) => state.suspect.has(id) && !state.excluded.has(id))
       .map((id): SuspectAnchor => ({ id, level, contradicted: state.suspect.get(id)! })),
   )
-  return { format: state.format, levels: state.levels, titles, suspect }
+  return { format: state.format, levels: state.levels, anchorCount: state.anchorIds.size, titles, suspect }
 }
