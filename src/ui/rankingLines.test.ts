@@ -70,11 +70,11 @@ describe('score lines on Score New Titles', () => {
   }
   const state = replay(log)
 
-  it('has one line per Anchor score, best first, with its Anchor count and its settled new titles by name', () => {
+  it('has one line per Anchor score, best first, with a few of its Anchors and its settled new titles by name', () => {
     expect(newTitlesLines(state, name)).toEqual([
-      { level: 9, mark: '9', anchors: 2, ids: [2, 1] },
-      { level: 8, mark: '8', anchors: 1, ids: [] },
-      { level: 7, mark: '7', anchors: 1, ids: [3] },
+      { level: 9, mark: '9', anchors: [101, 102], more: 0, ids: [2, 1] },
+      { level: 8, mark: '8', anchors: [103], more: 0, ids: [] },
+      { level: 7, mark: '7', anchors: [104], more: 0, ids: [3] },
     ])
   })
 
@@ -84,10 +84,18 @@ describe('score lines on Score New Titles', () => {
       above = appendEvent(above, { type: 'duel-answered', a: s.prompt.a, b: s.prompt.b, result: 'a' })
     }
     expect(newTitlesLines(replay(above), name)).toEqual([
-      { level: 10, mark: '10', anchors: 0, ids: [5] },
-      { level: 9, mark: '9', anchors: 2, ids: [] },
-      { level: 8, mark: '8', anchors: 1, ids: [] },
-      { level: 7, mark: '7', anchors: 1, ids: [] },
+      { level: 10, mark: '10', anchors: [], more: 0, ids: [5] },
+      { level: 9, mark: '9', anchors: [101, 102], more: 0, ids: [] },
+      { level: 8, mark: '8', anchors: [103], more: 0, ids: [] },
+      { level: 7, mark: '7', anchors: [104], more: 0, ids: [] },
     ])
+  })
+
+  it('shows three Anchors of a score and counts the rest, leaving out Forgotten ones', () => {
+    const many = [9, 9, 9, 9, 9, 8, 7].map((level, i) => ({ id: 201 + i, level }))
+    let crowded: DuelLog = startNewTitlesLog({ seed: 5, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors: many, ids: [1] })
+    expect(newTitlesLines(replay(crowded), name)[0]).toMatchObject({ anchors: [201, 202, 203], more: 2 })
+    crowded = appendEvent(crowded, { type: 'forgotten', id: 202 })
+    expect(newTitlesLines(replay(crowded), name)[0]).toMatchObject({ anchors: [201, 203, 204], more: 1 })
   })
 })

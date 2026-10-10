@@ -124,17 +124,18 @@ export function RankingSidebar(props: {
 
 /**
  * Score New Titles (ADR 0009, #39): one "Scored" bar, where the title in the Duel can still land, and one row per
- * score with its Anchor count and the new titles settled on it. Scores the current title can still get are lit. The
- * Anchor in the Duel and its score are never marked.
+ * score with the covers of a few of its Anchors, then of the new titles settled on it (ringed). Scores the current
+ * title can still get are lit. The Anchor in the Duel and its score are never marked.
  */
 function NewTitlesSidebar(props: {
   viewer: Viewer
   mediaType: MediaType
   state: RankingState
+  entries: ReadonlyMap<number, ListEntry>
   menu?: ReactNode
   name: (id: number) => string
 }) {
-  const { viewer, mediaType, state, menu, name } = props
+  const { viewer, mediaType, state, entries, menu, name } = props
   const newTitles = state.newTitles!
   const { done, total } = state.progress.ranked
   const prompt = state.prompt
@@ -143,6 +144,14 @@ function NewTitlesSidebar(props: {
   const open = current ? new Set(current.levels) : null
   const mark = (level: number) => formatLevel(newTitles.format, level)
   const lines = newTitlesLines(state, name)
+  const cover = (id: number, cls: string) => {
+    const entry = entries.get(id)
+    return entry?.coverUrl ? (
+      <img key={id} className={cls} src={entry.coverUrl} alt={name(id)} title={name(id)} style={{ background: entry.coverColor ?? undefined }} />
+    ) : (
+      <span key={id} className={`${cls} ph`} title={name(id)} style={{ ['--c' as string]: entry?.coverColor ?? undefined }} />
+    )
+  }
   return (
     <>
       <div className="logo">
@@ -173,13 +182,10 @@ function NewTitlesSidebar(props: {
         {lines.map((line) => (
           <div key={line.level} className={open ? (open.has(line.level) ? 'lvl inb' : 'lvl out') : 'lvl'}>
             <b>{line.mark}</b>
-            <span>
-              <span className="fine">{count(line.anchors, 'Anchor')}</span>
-              <span className="lvchips">
-                {line.ids.map((id) => (
-                  <span key={id}>{name(id)}</span>
-                ))}
-              </span>
+            <span className="lvcovers">
+              {line.anchors.map((id) => cover(id, 'cv'))}
+              {line.more > 0 && <span className="fine">+{line.more}</span>}
+              {line.ids.map((id) => cover(id, 'cv new'))}
             </span>
           </div>
         ))}

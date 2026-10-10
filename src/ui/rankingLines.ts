@@ -18,10 +18,27 @@ export type NewTitlesLine = {
   level: number
   /** The score as the Anchor snapshot's Score Format shows it. */
   mark: string
-  /** How many Anchors have this score (0 for a score no Anchor has). */
-  anchors: number
+  /** A few of the score's Anchors to show (none for a score no Anchor has), and how many more it has. */
+  anchors: readonly number[]
+  more: number
   /** The settled new titles on it, sorted by `name`: they have no order among themselves. */
   ids: readonly number[]
+}
+
+/** Anchors shown per score, on the sidebar and the Closer-to prompt. */
+const ANCHORS_SHOWN = 3
+
+/**
+ * The Anchors to show for a score, the same ones wherever it is shown, and how many more it has. Never Forgotten or
+ * Suspect ones: they are no longer a reference.
+ */
+export function shownAnchors(state: RankingState, level: number): { shown: number[]; more: number } {
+  const newTitles = state.newTitles
+  if (!newTitles) return { shown: [], more: 0 }
+  const unused = new Set([...state.forgotten, ...newTitles.suspect.map((s) => s.id)])
+  const usable = (newTitles.levels.find((l) => l.level === level)?.anchors ?? []).filter((id) => !unused.has(id))
+  const shown = usable.slice(0, ANCHORS_SHOWN)
+  return { shown, more: usable.length - shown.length }
 }
 
 /**
@@ -31,19 +48,23 @@ export type NewTitlesLine = {
 export function newTitlesLines(state: RankingState, name: (id: number) => string): NewTitlesLine[] {
   const newTitles = state.newTitles
   if (!newTitles) return []
-  const anchors = new Map(newTitles.levels.map((l) => [l.level, l.anchors.length]))
+  const anchorLevels = newTitles.levels.map((l) => l.level)
   const settled = new Map<number, number[]>()
   for (const title of newTitles.titles) {
     if (title.settled) settled.set(title.levels[0], [...(settled.get(title.levels[0]) ?? []), title.id])
   }
-  return [...new Set([...anchors.keys(), ...settled.keys()])]
+  return [...new Set([...anchorLevels, ...settled.keys()])]
     .sort((x, y) => y - x)
-    .map((level) => ({
-      level,
-      mark: formatLevel(newTitles.format, level),
-      anchors: anchors.get(level) ?? 0,
-      ids: [...(settled.get(level) ?? [])].sort((x, y) => compareNames(name(x), name(y))),
-    }))
+    .map((level) => {
+      const { shown, more } = shownAnchors(state, level)
+      return {
+        level,
+        mark: formatLevel(newTitles.format, level),
+        anchors: shown,
+        more,
+        ids: [...(settled.get(level) ?? [])].sort((x, y) => compareNames(name(x), name(y))),
+      }
+    })
 }
 
 /**

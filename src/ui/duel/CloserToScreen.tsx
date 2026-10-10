@@ -4,13 +4,11 @@ import type { Prompt, RankingState } from '../../ranking/engine.ts'
 import { formatLevel } from '../../ranking/scoring.ts'
 import { UNDO_ICON } from '../icons.tsx'
 import { titleName } from '../meta.ts'
+import { shownAnchors } from '../rankingLines.ts'
 import { EarlyPreviewButton, type EarlyPreview } from './DuelScreen.tsx'
 import './duel.css'
 
 type CloserToPrompt = Extract<Prompt, { kind: 'closer-to' }>
-
-/** Anchors shown per score: their covers and names. */
-const SHOWN = 3
 
 function Cover({ entry }: { entry: ListEntry | undefined }) {
   return entry?.coverUrl ? (
@@ -37,7 +35,6 @@ export function CloserToScreen(props: {
   const { state, prompt, entries, titleLanguage, onPick, onUndo, early } = props
   const newTitles = state.newTitles!
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
-  const unused = new Set([...state.forgotten, ...newTitles.suspect.map((s) => s.id)])
   const { done, total } = state.progress.ranked
 
   const onKey = useEffectEvent((e: KeyboardEvent) => {
@@ -59,9 +56,7 @@ export function CloserToScreen(props: {
   }, [])
 
   const column = (level: number, key: string) => {
-    const anchors = (newTitles.levels.find((l) => l.level === level)?.anchors ?? []).filter((id) => !unused.has(id))
-    const shown = anchors.slice(0, SHOWN)
-    const more = anchors.length - shown.length
+    const { shown, more } = shownAnchors(state, level)
     const label = formatLevel(newTitles.format, level)
     return (
       <button className="col" onClick={() => onPick(level)} aria-label={`Closer to ${label}`}>

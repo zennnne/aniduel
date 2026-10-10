@@ -512,6 +512,28 @@ a {
   padding: 1px 5px;
   font-size: 11px;
 }
+/* Score New Titles: a score's Anchors as small covers, then the new titles settled on it, ringed */
+.rank .lvcovers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+}
+.rank .lvcovers .cv {
+  width: 24px;
+  aspect-ratio: 2 / 3;
+  border-radius: 3px;
+  padding: 0;
+}
+.rank .lvcovers .cv.new {
+  box-shadow: 0 0 0 2px var(--blue);
+  margin: 2px;
+}
+.rank .lvcovers .fine {
+  font-size: 11px;
+  margin-right: 4px;
+}
 @media (max-width: 720px) {
   .hide-m {
     display: none !important;
