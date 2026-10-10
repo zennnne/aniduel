@@ -269,11 +269,11 @@ function GoalInfo({ extraDuels }: { extraDuels: number | null }) {
               ×
             </button>
           )}
-          <b>Scores</b> (default): Duels stop once every title's score is settled. Whole points (8, not 8.5). Titles on
+          <b>Scores</b> (default from 100 titles): Duels stop once every title's score is settled. Whole points (8, not 8.5). Titles on
           the same score have no order among themselves.
           <br />
           <br />
-          <b>Full Ranking</b>: every title gets its own place, even on the same score, and you can pick 0.5 or 0.1 steps.
+          <b>Full Ranking</b> (default under 100 titles): every title gets its own place, even on the same score, and you can pick 0.5 or 0.1 steps.
           {extraDuels ? ` About ${extraDuels} more Duels.` : ''}
           <br />
           <br />
