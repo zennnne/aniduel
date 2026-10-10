@@ -174,7 +174,7 @@ function NewTitlesSidebar(props: {
           <div key={line.level} className={open ? (open.has(line.level) ? 'lvl inb' : 'lvl out') : 'lvl'}>
             <b>{line.mark}</b>
             <span>
-              <span className="fine">{line.anchors} scored</span>
+              <span className="fine">{count(line.anchors, 'Anchor')}</span>
               <span className="lvchips">
                 {line.ids.map((id) => (
                   <span key={id}>{name(id)}</span>
