@@ -265,3 +265,6 @@
     grid-template-columns: 44px 1fr;
   }
 }
+a.mini-b {
+  text-decoration: none;
+}
