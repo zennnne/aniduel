@@ -39,7 +39,7 @@ import { duelsFromBands, fullRankingExtra } from '../ranking/estimate.ts'
 import { planFromScores } from '../ranking/fromScores.ts'
 import { previewOpen } from '../ranking/preview.ts'
 import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
-import { goalOf, isNewTitles, switchGoalEvents } from '../ranking/sortGoal.ts'
+import { defaultSortGoal, goalOf, isNewTitles, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
@@ -144,8 +144,9 @@ export function App() {
   const [refining, setRefining] = useState(false)
   // The title whose Move sheet is open over Preview.
   const [previewMoving, setPreviewMoving] = useState<number | null>(null)
-  // The Sort Goal a new Ranking starts on, chosen on Start (#28). A saved Ranking's goal lives in its log.
-  const [newGoal, setNewGoal] = useState<SortGoal>('scores')
+  // The Sort Goal the user picked on Start for a new Ranking (#28), or null while they haven't touched it and it
+  // follows the Pool size (#38). A saved Ranking's goal lives in its log.
+  const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
   // The write queue's requests and Catch-up's reads take turns in one limiter, so together they keep to AniList's rate limit.
@@ -161,16 +162,16 @@ export function App() {
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
   const list = lists[mediaType]
-  // A new Ranking starts on Scores with the Score Format's defaults (ADR 0007): its estimate is for that.
+  // The Pool's estimate is for Scores with the Score Format's defaults (ADR 0007); Full Ranking's is worked out below.
   const viewerFormat = viewer ? viewer.scoreFormat : null
   // Score New Titles (ADR 0009): the Anchors a new Ranking would snapshot, and whether there are enough of them.
   const anchors = useMemo(() => (list && viewerFormat ? anchorsOf(list, viewerFormat) : null), [list, viewerFormat])
   const eligibility = useMemo(() => (anchors ? newTitlesEligibility(anchors) : null), [anchors])
-  // The Sort Goal a new Ranking starts on: New Titles stops counting once it isn't eligible (e.g. on another Media Type).
-  const startGoal: SortGoal = newGoal === 'score-new-titles' && eligibility?.eligible === false ? 'scores' : newGoal
+  // A New Titles pick on Start stops counting once it isn't eligible (e.g. on another Media Type).
+  const newTitlesPicked = pickedGoal === 'score-new-titles' && eligibility?.eligible !== false
   // A saved Score New Titles Ranking's Anchors and Pool; null for any other Ranking.
   const savedNewTitles = useMemo(() => (log ? newTitlesInLog(log) : null), [log])
-  const onNewTitles = ranking ? isNewTitles(ranking) : startGoal === 'score-new-titles'
+  const onNewTitles = ranking ? isNewTitles(ranking) : newTitlesPicked
   // Its Pool is the titles without a score (and the saved Ranking's new titles), never an Anchor.
   const poolList = useMemo(() => (list && onNewTitles ? newTitlesList(list, savedNewTitles) : list), [list, onNewTitles, savedNewTitles])
   const pool = useMemo(
@@ -180,6 +181,8 @@ export function App() {
         : null,
     [poolList, statuses, viewerFormat],
   )
+  // The Sort Goal a new Ranking starts on: the user's pick, else the default for the Pool size (ADR 0007, V3 amendment).
+  const newGoal: SortGoal = (pickedGoal === 'score-new-titles' && !newTitlesPicked ? null : pickedGoal) ?? defaultSortGoal(pool?.titles.length ?? 0)
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
   const titleLanguage = viewer?.titleLanguage
@@ -538,7 +541,7 @@ export function App() {
     if (!viewer) return
     if (!duelLog.latest()) {
       if (!startOrder) return
-      if (startGoal === 'score-new-titles') {
+      if (newGoal === 'score-new-titles') {
         // Score New Titles (ADR 0009): the Anchors are snapshotted into the log now; Duels start straight away.
         if (!anchors || !eligibility?.eligible) return
         const ids = startOrder
@@ -549,7 +552,7 @@ export function App() {
       // The new log carries its own Sort Goal and default scoring settings (ADR 0007).
       const started = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder, scoreFormat: viewer.scoreFormat })
       // Full Ranking picked on Start: the same switch as from the menu, before anything is sorted.
-      const log = switchGoalEvents(replay(started), null, viewer.scoreFormat, startGoal).reduce(appendEvent, started)
+      const log = switchGoalEvents(replay(started), null, viewer.scoreFormat, newGoal).reduce(appendEvent, started)
       const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
       duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
     } else {
@@ -748,7 +751,7 @@ export function App() {
     : []
 
   // Start: the saved Ranking's Sort Goal, or the one a new Ranking will start on, and its estimate (#28).
-  const shownGoal: SortGoal = ranking ? goalOf(ranking) : startGoal
+  const shownGoal: SortGoal = ranking ? goalOf(ranking) : newGoal
   const fullPoolDuels = pool ? estimateDuels(pool.titles.length) : null
   // Score New Titles: one search per new title over the Anchor scores (a saved Ranking: its unsettled titles only).
   const newTitlesDuels = ranking?.newTitles
@@ -781,7 +784,7 @@ export function App() {
         bandDuels: ranking && !onNewTitles ? duelsFromBands(ranking) : null,
         goal: shownGoal,
         onGoal: (goal: SortGoal) => {
-          if (!ranking) setNewGoal(goal)
+          if (!ranking) setPickedGoal(goal)
           else if (goal !== 'score-new-titles') requestSortGoal(goal)
         },
         poolDuels: onNewTitles ? newTitlesDuels : pool && shownGoal === 'scores' ? pool.expectedDuels : fullPoolDuels,
