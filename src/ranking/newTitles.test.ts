@@ -606,12 +606,16 @@ describe('the closer-to prompt (#48)', () => {
 })
 
 describe('scores past the extreme Anchors (#48)', () => {
-  it('gives every title above all Anchors one human Score Step above the top Anchor score, the same below the bottom', () => {
+  it('gives every title above all Anchors the next human Score Step above the top Anchor score, the same below the bottom', () => {
     const cases: [ScoreFormat, number[], number, number, number, number][] = [
       // Score Format, Anchor scores, a title above them all and the score it gets, one below them all and its score
       ['POINT_10', [9, 8, 7, 6, 5], 9.7, 10, 3, 4],
-      ['POINT_10_DECIMAL', [9, 8.5, 8, 7, 6.3], 9.8, 9.5, 5, 5.8],
+      // On the human grid (every 0.5 / every 5): the next grid point strictly past the extreme Anchor score.
+      ['POINT_10_DECIMAL', [9, 8.5, 8, 7, 6.3], 9.8, 9.5, 5, 6],
+      ['POINT_10_DECIMAL', [9.3, 8.5, 8, 7, 6], 9.8, 9.5, 5, 5.5],
+      ['POINT_10_DECIMAL', [9.5, 8.5, 8, 7, 6.7], 9.9, 10, 5, 6.5],
       ['POINT_100', [90, 85, 80, 72, 60], 99, 95, 30, 55],
+      ['POINT_100', [92, 85, 80, 72, 58], 99, 95, 30, 55],
       // No human step: the next level of the Score Format.
       ['POINT_5', [4, 3, 2], 5, 5, 1, 1],
     ]
