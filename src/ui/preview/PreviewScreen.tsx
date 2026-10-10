@@ -20,7 +20,7 @@ import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
-import { unsettledSummary } from './unsettledCard.ts'
+import { newTitlesUnsettledSummary, unsettledSummary } from './unsettledCard.ts'
 import './preview.css'
 import { count, titleName } from '../meta.ts'
 
@@ -34,7 +34,7 @@ type Filter = 'changing' | 'all'
  * On Scores, titles a settings change left unsettled show in an orange card instead, with the way to their Refine
  * Duels (#25, #29); every settled title can still be imported.
  * Score New Titles (ADR 0009): only new titles, grouped by the Anchor score they settled on; no settings, Sort Goal,
- * filter, Band or Re-rank (there is nothing to change but the Duels), and Preview opens at any point of the Duels.
+ * filter, Band or Move Band (Re-rank asks a new title's Duels again), and Preview opens at any point of the Duels.
  * Its Suspect Anchors (#47) are listed read-only under the score rows, above the Forgotten titles.
  */
 export function PreviewScreen(props: {
@@ -144,16 +144,16 @@ export function PreviewScreen(props: {
             ) : (
               <span className="small">No change</span>
             )}
-            {!newTitles && (
-              <div className="row">
-                <button className="mini-b" disabled={!props.onRerank} onClick={() => props.onRerank?.(row.id)}>
-                  Re-rank
-                </button>
+            <div className="row">
+              <button className="mini-b" disabled={!props.onRerank} onClick={() => props.onRerank?.(row.id)}>
+                Re-rank
+              </button>
+              {!newTitles && (
                 <button className="mini-b" disabled={!props.onMove} onClick={() => props.onMove?.(row.id)} title="Move Band">
                   {MOVE_ICON}
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -187,8 +187,8 @@ export function PreviewScreen(props: {
       {newTitles ? (
         <div className="pv-set">
           <span className="small">
-            Score New Titles · Score Format: {SCORE_FORMAT_LABEL[format]} · your{' '}
-            {state.newTitles?.levels.reduce((sum, level) => sum + level.anchors.length, 0)} scored titles are never changed
+            Score New Titles · Score Format: {SCORE_FORMAT_LABEL[format]} · your {state.newTitles?.anchorCount} Anchors are
+            never changed
           </span>
         </div>
       ) : (
@@ -259,7 +259,10 @@ export function PreviewScreen(props: {
             ⚠
           </span>
           <span className="small strong grow">
-            {newTitles ? `${count(unsettled.length, 'title')} not settled yet · a few more Duels decide` : unsettledSummary(unsettled.length, refine)} ·{' '}
+            {newTitles
+              ? newTitlesUnsettledSummary(unsettled.length, state.prompt.kind !== 'all-complete')
+              : unsettledSummary(unsettled.length, refine)}{' '}
+            ·{' '}
             <button className="link small" onClick={() => setShowUnsettled(!showUnsettled)}>
               {showUnsettled ? 'hide' : 'show'}
             </button>

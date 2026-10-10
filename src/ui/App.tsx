@@ -818,7 +818,7 @@ export function App() {
           count: unscored,
           enabled: newTitlesReason === null && Boolean(eligibility),
           reason: onNewTitles ? null : newTitlesReason,
-          anchors: ranking?.newTitles?.levels.reduce((sum, level) => sum + level.anchors.length, 0) ?? eligibility?.anchors ?? 0,
+          anchors: ranking?.newTitles?.anchorCount ?? eligibility?.anchors ?? 0,
         },
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
@@ -1068,11 +1068,11 @@ export function App() {
           settings={scoring}
           onSettings={changeScoring}
           onSwitchGoal={isNewTitles(ranking) ? undefined : requestSortGoal}
-          onRefine={refineFromPreview}
+          onRefine={ranking.prompt.kind === 'all-complete' ? undefined : refineFromPreview}
           overrides={imports.ticks}
           onTick={imports.tick}
           onImport={importView?.stage === 'running' ? undefined : (plan) => imports.plan(plan, scoring)}
-          onRerank={isNewTitles(ranking) ? undefined : (id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
+          onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
           onMove={isNewTitles(ranking) ? undefined : setPreviewMoving}
           onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}
         />
