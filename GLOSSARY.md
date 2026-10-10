@@ -73,7 +73,7 @@ The smallest gap between the scores a title can get: every level of the Score Fo
 _Avoid_: Precision, rounding, granularity
 
 **Sort Goal**:
-What the Duels aim for, chosen by the user. Scores stops once every title's score is settled, so titles with the same score have no order among themselves; Full Ranking keeps going until every title has its own place. The two share one Pool and the user can switch between them at any time without losing answers. Score New Titles scores only titles without a score, by Duels against Anchors, and can only be chosen when a Ranking starts.
+What the Duels aim for, chosen by the user. Scores stops once every title's score is settled, so titles with the same score have no order among themselves; Full Ranking keeps going until every title has its own place. The two share one Pool and the user can switch between them at any time without losing answers. Score New Titles scores only titles without a score, by Duels against Anchors, and can only be chosen when a Ranking starts. Its Ranking ends with its Import: once the Import has written every chosen score, nothing of that Ranking is kept, and titles still without a score start fresh in the next one.
 _Avoid_: Mode, fast mode, quick mode
 
 **Preview**:

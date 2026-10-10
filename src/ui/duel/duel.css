@@ -159,6 +159,13 @@
   transform: translateX(-50%);
   z-index: 6;
 }
+/* Score New Titles: Preview before every new title has a score (ADR 0010). */
+.float-preview {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 6;
+}
 
 /* Closer-to prompt (#48): the new title over two columns, one per score it sits between. */
 .closer {

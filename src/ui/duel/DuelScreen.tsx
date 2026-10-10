@@ -69,6 +69,20 @@ function Card(props: {
   )
 }
 
+/** How many new titles are settled, and Preview's opener (undefined while it can't open). */
+export type EarlyPreview = { settled: number; onOpen?: () => void }
+
+/** Score New Titles (ADR 0010): top right of a Duel or Closer-to prompt, once at least one new title is settled. */
+export function EarlyPreviewButton({ settled, onOpen }: EarlyPreview) {
+  return (
+    <div className="float-preview">
+      <button className="pill" onClick={onOpen} disabled={!onOpen}>
+        Preview {count(settled, 'score')} →
+      </button>
+    </div>
+  )
+}
+
 /**
  * Duel = split-bleed (issue #4): two full-height cards, an "about the same" seam button in the middle,
  * Don't remember and AniList on each card's corner, Undo at the bottom.
@@ -91,8 +105,10 @@ export function DuelScreen(props: {
   onMove?: (id: number, band: BandIndex, sub?: SubBandIndex) => void
   /** Shown in front of the pill while a fix is being placed, e.g. "Re-ranking: Frieren". */
   note?: string
+  /** Score New Titles (ADR 0010): the way to Preview before every new title has a score. */
+  early?: EarlyPreview
 }) {
-  const { state, prompt, entries, titleLanguage, mediaType, onPick, onTie, onForget, onUndo, onChooseBand, onMove, note } = props
+  const { state, prompt, entries, titleLanguage, mediaType, onPick, onTie, onForget, onUndo, onChooseBand, onMove, note, early } = props
   const [forgetting, setForgetting] = useState(false)
   // `M` waits for ← / →; then the sheet is open for that card.
   const [movePending, setMovePending] = useState(false)
@@ -200,6 +216,7 @@ export function DuelScreen(props: {
           )}
         </button>
       </div>
+      {early && <EarlyPreviewButton {...early} />}
       <div className="pair">
         {card(prompt.left, 'l')}
         {card(prompt.right, 'r')}

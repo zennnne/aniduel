@@ -4,6 +4,7 @@ import type { Prompt, RankingState } from '../../ranking/engine.ts'
 import { formatLevel } from '../../ranking/scoring.ts'
 import { UNDO_ICON } from '../icons.tsx'
 import { titleName } from '../meta.ts'
+import { EarlyPreviewButton, type EarlyPreview } from './DuelScreen.tsx'
 import './duel.css'
 
 type CloserToPrompt = Extract<Prompt, { kind: 'closer-to' }>
@@ -31,8 +32,9 @@ export function CloserToScreen(props: {
   titleLanguage: TitleLanguage
   onPick: (level: number) => void
   onUndo: () => void
+  early?: EarlyPreview
 }) {
-  const { state, prompt, entries, titleLanguage, onPick, onUndo } = props
+  const { state, prompt, entries, titleLanguage, onPick, onUndo, early } = props
   const newTitles = state.newTitles!
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const unused = new Set([...state.forgotten, ...newTitles.suspect.map((s) => s.id)])
@@ -83,6 +85,7 @@ export function CloserToScreen(props: {
       <div className="topline">
         <i style={{ width: `${total ? (done / total) * 100 : 100}%` }} />
       </div>
+      {early && <EarlyPreviewButton {...early} />}
       <div className="closer">
         <Cover entry={entries.get(prompt.id)} />
         <div className="fh">{name(prompt.id)} sits between two of your scores</div>

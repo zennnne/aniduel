@@ -26,6 +26,8 @@ export function ImportScreen(props: {
   onResume: () => void
   onRetry: () => void
   onBack: () => void
+  /** Score New Titles (ADR 0010): the Import finished and its Ranking is gone, so the way back is Start. */
+  ended?: boolean
 }) {
   const { stage, state, status, entries, titleLanguage, format } = props
   const summary = importSummary(state)
@@ -175,7 +177,7 @@ export function ImportScreen(props: {
       )}
       {stage !== 'running' && (
         <button className="link imback" onClick={props.onBack}>
-          ← Back to Preview
+          ← Back to {props.ended ? 'Start' : 'Preview'}
         </button>
       )}
     </div>

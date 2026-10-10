@@ -52,6 +52,8 @@ export type ImportDeps = {
   onGatewayError: (error: unknown) => void
   /** Scores AniList has now for titles this Import wrote, so Preview shows them. */
   onWritten: (key: RankingKey, written: ReadonlyMap<number, number>) => void
+  /** The Import wrote every score it planned, with none failed: a Score New Titles Ranking ends here (ADR 0010). */
+  onFinished: (key: RankingKey) => void
 }
 
 const MEDIA_TYPES: readonly MediaType[] = ['ANIME', 'MANGA']
@@ -118,6 +120,7 @@ export function useImport(deps: ImportDeps) {
   function discard(key: RankingKey) {
     dropImport(key)
     deleteTickOverrides(deps.storage, key)
+    setTicks(new Map())
   }
 
   /** Scores planned in an old Score Format can't be written (ADR 0003). */
@@ -180,6 +183,7 @@ export function useImport(deps: ImportDeps) {
       setSaved(unfinished(final))
       setView((v) => v && { ...v, state: final, stage: left > 0 ? 'stopped' : 'done' })
       deps.onWritten(key!, new Map(final.writes.filter((w) => w.status === 'done').map((w) => [w.mediaId, w.scoreRaw])))
+      if (left + failed === 0) deps.onFinished(key!)
     }
 
     queue.writeImport(key.mediaType, state)

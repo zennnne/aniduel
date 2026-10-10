@@ -226,6 +226,7 @@ export function App() {
         if (!current) return prev
         return { ...prev, [key.mediaType]: current.map((e) => (written.has(e.mediaId) ? { ...e, oldScore100: written.get(e.mediaId)! } : e)) }
       }),
+    onFinished: endNewTitles,
   })
 
   const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(localStorage, viewerId)), [viewerId])
@@ -716,6 +717,21 @@ export function App() {
     showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was replaced by Score New Titles.`)
   }
 
+  /**
+   * A Score New Titles Ranking ends with its Import (ADR 0010): nothing of it is kept, settled or not. The Import
+   * screen stays on its summary; the titles it wrote are Anchors for the next Ranking.
+   */
+  function endNewTitles(key: RankingKey) {
+    const current = duelLog.latest()
+    if (!current || !isNewTitles(replay(current))) return
+    deleteDuelLog(localStorage, key)
+    imports.discard(key)
+    duelLog.show(null)
+    setPreviewChecked(false)
+    setPreviewFix(null)
+    setRefining(false)
+  }
+
   /** Runs only after the user confirmed in the Start over dialog. */
   function startOver() {
     if (!rankingKey) return
@@ -882,6 +898,8 @@ export function App() {
     (screen === 'ranking' || screen === 'bands' || screen === 'board' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
   const importView = imports.view
   const inImport = screen === 'import' && importView
+  // A Score New Titles Ranking is gone once its Import finished (ADR 0010); the summary still shows.
+  const importEnded = inImport && viewer && !ranking && importView.stage === 'done'
   // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows. On Scores,
   // Refine Duels left by a settings change keep Preview open: its settled titles can still be imported (#29).
   // Its scoring settings are the log's own (ADR 0007), put there on the Score Format AniList reports by `openPreview`.
@@ -892,6 +910,9 @@ export function App() {
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
     const prompt = state.prompt
     const shared = { state, entries, titleLanguage, mediaType, onUndo: () => answer({ type: 'undo' }) }
+    // Score New Titles: every settled new title can be imported before the rest are (ADR 0010).
+    const settled = state.newTitles?.titles.filter((t) => t.settled).length ?? 0
+    const early = settled > 0 ? { settled, onOpen: list && !openingPreview ? openPreview : undefined } : undefined
     if (splitBand !== null) {
       const band = splitBand
       return (
@@ -1007,6 +1028,7 @@ export function App() {
             onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
             onForget={(id) => answer({ type: 'forgotten', id })}
             note={previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : undefined}
+            early={early}
           />
         )
       case 'closer-to':
@@ -1020,6 +1042,7 @@ export function App() {
             titleLanguage={titleLanguage}
             onPick={(level) => answer({ type: 'closer-to-answered', id: prompt.id, level })}
             onUndo={shared.onUndo}
+            early={early}
           />
         )
       case 'all-complete':
@@ -1081,7 +1104,7 @@ export function App() {
           onRetryWrites={catchUp.retryWrites}
           headerAction={offer && <ExitOfferButton offer={offer} onTake={takeExitOffer} />}
         />
-      ) : inRanking && inImport ? (
+      ) : importEnded || (inRanking && inImport) ? (
         <ImportScreen
           stage={importView.stage}
           state={importView.state}
@@ -1094,7 +1117,8 @@ export function App() {
           onStop={imports.stop}
           onResume={() => imports.resume(importView.state)}
           onRetry={() => imports.resume(retryFailed(importView.state))}
-          onBack={() => goTo('preview')}
+          onBack={() => goTo(importEnded ? 'start' : 'preview')}
+          ended={Boolean(importEnded)}
         />
       ) : inRanking && inPreview ? (
         <PreviewScreen
