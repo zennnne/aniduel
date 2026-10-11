@@ -105,7 +105,7 @@ The one-off question asked when a new title beats every Anchor of one score and 
 _Avoid_: Tie-break, rounding question
 
 **Catch-up**:
-The screen where a user adds titles they have already seen to their AniList list, a batch of suggestions at a time, by marking each one Completed, Dropped, Planning or Paused.
+The screen where a user adds titles to their AniList list, a batch of suggestions at a time, by marking each one Completed, Dropped, Planning or Paused. Most are titles they have already seen; one they haven't seen but want to watch is marked Planning.
 _Avoid_: Onboarding, quick add, backfill, import
 
 **Passed**:

@@ -16,7 +16,7 @@ You pick a **Sort Goal** when a Ranking starts.
 
 Scores and Full Ranking rebuild every score from scratch and share the steps below. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch between the two at any time without losing answers. Score New Titles works differently and is described in [its own section](#score-new-titles).
 
-List too thin to rank? Start with [**Catch-up**](#catch-up) (anime only) to add the titles you have already watched.
+Titles missing from your list? [**Catch-up**](#catch-up) (anime only) suggests anime you have probably watched, so you can add them before you rank.
 
 ## How it works
 
@@ -73,7 +73,16 @@ For when you already have a scoring scale and don't want it changed. Titles that
 
 ### Catch-up
 
-A thin AniList list leaves little to rank. **Catch-up** fills it in: it shows anime you have probably already watched and lets you add them to your list quickly. Anime only, opened from Start or the menu.
+**Catch-up** shows anime you have probably already watched and lets you add them to your list quickly. Anime only, opened from Start or the menu.
+
+It is not only for a new AniList account. Use it to:
+
+- fill in a list that is too thin to rank
+- bring back titles you watched years ago and forgot to add
+- record the ones you started and never finished, as Paused or Dropped
+- find something to watch next and mark it Planning
+
+How it works:
 
 - **What it suggests:** 20 anime at a time, picked from the sequels, prequels and community recommendations of what is on your list, plus popular titles from the years and formats you watch.
 - **What you do:** mark each one Completed, Dropped, Planning or Paused, then save to get the next batch. Saves are written to AniList in the background.
