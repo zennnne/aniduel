@@ -5,7 +5,7 @@ import { queueProgress, type QueueSnapshot } from '../../catchup/queue.ts'
 import { BATCH_SIZE } from '../../catchup/suggest.ts'
 import { displayTitle } from '../../pool/pool.ts'
 import { EXT_ICON } from '../icons.tsx'
-import type { CatchUpView } from './useCatchUp.ts'
+import type { CatchUpView } from '../../catchup/visit.ts'
 import './catchup.css'
 
 const MARK_LABEL: Record<CatchUpMark, string> = { COMPLETED: 'Completed', DROPPED: 'Dropped', PLANNING: 'Planning', PAUSED: 'Paused' }

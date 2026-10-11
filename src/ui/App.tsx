@@ -214,9 +214,10 @@ export function App() {
     passedStore,
     gateway,
     queue: writes.queue,
-    queueSnapshot: writes.snapshot,
     source: candidateSource,
     viewer,
+    clock: browserClock,
+    seed: newSeed,
     onGatewayError: handleGatewayError,
     // Titles Catch-up added can join the anime Pool: read the list again, which syncs a saved Ranking.
     onWritten: () => refreshList('ANIME'),
@@ -729,7 +730,7 @@ export function App() {
   /** Catch-up, from the menu or the mochi on Start: anime only, whichever Ranking is open. */
   function openCatchUp() {
     if (screen !== 'catchup') goTo('catchup')
-    catchUp.open()
+    void catchUp.open()
   }
 
   /**
