@@ -16,6 +16,7 @@ import {
   loadLastMediaType,
   loadPoolSettings,
   loadScoringSettings,
+  SaveError,
   saveDuelLog,
   saveScoringSettings,
   saveLastMediaType,
@@ -59,6 +60,20 @@ describe('Duel log', () => {
 
     storage.setItem(key, '{not json')
     expect(() => loadDuelLog(storage, { userId: 8, mediaType: 'ANIME' })).toThrow()
+  })
+
+  it('says so when the browser refuses to save, and keeps what was saved before', () => {
+    const storage = memoryStorage()
+    const log = startLog({ ...anime, seed: 1, ids: [1, 2] })
+    saveDuelLog(storage, log)
+    const full: Storage = {
+      ...storage,
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError')
+      },
+    }
+    expect(() => saveDuelLog(full, { ...log, events: [...log.events, { type: 'forgotten', id: 1 }] })).toThrow(SaveError)
+    expect(loadDuelLog(full, anime)).toEqual(log)
   })
 })
 

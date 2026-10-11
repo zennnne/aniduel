@@ -15,6 +15,7 @@ import {
   loadLastMediaType,
   loadPoolSettings,
   loadScoringSettings,
+  SaveError,
   saveLastMediaType,
   savePoolSettings,
   type RankingKey,
@@ -409,6 +410,27 @@ export function App() {
     return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
   }
 
+  /** The Duel log couldn't be saved (SaveError): the screen stays on what is saved, and the banner offers a Backup of it. */
+  function saveFailed() {
+    setNotice({
+      tone: 'error',
+      message: "That couldn't be saved: this browser's storage is full or blocked. Save a Backup to keep your progress so far.",
+      action: { label: 'Save Backup', onClick: saveBackup },
+    })
+  }
+
+  /** Runs a step that saves the Duel log. False if the browser refused to save it; the banner says so. */
+  function saved(step: () => void): boolean {
+    try {
+      step()
+      return true
+    } catch (e) {
+      if (!(e instanceof SaveError)) throw e
+      saveFailed()
+      return false
+    }
+  }
+
   /**
    * Appends one answer, checks it replays, and saves the log before showing the result. Returns the new state, or
    * null if the answer was dropped. Once a fix started from Preview is placed (or undone), Preview opens again; so
@@ -418,8 +440,9 @@ export function App() {
     let state: RankingState | null
     try {
       state = duelLog.append(event)
-    } catch {
-      return null // an answer for a prompt that is no longer showing (e.g. a double key press)
+    } catch (e) {
+      if (e instanceof SaveError) saveFailed()
+      return null // otherwise an answer for a prompt that is no longer showing (e.g. a double key press)
     }
     if (!state) return null
     if (previewFix && fixDone(state, previewFix.id)) {
@@ -517,7 +540,7 @@ export function App() {
       // Full Ranking picked on Start: the same switch as from the menu, before anything is sorted.
       const log = switchGoalEvents(replay(started), null, viewer.scoreFormat, newGoal).reduce(appendEvent, started)
       const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
-      duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
+      if (!saved(() => duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log))) return
     } else {
       // The statuses may have changed on Start: titles that now match join, the rest leave.
       const summary = syncPool(mediaType, list, statuses)
@@ -561,7 +584,8 @@ export function App() {
   /** Settings changed on Preview go into the Duel log (ADR 0007), so a reload or a Backup gives the same scores. */
   function changeScoring(settings: ScoringSettings) {
     if (!viewer || !duelLog.latest()) return
-    duelLog.append({ type: 'scoring-set', format: viewer.scoreFormat, settings })
+    const { scoreFormat } = viewer
+    saved(() => duelLog.append({ type: 'scoring-set', format: scoreFormat, settings }))
   }
 
   /**
@@ -645,8 +669,8 @@ export function App() {
   function startNewTitles(ids: number[]) {
     const { anchors, eligibility } = start ?? {}
     if (!viewer || !anchors || !eligibility?.eligible) return
-    duelLog.save(startNewTitlesLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids }))
-    goTo('ranking')
+    const log = startNewTitlesLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids })
+    if (saved(() => duelLog.save(log))) goTo('ranking')
   }
 
   /**

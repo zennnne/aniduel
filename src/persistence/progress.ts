@@ -25,8 +25,21 @@ export function animeProgressKey(userId: number, part: string): ProgressKey {
   return { userId, mediaType: 'ANIME', part }
 }
 
+/** The browser refused to save (its storage is full or blocked). What was saved before is still there. */
+export class SaveError extends Error {
+  constructor() {
+    super("this browser's storage is full or blocked")
+    this.name = 'SaveError'
+  }
+}
+
+/** Throws SaveError if the browser refuses. */
 export function saveProgressPart(storage: Storage, key: ProgressKey, value: string): void {
-  storage.setItem(progressStorageKey(key), value)
+  try {
+    storage.setItem(progressStorageKey(key), value)
+  } catch {
+    throw new SaveError()
+  }
 }
 
 export function loadProgressPart(storage: Storage, key: ProgressKey): string | null {
