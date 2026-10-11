@@ -16,6 +16,8 @@ You pick a **Sort Goal** when a Ranking starts.
 
 Scores and Full Ranking rebuild every score from scratch and share the steps below. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch between the two at any time without losing answers. Score New Titles works differently and is described in [its own section](#score-new-titles).
 
+List too thin to rank? Start with [**Catch-up**](#catch-up) (anime only) to add the titles you have already watched.
+
 ## How it works
 
 1. **Log in** with AniList. Pick a Media Type (Anime or Manga), which list statuses go into the **Pool**, and a Sort Goal.
