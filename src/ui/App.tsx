@@ -72,6 +72,7 @@ import { MEDIA_LABEL, count, titleName } from './meta.ts'
 import { PreviewScreen } from './preview/PreviewScreen.tsx'
 import { SCORE_FORMAT_LABEL } from './preview/scoreFormat.ts'
 import { RankingSidebar } from './RankingSidebar.tsx'
+import { NO_RANKING_UI, leftRanking, splitSkipped, titlesAdded, type RankingUi } from './rankingUi.ts'
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { StartScreen } from './start/StartScreen.tsx'
@@ -141,21 +142,14 @@ export function App() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const [retries, setRetries] = useState(0)
   const [dialog, setDialog] = useState<DialogName | null>(null)
-  const [splitView, setSplitView] = useState<{ band: BandIndex } | null>(null)
-  // Bands whose split offer was turned down ("Keep it as it is") in this session.
-  const [skippedSplits, setSkippedSplits] = useState<readonly BandIndex[]>([])
-  // The user pressed Continue on the last-check Board. Session UI state only, never a log event.
-  const [lastCheckContinued, setLastCheckContinued] = useState(false)
+  // What only makes sense for the open Ranking; leaving it, whichever way, resets it all at once.
+  const [rankingUi, setRankingUi] = useState(NO_RANKING_UI)
+  const { splitView, skippedSplits, lastCheckContinued, previewFix, refining, previewMoving } = rankingUi
+  const patchRankingUi = (change: Partial<RankingUi>) => setRankingUi((s) => ({ ...s, ...change }))
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
-  // A fix started from Preview (#11): its Duels run on the Ranking screen, then Preview opens again.
-  const [previewFix, setPreviewFix] = useState<{ id: number; verb: string } | null>(null)
-  // "Go to Duels →" on Preview's unsettled card (#29): once every score is settled again, Preview opens again.
-  const [refining, setRefining] = useState(false)
-  // The title whose Move sheet is open over Preview.
-  const [previewMoving, setPreviewMoving] = useState<number | null>(null)
   // The Sort Goal the user picked on Start for a new Ranking (#28), or null while they haven't touched it and it
-  // follows the Pool size (#38). A saved Ranking's goal lives in its log.
+  // follows the Pool size (#38). A saved Ranking's goal lives in its log. Not reset on logout: logging in again loads the page anew.
   const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
@@ -264,13 +258,8 @@ export function App() {
    */
   function openRanking(key: RankingKey, resume: boolean): boolean {
     setMediaType(key.mediaType)
-    setSplitView(null)
-    setSkippedSplits([])
-    setLastCheckContinued(false)
+    setRankingUi(leftRanking)
     imports.open(key)
-    setPreviewFix(null)
-    setRefining(false)
-    setPreviewMoving(null)
     setStatuses(loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES)
     try {
       const saved = loadDuelLog(localStorage, key)
@@ -300,7 +289,7 @@ export function App() {
     setStatuses(DEFAULT_STATUSES)
     duelLog.show(null)
     setSavedBroken(false)
-    setSplitView(null)
+    setRankingUi(leftRanking)
     imports.close()
     setScreen('start')
   }
@@ -389,7 +378,7 @@ export function App() {
   const splitBand = splitView?.band ?? autoOffer ?? null
 
   // Back in Rough Sort (Undo, or a sync before the first Duel): finishing it shows the last check again.
-  if (lastCheckContinued && ranking?.prompt.kind === 'rough-sort') setLastCheckContinued(false)
+  if (lastCheckContinued && ranking?.prompt.kind === 'rough-sort') patchRankingUi({ lastCheckContinued: false })
   // Rough Sort → split offer → last check → Band choice → Duels.
   const lastCheck = ranking ? lastCheckDue(ranking, lastCheckContinued) : false
 
@@ -397,12 +386,12 @@ export function App() {
   function openBoard() {
     if (!ranking?.board.open) return
     if (ranking.prompt.kind === 'rough-sort') goTo('board')
-    else setLastCheckContinued(false)
+    else patchRankingUi({ lastCheckContinued: false })
   }
 
   /** "Continue →" on the last check: the Band choice comes next. */
   function continueFromLastCheck() {
-    setLastCheckContinued(true)
+    patchRankingUi({ lastCheckContinued: true })
     if (ranking?.prompt.kind === 'duel' && screen !== 'bands') goTo('bands')
   }
 
@@ -428,8 +417,7 @@ export function App() {
     }
     const added = events.reduce((sum, e) => sum + (e.type === 'titles-added' ? e.ids.length : 0), 0)
     const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
-    // New titles can push a Band over the split threshold again (ADR 0006), so a skipped offer may show again.
-    if (added > 0) setSkippedSplits([])
+    if (added > 0) setRankingUi(titlesAdded)
     const joined = current.events.some((e) => e.type === 'anchors-set') ? 'added' : 'added to Rough Sort'
     const changes = [added > 0 && `${count(added, 'title')} ${joined}`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
     return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
@@ -449,11 +437,11 @@ export function App() {
     }
     if (!state) return null
     if (previewFix && fixDone(state, previewFix.id)) {
-      setPreviewFix(null)
+      patchRankingUi({ previewFix: null })
       if (screen !== 'preview') goTo('preview')
     }
     if (refining && state.prompt.kind === 'all-complete') {
-      setRefining(false)
+      patchRankingUi({ refining: false })
       if (screen !== 'preview') goTo('preview')
       showToast(state.newTitles ? 'Every new title has a score' : 'Every score is settled again')
     }
@@ -501,7 +489,7 @@ export function App() {
       }
       return
     }
-    setPreviewFix({ id, verb })
+    patchRankingUi({ previewFix: { id, verb } })
     goTo('ranking')
   }
 
@@ -509,7 +497,7 @@ export function App() {
   function refineFromPreview() {
     const kind = ranking?.prompt.kind
     if (!ranking || (kind !== 'duel' && kind !== 'anchor-duel' && kind !== 'closer-to')) return
-    setRefining(true)
+    patchRankingUi({ refining: true })
     if (ranking.bandChoice) chooseBand(ranking.bandChoice.next)
     else goTo('ranking')
   }
@@ -704,8 +692,7 @@ export function App() {
     deleteDuelLog(localStorage, key)
     imports.discard(key)
     duelLog.show(null)
-    setPreviewFix(null)
-    setRefining(false)
+    setRankingUi(leftRanking)
   }
 
   /** Runs only after the user confirmed in the Start over dialog. */
@@ -764,7 +751,7 @@ export function App() {
           saveBackup,
           chooseBand: () => goTo('bands'),
           splitBand: (band) => {
-            setSplitView({ band })
+            patchRankingUi({ splitView: { band } })
             goTo('ranking')
           },
           openBoard,
@@ -873,18 +860,17 @@ export function App() {
           entries={entries}
           titleLanguage={titleLanguage}
           onSplit={(event) => {
-            setSplitView({ band })
+            patchRankingUi({ splitView: { band } })
             answer(event)
           }}
           onSkip={() => {
-            setSkippedSplits((prev) => [...prev, band])
-            setSplitView(null)
+            setRankingUi((s) => splitSkipped(s, band))
             showToast(<>Skipped. {BAND_UI[band].label} stays one Band</>)
           }}
           // The last check comes before any Duel, so the Band choice comes after it, not straight away.
           nextStep={lastCheck ? 'last-check' : 'duels'}
           onClose={() => {
-            setSplitView(null)
+            patchRankingUi({ splitView: null })
             // "Start Duels in Loved › Best": the split Band is chosen, so its Duels come next.
             if (!lastCheck && state.bands[band].subBands) chooseBand(band)
           }}
@@ -1085,7 +1071,7 @@ export function App() {
           onTick={imports.tick}
           onImport={importView?.stage === 'running' ? undefined : () => imports.planImport() && goTo('import')}
           onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
-          onMove={isNewTitles(ranking) ? undefined : setPreviewMoving}
+          onMove={isNewTitles(ranking) ? undefined : (id) => patchRankingUi({ previewMoving: id })}
           onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}
         />
       ) : inRanking ? (
@@ -1106,10 +1092,10 @@ export function App() {
           id={previewMoving}
           entries={entries}
           titleLanguage={viewer.titleLanguage}
-          onClose={() => setPreviewMoving(null)}
+          onClose={() => patchRankingUi({ previewMoving: null })}
           onMove={(band, sub) => {
             const id = previewMoving
-            setPreviewMoving(null)
+            patchRankingUi({ previewMoving: null })
             fixFromPreview(id, 'Moving', moveTitle(id, band, sub))
           }}
         />
