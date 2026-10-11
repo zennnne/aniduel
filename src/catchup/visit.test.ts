@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
 import { fakeAniList, fakeClock } from '../anilist/fakeAniList.ts'
 import { AniListError, createAniListGateway, type AniListGateway } from '../anilist/gateway.ts'
-import type { Viewer } from '../anilist/types.ts'
+import type { ListEntry, ListStatus, Viewer } from '../anilist/types.ts'
 import { memoryStorage } from '../persistence/memoryStorage.ts'
 import { loadWriteQueue, saveWriteQueue } from '../persistence/progress.ts'
 import { createWriteQueue, type WriteQueueState } from '../writes/writeQueue.ts'
@@ -101,10 +101,14 @@ function setup(
     savedQueue?: WriteQueueState
     /** What reading the anime list fails with. */
     listFails?: unknown
+    /** Statuses on AniList other than Completed. */
+    statuses?: Record<number, ListStatus>
+    /** The anime list as the app has already read it. */
+    appList?: ListEntry[]
   } = {},
 ) {
   const clock = fakeClock()
-  const aniList = fakeAniList(clock, options.listed ?? {})
+  const aniList = fakeAniList(clock, options.listed ?? {}, { statuses: options.statuses })
   const real = createAniListGateway({ fetch: aniList.fetch, token: 't' })
   const storage = memoryStorage()
   if (options.savedQueue) saveWriteQueue(storage, USER, options.savedQueue)
@@ -129,6 +133,7 @@ function setup(
   const visit = createCatchUpVisit(() => ({
     storage,
     gateway: viewer && gateway,
+    animeList: options.appList ?? null,
     source: viewer && candidates.source,
     viewer,
     passedStore,
@@ -183,6 +188,23 @@ describe('opening Catch-up', () => {
     expect(batchOf(app.visit).number).toBe(1)
     expect(idsOf(app.visit)).toHaveLength(20)
     expect(app.visit.snapshot().startingEraLabel).toBeNull()
+  })
+
+  it('reads only the Planning titles when the app has read the list already', async () => {
+    const listed = { ...LONG_LIST, 1000: 0, 1001: 0 }
+    const real = createAniListGateway({ fetch: fakeAniList(fakeClock(), listed).fetch, token: 't' })
+    const appList = await real.mediaList({ userId: USER, type: 'ANIME', statuses: ['COMPLETED'] })
+    const { visit, aniList, candidates } = setup({ listed, statuses: { 1001: 'PLANNING' }, appList })
+
+    await visit.open()
+
+    expect(aniList.listReads.map((r) => r.statuses)).toEqual([['PLANNING']])
+    // The app's titles are the seeds, and neither they nor the Planning one are suggested.
+    expect(candidates.asked[0]).toEqual(expect.arrayContaining([100, 159, 1000]))
+    expect(candidates.asked[0]).not.toContain(1001)
+    expect(idsOf(visit)).toHaveLength(20)
+    expect(idsOf(visit)).not.toContain(1000)
+    expect(idsOf(visit)).not.toContain(1001)
   })
 
   it('leaves the batch as it was when opened again while it shows', async () => {

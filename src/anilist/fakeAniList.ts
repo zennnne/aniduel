@@ -38,7 +38,7 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
   const store = new Map(Object.entries(scores).map(([id, s]) => [Number(id), s]))
   const statuses = new Map<number, string>(Object.entries(options.statuses ?? {}).map(([id, s]) => [Number(id), s]))
   const writes: Array<{ mediaId: number; scoreRaw?: number; status?: string; at: number }> = []
-  const listReads: Array<{ type: MediaType; at: number }> = []
+  const listReads: Array<{ type: MediaType; statuses: string[]; at: number }> = []
   const script: Reply[] = []
   const viewer: FakeViewer = { id: 1, name: 'zen', scoreFormat: 'POINT_10' }
   let requests = 0
@@ -46,7 +46,7 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
     requests++
     const body = JSON.parse(String(init?.body)) as {
       query: string
-      variables: { mediaId: number; scoreRaw?: number; status?: string; type?: MediaType }
+      variables: { mediaId: number; scoreRaw?: number; status?: string; type?: MediaType; statusIn?: string[] }
     }
     const remaining = String(options.remaining?.(requests) ?? 25)
     const resetAt = String(Math.floor(clock.now() / 1000) + 60)
@@ -56,8 +56,11 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
         headers: { 'Content-Type': 'application/json', 'X-RateLimit-Remaining': remaining, 'X-RateLimit-Reset': resetAt },
       })
     if (body.query.includes('MediaListCollection')) {
-      listReads.push({ type: body.variables.type!, at: clock.now() })
-      const entries = [...store].map(([mediaId, score]) => listEntry(mediaId, score, statuses.get(mediaId)))
+      const { statusIn = [] } = body.variables
+      listReads.push({ type: body.variables.type!, statuses: statusIn, at: clock.now() })
+      const entries = [...store]
+        .map(([mediaId, score]) => listEntry(mediaId, score, statuses.get(mediaId)))
+        .filter((e) => statusIn.includes(e.status))
       return json(200, { data: { MediaListCollection: { hasNextChunk: false, lists: [{ entries }] } } })
     }
     if (body.query.includes('Viewer')) {

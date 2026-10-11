@@ -199,6 +199,7 @@ export function App() {
     storage: localStorage,
     passedStore,
     gateway,
+    animeList: lists.ANIME ?? null,
     queue: writes.queue,
     source: candidateSource,
     viewer,

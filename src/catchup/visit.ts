@@ -4,7 +4,7 @@
 // offer's own rule.
 import type { CatchUpMedia } from '../anilist/candidates.ts'
 import { AniListError, type AniListGateway } from '../anilist/gateway.ts'
-import type { ListStatus, Viewer } from '../anilist/types.ts'
+import type { ListEntry, ListStatus, Viewer } from '../anilist/types.ts'
 import type { Clock } from '../clock.ts'
 import { displayTitle } from '../pool/pool.ts'
 import type { QueuedWrite, StatusWrite, WriteQueue } from '../writes/writeQueue.ts'
@@ -66,6 +66,11 @@ export type CatchUpVisitDeps = {
   storage: Storage
   /** Reads the user's anime list. */
   gateway: AniListGateway | null
+  /**
+   * The anime list as the app has already read it: every status but Planning. With it, opening reads only the
+   * Planning titles; null while the app hasn't read it.
+   */
+  animeList: readonly ListEntry[] | null
   /** Reads of anime for the suggestion candidates. */
   source: CandidateSource | null
   viewer: Viewer | null
@@ -280,15 +285,18 @@ export function createCatchUpVisit(deps: () => CatchUpVisitDeps): CatchUpVisit {
     },
     async open() {
       if (state.added > 0) set({ added: 0 })
-      const { gateway, source, viewer } = deps()
+      const { gateway, source, viewer, animeList } = deps()
       if (!gateway || !source || !viewer) return
       const { phase } = state.view
       if (phase === 'ready' || phase === 'loading' || phase === 'era') return
       const asked = closes
       set({ view: { phase: 'loading' } })
       try {
-        const entries = await gateway.mediaList({ userId: viewer.id, type: 'ANIME', statuses: ALL_STATUSES })
+        // Reading a long list takes seconds, so what the app has read isn't read again: only Planning is missing from it.
+        const fresh = await gateway.mediaList({ userId: viewer.id, type: 'ANIME', statuses: animeList ? ['PLANNING'] : ALL_STATUSES })
         if (asked !== closes) return
+        const planned = new Set(fresh.map((e) => e.mediaId))
+        const entries = [...fresh, ...(animeList ?? []).filter((e) => !planned.has(e.mediaId))]
         const read: CatchUpEntry[] = entries.map(({ mediaId, status, year, format }) => ({ mediaId, status, year, format }))
         // Titles marked earlier whose writes haven't reached AniList yet are on the list all the same.
         const queued = queue ? (catchUpSnapshot(queue.snapshot()).state?.writes ?? []) : []
