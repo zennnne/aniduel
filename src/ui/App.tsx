@@ -893,7 +893,9 @@ export function App() {
             onStop={imports.stop}
             onResume={() => void imports.resume().then(showResumed)}
             onRetry={() => void imports.retry().then(showResumed)}
-            onBack={() => goTo(ended ? 'start' : 'preview')}
+            onBack={() => goTo('preview')}
+            onStart={() => goTo('start')}
+            mediaType={mediaType}
             ended={ended}
           />
         )

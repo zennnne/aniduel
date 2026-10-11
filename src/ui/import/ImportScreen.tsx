@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
+import type { ListEntry, MediaType, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
 import { formatDuration, importSummary, skippedWrites, timeLeftMs, type ImportState } from '../../import/importState.ts'
 import type { ImportStage } from '../../import/previewImport.ts'
 import { WRITE_SPACING_MS, type RunnerStatus } from '../../writes/writeQueue.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
-import { count, titleName } from '../meta.ts'
+import { MEDIA_LABEL, count, titleName } from '../meta.ts'
 import './import.css'
 
 /**
@@ -24,8 +24,13 @@ export function ImportScreen(props: {
   onStop: () => void
   onResume: () => void
   onRetry: () => void
+  /** Back to Preview. */
   onBack: () => void
-  /** Score New Titles (ADR 0010): the Import finished and its Ranking is gone, so the way back is Start. */
+  /** Back to Start; the Ranking is kept. */
+  onStart: () => void
+  /** The Ranking's Media Type: Start's hint names the other one. */
+  mediaType: MediaType
+  /** Score New Titles (ADR 0010): the Import finished and its Ranking is gone, so the only way back is Start. */
   ended?: boolean
 }) {
   const { stage, state, status, entries, titleLanguage, format } = props
@@ -175,9 +180,22 @@ export function ImportScreen(props: {
         </div>
       )}
       {stage !== 'running' && (
-        <button className="link imback" onClick={props.onBack}>
-          ← Back to {props.ended ? 'Start' : 'Preview'}
-        </button>
+        <div className="imback">
+          {!props.ended && (
+            <button onClick={props.onBack}>
+              <b>← Back to Preview</b>
+              <span className="small">fix the Ranking and import again</span>
+            </button>
+          )}
+          <button onClick={props.onStart}>
+            <b>← Back to Start</b>
+            {!props.ended && (
+              <span className="small">
+                change the Pool, switch to {MEDIA_LABEL[props.mediaType === 'ANIME' ? 'MANGA' : 'ANIME']}, or open Catch-up
+              </span>
+            )}
+          </button>
+        </div>
       )}
     </div>
   )

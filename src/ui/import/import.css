@@ -160,6 +160,32 @@
   align-items: center;
   font-size: 13px;
 }
+/* The ways back: one outlined pill each, a label and a hint of what to go there for. */
 .imback {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.imback button {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 16px;
+  border: 1.5px solid var(--fg2);
+  border-radius: 999px;
+  text-align: left;
+}
+.imback button:hover {
+  background: var(--fg2);
+}
+.imback b {
+  color: var(--blue);
+}
+@media (max-width: 720px) {
+  .imback button {
+    flex-direction: column;
+    gap: 2px;
+    border-radius: 16px;
+  }
 }
