@@ -118,6 +118,27 @@ describe('Catch-up candidate candidates', () => {
     expect(asked).toEqual([[1, 2, 3], [4, 5]])
   })
 
+  it('asks for the era’s popular titles while the watched titles are still loading', async () => {
+    const { source, eras } = fakeSource([anime(1)])
+    let seedsLoaded = () => {}
+    const slow: CandidateSource = {
+      ...source,
+      media: async (ids) => {
+        await new Promise<void>((resolve) => (seedsLoaded = resolve))
+        return source.media(ids)
+      },
+    }
+    const candidates = createSuggestionCandidates(slow)
+
+    const updating = candidates.update([entry(1)])
+    await Promise.resolve()
+
+    expect(eras).toEqual([{ from: 2015, to: 2015 }])
+    seedsLoaded()
+    await updating
+    expect(ids(candidates.media())).toEqual([1])
+  })
+
   it('asks for all-time favourites when no watched title has a year', async () => {
     const { source, eras } = fakeSource([])
     const candidates = createSuggestionCandidates(source)
@@ -202,5 +223,26 @@ describe('reading from AniList', () => {
     await source.popular(null) // 2 pages
 
     expect(at.map((t) => t - start)).toEqual([0, 0, 60_000, 60_000])
+  })
+
+  it('sends a long read’s requests a few at a time, and returns the anime in the order asked', async () => {
+    const clock: Clock = { now: () => 0, sleep: async () => {} }
+    let inFlight = 0
+    let most = 0
+    const fetch = (async (_url: string, init: RequestInit) => {
+      most = Math.max(most, ++inFlight)
+      await new Promise((resolve) => setTimeout(resolve, 1))
+      inFlight--
+      const { ids } = JSON.parse(String(init.body)).variables as { ids: number[] }
+      const media = ids.map((id) => ({ id, title: { romaji: null, english: null, native: null }, siteUrl: '' }))
+      return new Response(JSON.stringify({ data: { Page: { media } } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }) as unknown as typeof globalThis.fetch
+    const source = aniListCandidateSource({ fetch, token: 't', clock, limiter: createRequestLimiter(clock) })
+    const asked = Array.from({ length: 500 }, (_, i) => i + 1) // 10 requests of 50
+
+    const media = await source.media(asked)
+
+    expect(most).toBe(4)
+    expect(media.map((m) => m.id)).toEqual(asked)
   })
 })

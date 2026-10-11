@@ -72,12 +72,15 @@ export function createSuggestionCandidates(source: CandidateSource, limits: Cand
     async update(list, eraOverride) {
       const listed = new Set(list.map((e) => e.mediaId))
       const watched = list.filter(isWatched).map((e) => e.mediaId)
-      await load(watched.filter((id) => !asked.has(id)).slice(0, limits.seeds))
-
       const era = eraOverride !== undefined ? eraOverride : eraYears(list)
       const eraKey = JSON.stringify(era)
-      if (popularFor !== eraKey) {
-        for (const m of await source.popular(era)) {
+      // The era comes from the list alone, so its popular titles load while the seeds do.
+      const [, popular] = await Promise.all([
+        load(watched.filter((id) => !asked.has(id)).slice(0, limits.seeds)),
+        popularFor !== eraKey ? source.popular(era) : null,
+      ])
+      if (popular) {
+        for (const m of popular) {
           known.set(m.id, m)
           asked.add(m.id)
         }
@@ -125,9 +128,12 @@ export async function retryRateLimited<T>(
 /** Pages of 50 popular titles loaded for the era. */
 const POPULAR_PAGES = 2
 
+/** Requests of one `media` read in flight together: a first visit's 20 or so took half a minute one at a time. */
+const CONCURRENT_READS = 4
+
 /**
- * The suggestion candidates' reads from AniList, 50 ids a request. Each request takes its turn in `limiter` (shared with
- * the write queue) and waits out a 429.
+ * The suggestion candidates' reads from AniList, 50 ids a request, a few at a time. Each request takes its turn in
+ * `limiter` (shared with the write queue) and waits out a 429.
  */
 export function aniListCandidateSource(deps: { fetch: typeof fetch; token: string; clock: Clock; limiter: RequestLimiter }): CandidateSource {
   let resetAt: number | null = null
@@ -141,12 +147,25 @@ export function aniListCandidateSource(deps: { fetch: typeof fetch; token: strin
   const retry = <T>(request: () => Promise<T>) => retryRateLimited(request, { clock: deps.clock, resetAt: () => resetAt })
   return {
     async media(ids) {
-      const media: CatchUpMedia[] = []
-      for (let i = 0; i < ids.length; i += CANDIDATES_PER_REQUEST) {
-        const chunk = ids.slice(i, i + CANDIDATES_PER_REQUEST)
-        media.push(...(await retry(() => fetchCatchUpMedia(read, chunk))))
+      const chunks: number[][] = []
+      for (let i = 0; i < ids.length; i += CANDIDATES_PER_REQUEST) chunks.push(ids.slice(i, i + CANDIDATES_PER_REQUEST))
+      const media: CatchUpMedia[][] = []
+      let next = 0
+      let failed = false
+      // Each reader takes the next chunk until none is left, or one of them failed.
+      const reader = async () => {
+        while (next < chunks.length && !failed) {
+          const i = next++
+          try {
+            media[i] = await retry(() => fetchCatchUpMedia(read, chunks[i]))
+          } catch (e) {
+            failed = true
+            throw e
+          }
+        }
       }
-      return media
+      await Promise.all(Array.from({ length: CONCURRENT_READS }, reader))
+      return media.flat()
     },
     popular: (era) => retry(() => fetchPopularAnime(read, era, POPULAR_PAGES)),
   }

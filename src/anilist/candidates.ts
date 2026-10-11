@@ -140,18 +140,20 @@ export type Era = { from: number; to: number }
  * as `fetchCatchUpMedia`. Throws the gateway's `AniListError` like it.
  */
 export async function fetchPopularAnime(deps: Deps, era: Era | null, pages: number): Promise<CatchUpMedia[]> {
-  const media: CatchUpMedia[] = []
   // FuzzyDateInt is YYYYMMDD and both bounds are exclusive.
   const range = era ? { from: (era.from - 1) * 10000 + 1231, to: (era.to + 1) * 10000 } : {}
-  for (let page = 1; page <= pages; page++) {
-    await deps.beforeRequest?.()
-    const data = await request<{ Page: { media: RawCandidate[] } }>(
-      deps,
-      POPULAR_QUERY,
-      { page, perPage: CANDIDATES_PER_REQUEST, ...range },
-      rateLimitHeaders(deps),
-    )
-    media.push(...data.Page.media.map(toCatchUpMedia))
-  }
-  return media
+  // The pages are asked for together.
+  const loaded = await Promise.all(
+    Array.from({ length: pages }, async (_, i) => {
+      await deps.beforeRequest?.()
+      const data = await request<{ Page: { media: RawCandidate[] } }>(
+        deps,
+        POPULAR_QUERY,
+        { page: i + 1, perPage: CANDIDATES_PER_REQUEST, ...range },
+        rateLimitHeaders(deps),
+      )
+      return data.Page.media.map(toCatchUpMedia)
+    }),
+  )
+  return loaded.flat()
 }
