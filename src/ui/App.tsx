@@ -18,9 +18,8 @@ import {
   savePoolSettings,
   type RankingKey,
 } from '../persistence/progress.ts'
-import { DEFAULT_STATUSES, OFFERED_STATUSES, buildPool, estimateDuels, roughSortOrder } from '../pool/pool.ts'
-import { newTitlesInLog, syncEvents } from '../pool/sync.ts'
-import { anchorsOf, estimateNewTitlesDuels, newTitlesEligibility, newTitlesList } from '../pool/anchors.ts'
+import { DEFAULT_STATUSES, OFFERED_STATUSES } from '../pool/pool.ts'
+import { syncEvents } from '../pool/sync.ts'
 import {
   answeredDuels,
   appendEvent,
@@ -36,18 +35,17 @@ import {
   type SubBandIndex,
   type SwitchableGoal,
 } from '../ranking/engine.ts'
-import { duelsFromBands, fullRankingExtra } from '../ranking/estimate.ts'
-import { planFromScores } from '../ranking/fromScores.ts'
+import { fullRankingExtra } from '../ranking/estimate.ts'
 import { previewOpen } from '../ranking/preview.ts'
-import { defaultSettings, scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
-import { defaultSortGoal, goalOf, isNewTitles, switchGoalEvents } from '../ranking/sortGoal.ts'
+import { scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
+import { goalOf, isNewTitles, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
 import { createPassedStore } from '../catchup/passed.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
-import { exitOffer, type AnimeStanding, type ExitOffer } from '../catchup/exitOffer.ts'
+import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
 import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
 import { StartingEraChip, StartingEraQuestion } from './catchup/StartingEraQuestion.tsx'
 import { ClearPassedDialog } from './catchup/ClearPassedDialog.tsx'
@@ -76,6 +74,7 @@ import { RankingSidebar } from './RankingSidebar.tsx'
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { StartScreen } from './start/StartScreen.tsx'
+import { animeStanding, startView, type StartView } from './start/startView.ts'
 import { useTheme } from './theme.ts'
 import { useDuelLog } from './useDuelLog.ts'
 
@@ -163,45 +162,20 @@ export function App() {
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
   const list = lists[mediaType]
-  // The Pool's estimate is for Scores with the Score Format's defaults (ADR 0007); Full Ranking's is worked out below.
-  const viewerFormat = viewer ? viewer.scoreFormat : null
-  // Score New Titles (ADR 0009): the Anchors a new Ranking would snapshot, and whether there are enough of them.
-  const anchors = useMemo(() => (list && viewerFormat ? anchorsOf(list, viewerFormat) : null), [list, viewerFormat])
-  const eligibility = useMemo(() => (anchors ? newTitlesEligibility(anchors) : null), [anchors])
-  // A New Titles pick on Start stops counting once it isn't eligible (e.g. on another Media Type).
-  const newTitlesPicked = pickedGoal === 'score-new-titles' && eligibility?.eligible !== false
-  // Catch-up's exit offer (#52) asks the same of the anime list, whichever Media Type is selected.
-  const animeList = lists.ANIME
-  const animeNewTitlesEligible = useMemo(
-    () => (animeList && viewerFormat ? newTitlesEligibility(anchorsOf(animeList, viewerFormat)).eligible : null),
-    [animeList, viewerFormat],
-  )
-  // A saved Score New Titles Ranking's Anchors and Pool; null for any other Ranking.
-  const savedNewTitles = useMemo(() => (log ? newTitlesInLog(log) : null), [log])
-  const onNewTitles = ranking ? isNewTitles(ranking) : newTitlesPicked
-  // Its Pool is the titles without a score (and the saved Ranking's new titles), never an Anchor.
-  const poolList = useMemo(() => (list && onNewTitles ? newTitlesList(list, savedNewTitles) : list), [list, onNewTitles, savedNewTitles])
-  const pool = useMemo(
-    () =>
-      poolList
-        ? buildPool(poolList, statuses, viewerFormat ? { format: viewerFormat, settings: defaultSettings(viewerFormat, 'whole') } : undefined)
-        : null,
-    [poolList, statuses, viewerFormat],
-  )
-  // The Sort Goal a new Ranking starts on: the user's pick, else the default for the Pool size (ADR 0007, V3 amendment).
-  const newGoal: SortGoal = (pickedGoal === 'score-new-titles' && !newTitlesPicked ? null : pickedGoal) ?? defaultSortGoal(pool?.titles.length ?? 0)
-  const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
-  const oldScores = useMemo(() => new Map((pool?.titles ?? []).map((e) => [e.mediaId, e.oldScore100])), [pool])
+  const viewerFormat = viewer?.scoreFormat
   const titleLanguage = viewer?.titleLanguage
-  // A new Ranking's Rough Sort order, and the Rough Sort from Scores plan over it (ADR 0008).
-  const startOrder = useMemo(
-    () => (pool && titleLanguage ? roughSortOrder(pool.titles, titleLanguage) : null),
-    [pool, titleLanguage],
+  // The saved Ranking's Pool, or the one a new Ranking would start on, and everything Start shows of it.
+  const startInput = useMemo(
+    () =>
+      viewerFormat && titleLanguage
+        ? { list: list ?? null, statuses, scoreFormat: viewerFormat, titleLanguage, saved: log && ranking ? { log, ranking } : null, savedBroken, picked: pickedGoal }
+        : null,
+    [list, statuses, viewerFormat, titleLanguage, log, ranking, savedBroken, pickedGoal],
   )
-  const scoresPlan = useMemo(
-    () => (startOrder ? planFromScores(startOrder.map((id) => ({ id, score100: oldScores.get(id) ?? 0 }))) : null),
-    [startOrder, oldScores],
-  )
+  const start = useMemo(() => startInput && startView(startInput), [startInput])
+  const pool = start?.pool ?? null
+  const oldScores = start?.oldScores ?? null
+  const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
 
   const imports = useImport({
     storage: localStorage,
@@ -212,7 +186,7 @@ export function App() {
     key: rankingKey,
     latestLog: duelLog.latest,
     append: duelLog.append,
-    oldScores: pool ? oldScores : null,
+    oldScores,
     name: (id, language) => titleName(entries.get(id), id, language),
     onViewerChecked: () => setPreviewChecked(true),
     setNotice,
@@ -554,7 +528,8 @@ export function App() {
   function startOrContinue(fromScores = false) {
     if (!viewer) return
     if (!duelLog.latest()) {
-      if (!startOrder) return
+      if (!start?.startOrder) return
+      const { startOrder, newGoal, scoresPlan } = start
       if (newGoal === 'score-new-titles') {
         startNewTitles(startOrder)
         return
@@ -695,6 +670,7 @@ export function App() {
 
   /** Score New Titles (ADR 0009): the Anchors are snapshotted into a new log now; Duels start straight away. */
   function startNewTitles(ids: number[]) {
+    const { anchors, eligibility } = start ?? {}
     if (!viewer || !anchors || !eligibility?.eligible) return
     duelLog.save(startNewTitlesLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids }))
     goTo('ranking')
@@ -705,8 +681,10 @@ export function App() {
    * away and a Score New Titles one starts on the unscored titles of the chosen statuses.
    */
   function replaceWithNewTitles() {
-    if (!rankingKey || !viewer || !list || !eligibility?.eligible) return
-    const ids = roughSortOrder(buildPool(newTitlesList(list, null), statuses).titles, viewer.titleLanguage)
+    if (!rankingKey || !startInput || !start?.eligibility?.eligible) return
+    // The Rough Sort order Start would give a new Score New Titles Ranking.
+    const ids = startView({ ...startInput, saved: null, savedBroken: false, picked: 'score-new-titles' }).startOrder
+    if (!ids) return
     deleteDuelLog(localStorage, rankingKey)
     imports.discard(rankingKey)
     setDialog(null)
@@ -803,52 +781,15 @@ export function App() {
       )
     : []
 
-  // Start: the saved Ranking's Sort Goal, or the one a new Ranking will start on, and its estimate (#28).
-  const shownGoal: SortGoal = ranking ? goalOf(ranking) : newGoal
-  const fullPoolDuels = pool ? estimateDuels(pool.titles.length) : null
-  // Score New Titles: one search per new title over the Anchor scores (a saved Ranking: its unsettled titles only).
-  const newTitlesDuels = ranking?.newTitles
-    ? estimateNewTitlesDuels(ranking.progress.ranked.total - ranking.progress.ranked.done, ranking.newTitles.levels.length)
-    : pool && eligibility
-      ? estimateNewTitlesDuels(pool.titles.length, eligibility.scores)
-      : null
-  // Start's New Titles button: the titles without a score in the chosen statuses (Score New Titles' own Pool).
-  const unscored = useMemo(
-    () => (list ? buildPool(newTitlesList(list, savedNewTitles), statuses).titles.length : null),
-    [list, savedNewTitles, statuses],
-  )
-  // With a Scores / Full Ranking Ranking saved, New Titles stays clickable: it asks to replace that Ranking (#46).
-  const newTitlesReason = eligibility && !eligibility.eligible ? eligibility.reason : null
-
-  const form = viewer
+  const form = viewer && start
     ? {
+        ...start.form,
         viewer,
         mediaType,
-        statuses,
-        pool,
-        // A Score New Titles Ranking has no Rough Sort: its progress is the new titles that have a score.
-        saved: (ranking?.newTitles ? ranking.progress.ranked : ranking?.progress.roughSort) ?? null,
-        // Offered for a new Ranking only.
-        scoresPlan: hasProgress ? null : scoresPlan,
-        bandDuels: ranking && !onNewTitles ? duelsFromBands(ranking) : null,
-        goal: shownGoal,
         onGoal: (goal: SortGoal) => {
           if (!ranking) setPickedGoal(goal)
           else if (goal !== 'score-new-titles') requestSortGoal(goal)
           else if (!isNewTitles(ranking)) setDialog('replace-with-new-titles')
-        },
-        poolDuels: onNewTitles ? newTitlesDuels : pool && shownGoal === 'scores' ? pool.expectedDuels : fullPoolDuels,
-        extraDuels:
-          ranking && !onNewTitles
-            ? fullRankingExtra(ranking) || null
-            : pool && fullPoolDuels !== null && !onNewTitles
-              ? fullPoolDuels - pool.expectedDuels
-              : null,
-        newTitles: {
-          count: unscored,
-          enabled: newTitlesReason === null && Boolean(eligibility),
-          reason: onNewTitles ? null : newTitlesReason,
-          anchors: ranking?.newTitles?.anchorCount ?? eligibility?.anchors ?? 0,
         },
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
@@ -869,29 +810,22 @@ export function App() {
     : null
   // Catch-up's exit offer (#52) is about anime, whichever Media Type is selected: on Manga, the anime Ranking and
   // statuses are the saved ones.
-  const animeStanding = useMemo((): AnimeStanding | null => {
-    if (!viewer || !animeList || animeNewTitlesEligible === null) return null
-    let saved = log
-    let chosen = statuses
-    if (mediaType !== 'ANIME') {
-      const key: RankingKey = { userId: viewer.id, mediaType: 'ANIME' }
-      try {
-        saved = loadDuelLog(localStorage, key)
-      } catch {
-        return null
-      }
-      chosen = loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES
-    } else if (savedBroken) return null
-    const inLog = saved ? newTitlesInLog(saved) : null
-    return {
-      eligibleForNewTitles: animeNewTitlesEligible,
-      // The count on Start's New Titles button.
-      unscored: buildPool(newTitlesList(animeList, inLog), chosen).titles.length,
-      saved: !saved ? 'none' : inLog ? 'new-titles' : 'other',
+  const animeList = lists.ANIME
+  const savedAnimeStart = useMemo((): StartView | null => {
+    if (mediaType === 'ANIME' || viewerId === null || !viewerFormat || !titleLanguage) return null
+    const key: RankingKey = { userId: viewerId, mediaType: 'ANIME' }
+    const statuses = loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES
+    const anime = { list: animeList ?? null, statuses, scoreFormat: viewerFormat, titleLanguage, picked: null }
+    try {
+      const saved = loadDuelLog(localStorage, key)
+      return startView({ ...anime, saved: saved && { log: saved, ranking: replay(saved) }, savedBroken: false })
+    } catch {
+      return startView({ ...anime, saved: null, savedBroken: true })
     }
-  }, [viewer, animeList, animeNewTitlesEligible, mediaType, log, statuses, savedBroken])
+  }, [mediaType, viewerId, viewerFormat, titleLanguage, animeList])
+  const animeStart = mediaType === 'ANIME' ? start : savedAnimeStart
   // The offer waits until the saves are written and the list read again, so it counts the titles just added.
-  const offer = exitOffer({ added: catchUp.added, anime: catchUp.listed ? animeStanding : null })
+  const offer = exitOffer({ added: catchUp.added, anime: catchUp.listed && animeStart ? animeStanding(animeStart) : null })
 
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
@@ -904,7 +838,7 @@ export function App() {
   // Refine Duels left by a settings change keep Preview open: its settled titles can still be imported (#29).
   // Its scoring settings are the log's own (ADR 0007), put there on the Score Format AniList reports by `openPreview`.
   const scoring = ranking?.scoring && viewer && ranking.scoring.format === viewer.scoreFormat ? ranking.scoring.settings : null
-  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && previewChecked && scoring && pool
+  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && previewChecked && scoring && oldScores
 
   /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {

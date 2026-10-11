@@ -1,7 +1,7 @@
 // Sync (issue #13, ADR 0005): brings the Pool in the Duel log up to date with the user's AniList list.
 import type { ListEntry, ListStatus, TitleLanguage } from '../anilist/types.ts'
 import type { DuelLog, LogEvent } from '../ranking/engine.ts'
-import { newTitlesList } from './anchors.ts'
+import { newTitlesPool, type SavedNewTitles } from './anchors.ts'
 import { buildPool, roughSortOrder } from './pool.ts'
 
 /** The titles in the log's Pool (Forgotten ones included), in the order they joined. Only sync events count. */
@@ -16,9 +16,9 @@ export function poolInLog(log: DuelLog): number[] {
 
 /**
  * A Score New Titles log's Anchors (its snapshot, ADR 0009) and the titles in its Pool; null for any other log.
- * What `newTitlesList` needs to build that Ranking's Pool from a fetched list.
+ * What `newTitlesPool` needs to build that Ranking's Pool from a fetched list.
  */
-export function newTitlesInLog(log: DuelLog): { anchors: ReadonlySet<number>; pool: ReadonlySet<number> } | null {
+export function newTitlesInLog(log: DuelLog): SavedNewTitles | null {
   const snapshot = log.events.find((event) => event.type === 'anchors-set')
   if (!snapshot) return null
   return { anchors: new Set(snapshot.anchors.map((a) => a.id)), pool: new Set(poolInLog(log)) }
@@ -37,7 +37,7 @@ export function syncEvents(
   language: TitleLanguage,
 ): LogEvent[] {
   const saved = newTitlesInLog(log)
-  const wanted = buildPool(saved ? newTitlesList(list, saved) : list, statuses).titles
+  const wanted = (saved ? newTitlesPool(list, statuses, saved) : buildPool(list, statuses)).titles
   const wantedIds = new Set(wanted.map((e) => e.mediaId))
   const current = poolInLog(log)
   const inLog = new Set(current)

@@ -1,8 +1,9 @@
 // Score New Titles (ADR 0009), the list side: which titles are Anchors, whether the user has enough of a scale to
 // compare against, and which titles a Score New Titles Pool is built from. Pure; callable from Start and Catch-up.
-import type { ListEntry, ScoreFormat } from '../anilist/types.ts'
+import type { ListEntry, ListStatus, ScoreFormat } from '../anilist/types.ts'
 import type { AnchorScore } from '../ranking/engine.ts'
-import { levelOfRaw } from '../ranking/scoring.ts'
+import { levelOfRaw, type SavedScoring } from '../ranking/scoring.ts'
+import { buildPool, type Pool } from './pool.ts'
 
 /** Score New Titles is offered only with at least this many Anchors… */
 export const MIN_ANCHORS = 20
@@ -39,16 +40,29 @@ export function newTitlesEligibility(anchors: readonly AnchorScore[]): NewTitles
   return { eligible, anchors: anchors.length, scores, reason }
 }
 
+/** A saved Score New Titles Ranking's Anchors (its snapshot, ADR 0009) and the titles in its Pool. */
+export type SavedNewTitles = { anchors: ReadonlySet<number>; pool: ReadonlySet<number> }
+
 /**
  * The list a Score New Titles Pool is built from (the status filter comes after): titles without a score, and for a
  * saved Ranking also its new titles that got a score since (e.g. by an Import), so they stay in it. Never an
  * Anchor of the saved Ranking, even once its score was removed on AniList: the snapshot doesn't change (ADR 0009).
  */
-export function newTitlesList(
-  list: readonly ListEntry[],
-  saved: { anchors: ReadonlySet<number>; pool: ReadonlySet<number> } | null,
-): ListEntry[] {
+export function newTitlesList(list: readonly ListEntry[], saved: SavedNewTitles | null): ListEntry[] {
   return list.filter((e) => !saved?.anchors.has(e.mediaId) && (e.oldScore100 === 0 || Boolean(saved?.pool.has(e.mediaId))))
+}
+
+/**
+ * A Score New Titles Ranking's Pool under the chosen statuses (`saved`: null for a new Ranking). The single place
+ * that says which titles such a Ranking holds: Start, its New Titles count, sync and Catch-up's exit offer all ask here.
+ */
+export function newTitlesPool(
+  list: readonly ListEntry[],
+  statuses: readonly ListStatus[],
+  saved: SavedNewTitles | null,
+  scale?: SavedScoring,
+): Pool {
+  return buildPool(newTitlesList(list, saved), statuses, scale)
 }
 
 /**
