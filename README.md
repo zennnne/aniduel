@@ -1,17 +1,38 @@
 # AniDuel!
 
-Build your AniList scores by comparing titles from your own list two at a time, then write the new scores back to AniList. Rebuild every score from scratch, or keep the scores you have and only score the titles that have none.
+Build your AniList scores by comparing titles from your own list two at a time, then write the new scores back to AniList.
 
 **Live:** https://zennnne.github.io/aniduel/
 
+## Three ways to use it
+
+You pick a **Sort Goal** when a Ranking starts.
+
+| Sort Goal | Pick it when | Duels stop when |
+| --- | --- | --- |
+| **Scores** | you just want new scores on AniList | every title's score is settled |
+| **Full Ranking** | you also want an exact order of your titles | every title has its own place |
+| [**Score New Titles**](#score-new-titles) | you like the scores you have and only want to score the titles that have none | every unscored title has a score |
+
+Scores and Full Ranking rebuild every score from scratch and share the steps below. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch between the two at any time without losing answers. Score New Titles works differently and is described in [its own section](#score-new-titles).
+
 ## How it works
 
-1. **Log in** with AniList and pick a Media Type (Anime or Manga) and which list statuses go into the **Pool**. Pick a **Sort Goal**: **Scores** stops once every title's score is settled; **Full Ranking** keeps going until every title has its own place. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch either way at any time without losing answers. A third Sort Goal, **Score New Titles**, works differently: see [below](#score-new-titles).
-2. **Rough Sort** — put each title into one of five **Bands** with a single tap. Or use **Rough Sort from Scores**: titles that already have an AniList score go into a Band by how far that score sits from your own average, and only unscored titles are sorted by hand. Oversized Bands can be split into three **Sub-bands**.
+1. **Log in** with AniList. Pick a Media Type (Anime or Manga), which list statuses go into the **Pool**, and a Sort Goal.
+2. **Rough Sort** — put each title into one of five **Bands** with a single tap.
+   - Or use **Rough Sort from Scores**: titles that already have an AniList score go into a Band by how far that score sits from your own average, and only unscored titles are sorted by hand.
+   - Oversized Bands can be split into three **Sub-bands**.
 3. **Board** — see every title grouped into its Band and drag any title to another Band. Open during Rough Sort and once more as a last check before the first Duel.
-4. **Duel** — pick the better of two titles from the same Band, call them equal (they share a **Tier**), or mark one **Forgotten**. Every answer can be undone. Under Scores, a change that moves a score boundary (settings, sync, Forgotten, a Band move, Re-rank) asks a few **Refine Duels** to settle the titles it affected.
-5. **Preview** — choose the best and worst score, the **Distribution** (Linear or Bell) and the **Score Step** (fine, or human steps like every 0.5 / every 5; Scores always uses whole points). See every title's old and new score, move or **Re-rank** titles, and tick which ones to write. Under Scores, titles are grouped by score level and only settled titles can be ticked.
+4. **Duel** — pick the better of two titles from the same Band, call them equal (they share a **Tier**), or mark one **Forgotten**. Every answer can be undone.
+5. **Preview** — see every title's old and new score, move or **Re-rank** titles, and tick which ones to write. Three settings shape the scores:
+   - the best and worst score
+   - the **Distribution**: Linear or Bell
+   - the **Score Step**: fine, or human steps like every 0.5 / every 5
 6. **Import** — write the chosen scores back to your AniList list (throttled, resumable, retries on rate limits).
+
+Progress is saved in your browser. Use **Backup** / **Restore** to move a Ranking to another browser. The Pool syncs with AniList when you come back, so added or removed titles are picked up.
+
+See [GLOSSARY.md](GLOSSARY.md) for the exact meaning of each term.
 
 ### Scores or Full Ranking?
 
@@ -23,25 +44,40 @@ Build your AniList scores by comparing titles from your own list two at a time, 
 | Duels needed | about 30–40% fewer than Full Ranking (200 titles, whole points) | about 1,000 for 200 titles |
 | Changing best/worst or Distribution later | costs Refine Duels (roughly 50–120) before the affected titles can be imported | free: the order is already complete |
 
-Pick **Scores** if you just want new scores on AniList. Pick **Full Ranking** if you also want an exact order, a finer Score Step, or to experiment with the score settings freely. Switching keeps every answer; switching to Full Ranking first shows about how many more Duels it will take.
+Under Scores, two more things differ:
+
+- A change that moves a score boundary (settings, sync, Forgotten, a Band move, Re-rank) asks a few **Refine Duels** to settle the titles it affected.
+- Preview groups titles by score level, and only settled titles can be ticked.
+
+Switching keeps every answer. Switching to Full Ranking first shows about how many more Duels it will take.
 
 ### Score New Titles
 
 For when you already have a scoring scale and don't want it changed. Titles that already have an AniList score are **Anchors**: fixed reference points whose scores are never touched. Each title without a score is put through Duels against Anchors only, and gets the score of the Anchors it sits among.
 
-- Offered on Start when your list has at least 20 Anchors on at least 3 different scores. It can only be chosen when a Ranking starts, and can't be switched with the other two Sort Goals.
-- No Rough Sort, Board or Bands: Duels start straight away, always a new title against an Anchor. A score boundary is passed only when two different Anchors agree.
+**When you can use it**
+
+- Offered on Start when your list has at least 20 Anchors on at least 3 different scores.
+- It can only be chosen when a Ranking starts, and can't be switched with the other two Sort Goals.
+
+**How it differs from the steps above**
+
+- No Rough Sort, Board or Bands: Duels start straight away, always a new title against an Anchor.
+- A score boundary is passed only when two different Anchors agree.
 - A new title that beats every Anchor of one score and loses to every Anchor of the next gets a one-off **Closer-to prompt**: which of the two scores is it closer to.
 - An Anchor whose Duel results contradict its own score twice becomes a **Suspect Anchor**. It stops being used as a reference and is listed on Preview.
-- Preview opens as soon as one new title is settled, so you can import some scores without finishing the rest. The Ranking ends with its Import: titles still without a score start fresh next time, against Anchors that now include the ones just imported.
+- Preview opens as soon as one new title is settled, so you can import some scores without finishing the rest.
+- The Ranking ends with its Import. Titles still without a score start fresh next time, against Anchors that now include the ones just imported.
 
 ### Catch-up
 
-A thin AniList list leaves little to rank. **Catch-up** (anime only, from Start or the menu) shows 20 anime at a time that you have probably already watched, picked from the sequels, prequels and community recommendations of what is on your list, plus popular titles from the years and formats you watch. Mark each one Completed, Dropped, Planning or Paused and save to get the next batch; saves are written to AniList in the background. Titles you leave unmarked are **Passed** and aren't suggested again for 30 days. While your list is near empty, Catch-up first asks roughly when you started watching anime. Once you have added titles, it offers to go on to Score New Titles if you qualify, or to your default Sort Goal if not.
+A thin AniList list leaves little to rank. **Catch-up** fills it in: it shows anime you have probably already watched and lets you add them to your list quickly. Anime only, opened from Start or the menu.
 
-Progress is saved in your browser. Use **Backup** / **Restore** to move a Ranking to another browser. The Pool syncs with AniList when you come back, so added or removed titles are picked up.
-
-See [GLOSSARY.md](GLOSSARY.md) for the exact meaning of each term.
+- **What it suggests:** 20 anime at a time, picked from the sequels, prequels and community recommendations of what is on your list, plus popular titles from the years and formats you watch.
+- **What you do:** mark each one Completed, Dropped, Planning or Paused, then save to get the next batch. Saves are written to AniList in the background.
+- **Titles you leave unmarked** are **Passed** and aren't suggested again for 30 days.
+- **With a near-empty list**, Catch-up first asks roughly when you started watching anime.
+- **When you are done**, it offers to go on to Score New Titles if you qualify, or to your default Sort Goal if not.
 
 ## Development
 
