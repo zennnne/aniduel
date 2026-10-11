@@ -231,6 +231,13 @@
     animation: none;
   }
 }
+@media (min-width: 721px) {
+  /* The dome rises 45px above the card: on a short screen the column's own 30px would cut its head off. */
+  .st-hero .r:has(.mochi) {
+    padding-top: 50px;
+    padding-bottom: 24px;
+  }
+}
 @media (max-width: 720px) {
   /* Stays inside the screen, and the card's top row moves down out from under the melted lip. */
   .mochi {
