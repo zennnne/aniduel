@@ -1,4 +1,5 @@
 // Test helper (not used by the app): a finished Ranking built through the real engine.
+import type { ScoreFormat } from '../anilist/types.ts'
 import { replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from './engine.ts'
 
 /**
@@ -6,12 +7,17 @@ import { replay, startLog, type BandIndex, type DuelLog, type LogEvent, type Ran
  * order (same Tier = "about the same"). `forgotten` titles are added too and marked Forgotten in Rough Sort.
  */
 export function rankingOf(bands: number[][][], forgotten: number[] = []): RankingState {
+  return replay(rankingLogOf(bands, forgotten))
+}
+
+/** The Duel log of that Ranking. Given a Score Format, it starts on Scores with its settings in the log (ADR 0007). */
+export function rankingLogOf(bands: number[][][], forgotten: number[] = [], scoreFormat?: ScoreFormat): DuelLog {
   const ids = [...forgotten, ...bands.flat(2)]
   const value = new Map<number, number>()
   bands.forEach((tiers) => tiers.forEach((tier, i) => tier.forEach((id) => value.set(id, -i))))
   const bandOf = new Map<number, BandIndex>()
   bands.forEach((tiers, b) => tiers.flat().forEach((id) => bandOf.set(id, b as BandIndex)))
-  let log: DuelLog = startLog({ seed: 1, userId: 7, mediaType: 'ANIME', ids })
+  let log: DuelLog = startLog({ seed: 1, userId: 7, mediaType: 'ANIME', ids, scoreFormat })
   const add = (e: LogEvent) => (log = { ...log, events: [...log.events, e] })
   forgotten.forEach((id) => add({ type: 'forgotten', id }))
   bands.flat(2).forEach((id) => add({ type: 'band-assigned', id, band: bandOf.get(id)! }))
@@ -22,5 +28,5 @@ export function rankingOf(bands: number[][][], forgotten: number[] = []): Rankin
     const vb = value.get(p.b)!
     add({ type: 'duel-answered', a: p.a, b: p.b, result: va === vb ? 'tie' : va > vb ? 'a' : 'b' })
   }
-  return replay(log)
+  return log
 }

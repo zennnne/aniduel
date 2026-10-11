@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
 import { formatDuration, importSummary, skippedWrites, timeLeftMs, type ImportState } from '../../import/importState.ts'
+import type { ImportStage } from '../../import/previewImport.ts'
 import { WRITE_SPACING_MS, type RunnerStatus } from '../../writes/writeQueue.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
 import { count, titleName } from '../meta.ts'
 import './import.css'
-
-export type ImportStage = 'confirm' | 'running' | 'stopped' | 'done'
 
 /**
  * Import ("cover grid", issue #10): a confirmation card before any write, then one cover per planned title that

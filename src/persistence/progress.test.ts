@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { importOf } from '../import/importState.ts'
+import { memoryStorage } from './memoryStorage.ts'
 import { replay, startLog } from '../ranking/engine.ts'
 import type { WriteQueueState } from '../writes/writeQueue.ts'
 import {
@@ -20,20 +21,6 @@ import {
   saveLastMediaType,
   savePoolSettings,
 } from './progress.ts'
-
-function memoryStorage(): Storage {
-  const map = new Map<string, string>()
-  return {
-    get length() {
-      return map.size
-    },
-    key: (i) => [...map.keys()][i] ?? null,
-    getItem: (k) => map.get(k) ?? null,
-    setItem: (k, v) => void map.set(k, String(v)),
-    removeItem: (k) => void map.delete(k),
-    clear: () => map.clear(),
-  }
-}
 
 const anime = { userId: 7, mediaType: 'ANIME' as const }
 

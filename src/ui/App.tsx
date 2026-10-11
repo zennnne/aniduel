@@ -6,7 +6,8 @@ import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
 import { browserClock } from '../clock.ts'
-import { retryFailed } from '../import/importState.ts'
+import { importSummary } from '../import/importState.ts'
+import type { DroppedImport, ImportProgress } from '../import/previewImport.ts'
 import { createRequestLimiter } from '../writes/limiter.ts'
 import {
   deleteDuelLog,
@@ -36,8 +37,8 @@ import {
   type SwitchableGoal,
 } from '../ranking/engine.ts'
 import { fullRankingExtra } from '../ranking/estimate.ts'
-import { previewOpen } from '../ranking/preview.ts'
-import { scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
+import { previewOpen, readPreview } from '../ranking/preview.ts'
+import type { ScoringSettings } from '../ranking/scoring.ts'
 import { goalOf, isNewTitles, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { autoOfferDue, splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
@@ -65,7 +66,7 @@ import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
 import { buildMenuItems } from './menu/buildMenuItems.ts'
 import { ReplaceWithNewTitlesDialog, RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
 import { ImportScreen } from './import/ImportScreen.tsx'
-import { useImport } from './import/useImport.ts'
+import { usePreviewImport } from './import/usePreviewImport.ts'
 import { useWriteQueue } from './useWriteQueue.ts'
 import { MEDIA_LABEL, count, titleName } from './meta.ts'
 import { PreviewScreen } from './preview/PreviewScreen.tsx'
@@ -109,6 +110,18 @@ function newSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]
 }
 
+/** Why an unfinished Import was dropped instead of resumed. */
+function droppedMessage(dropped: DroppedImport): string {
+  switch (dropped.reason) {
+    case 'format-changed':
+      return `Your Score Format changed to ${SCORE_FORMAT_LABEL[dropped.format]}, so the unfinished Import was dropped. Check the scores on Preview and import again.`
+    case 'nothing-left':
+      return 'Your Ranking changed since the last Import, and no score is left to write.'
+    case 'ranking-unfinished':
+      return 'Your Ranking changed since the last Import and is not finished, so the unfinished Import was dropped.'
+  }
+}
+
 export function App() {
   const { theme, toggleTheme } = useTheme()
   const [token, setToken] = useState<string | null>(() =>
@@ -135,9 +148,6 @@ export function App() {
   const [lastCheckContinued, setLastCheckContinued] = useState(false)
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
-  const [openingPreview, setOpeningPreview] = useState(false)
-  // ADR 0003: Preview only after a fresh Viewer check in this Ranking session (openPreview, or an Import resume).
-  const [previewChecked, setPreviewChecked] = useState(false)
   // A fix started from Preview (#11): its Duels run on the Ranking screen, then Preview opens again.
   const [previewFix, setPreviewFix] = useState<{ id: number; verb: string } | null>(null)
   // "Go to Duels →" on Preview's unsettled card (#29): once every score is settled again, Preview opens again.
@@ -177,21 +187,16 @@ export function App() {
   const oldScores = start?.oldScores ?? null
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
 
-  const imports = useImport({
+  const imports = usePreviewImport({
     storage: localStorage,
     gateway,
     queue: writes.queue,
     viewer,
-    setViewer,
-    key: rankingKey,
     latestLog: duelLog.latest,
     append: duelLog.append,
     oldScores,
     name: (id, language) => titleName(entries.get(id), id, language),
-    onViewerChecked: () => setPreviewChecked(true),
-    setNotice,
-    onImportScreen: screen === 'import',
-    goTo,
+    onViewer: setViewer,
     onGatewayError: handleGatewayError,
     onWritten: (key, written) =>
       // Preview should show the scores AniList has now.
@@ -261,7 +266,6 @@ export function App() {
     setSplitView(null)
     setSkippedSplits([])
     setLastCheckContinued(false)
-    setPreviewChecked(false)
     imports.open(key)
     setPreviewFix(null)
     setRefining(false)
@@ -293,7 +297,6 @@ export function App() {
     setViewer(null)
     setLists({})
     setStatuses(DEFAULT_STATUSES)
-    setPreviewChecked(false)
     duelLog.show(null)
     setSavedBroken(false)
     setSplitView(null)
@@ -549,40 +552,35 @@ export function App() {
   }
 
   /**
-   * Runs `Viewer` again first (spec Auth, ADR 0003): if the Score Format changed since best / worst were
-   * chosen, they are converted to the new format, the conversion is appended to the Duel log (ADR 0007), and a
-   * blue banner says so. An older log without settings of its own gets them appended too, so Preview reads them
-   * from the log.
+   * Preview opens once the fresh `Viewer` check is through (spec Auth, ADR 0003). If the Score Format changed since
+   * best / worst were chosen, they were converted to the new format, and a blue banner says so.
    */
   function openPreview() {
-    if (!gateway || !viewer || openingPreview) return
-    setOpeningPreview(true)
-    gateway.viewer().then(
-      (fresh) => {
-        setOpeningPreview(false)
-        setViewer(fresh)
-        const key = { userId: fresh.id, mediaType }
-        const current = duelLog.latest()
-        if (!current) return
-        const { converted, event } = scoringFor(replay(current), loadScoringSettings(localStorage, key), fresh.scoreFormat)
-        if (event) duelLog.append(event)
-        if (converted) {
-          imports.dropForFormatChange(key)
-          // Score New Titles has no best / worst: its scores are the Anchors', shown in the new Score Format.
-          const check = isNewTitles(replay(current)) ? 'Check the new scores' : 'Best / Worst were converted. Check them'
-          setNotice({
-            tone: 'info',
-            message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[fresh.scoreFormat]}. ${check} before importing.`,
-          })
-        }
-        setPreviewChecked(true)
-        goTo('preview')
-      },
-      (e: unknown) => {
-        setOpeningPreview(false)
-        handleGatewayError(e)
-      },
-    )
+    const newTitles = ranking !== null && isNewTitles(ranking)
+    void imports.openPreview().then((checked) => {
+      if (!checked) return
+      if (checked.converted) {
+        // Score New Titles has no best / worst: its scores are the Anchors', shown in the new Score Format.
+        const check = newTitles ? 'Check the new scores' : 'Best / Worst were converted. Check them'
+        setNotice({
+          tone: 'info',
+          message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[checked.format]}. ${check} before importing.`,
+        })
+      }
+      goTo('preview')
+    })
+  }
+
+  /**
+   * Where a resumed (or retried) Import ended up: on the Import screen to be confirmed again or written, or dropped,
+   * with a blue banner saying why and the Import screen left for Preview (or the Duels of an unfinished Ranking).
+   */
+  function showResumed(progress: ImportProgress | null) {
+    if (!progress) return
+    if (progress.stage === 'dropped') {
+      setNotice({ tone: 'info', message: droppedMessage(progress) })
+      if (screen === 'import') goTo(progress.previewOpen ? 'preview' : 'ranking')
+    } else if (screen !== 'import') goTo('import')
   }
 
   /** Settings changed on Preview go into the Duel log (ADR 0007), so a reload or a Backup gives the same scores. */
@@ -705,7 +703,6 @@ export function App() {
     deleteDuelLog(localStorage, key)
     imports.discard(key)
     duelLog.show(null)
-    setPreviewChecked(false)
     setPreviewFix(null)
     setRefining(false)
   }
@@ -830,15 +827,33 @@ export function App() {
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   const inRanking =
     (screen === 'ranking' || screen === 'bands' || screen === 'board' || screen === 'preview' || screen === 'import') && viewer && ranking && (list || notice)
-  const importView = imports.view
+  const importView = imports.importing?.stage === 'dropped' ? null : imports.importing
   const inImport = screen === 'import' && importView
   // A Score New Titles Ranking is gone once its Import finished (ADR 0010); the summary still shows.
   const importEnded = inImport && viewer && !ranking && importView.stage === 'done'
   // Preview only for a finished Ranking whose old scores are loaded; otherwise the Ranking screen shows. On Scores,
   // Refine Duels left by a settings change keep Preview open: its settled titles can still be imported (#29).
-  // Its scoring settings are the log's own (ADR 0007), put there on the Score Format AniList reports by `openPreview`.
+  // Its scoring settings are the log's own (ADR 0007), put there on the Score Format AniList reports by the fresh
+  // `Viewer` check (ADR 0003), which Preview waits for.
   const scoring = ranking?.scoring && viewer && ranking.scoring.format === viewer.scoreFormat ? ranking.scoring.settings : null
-  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && previewChecked && scoring && oldScores
+  const inPreview = screen === 'preview' && ranking && previewOpen(ranking.prompt) && imports.preview && scoring && oldScores
+  const ticks = imports.ticks
+  const previewRead = useMemo(
+    () =>
+      inPreview && viewerFormat && titleLanguage
+        ? readPreview(ranking, viewerFormat, scoring, oldScores, (id) => titleName(entries.get(id), id, titleLanguage), ticks)
+        : null,
+    [inPreview, ranking, viewerFormat, scoring, oldScores, entries, titleLanguage, ticks],
+  )
+  // A cut-off Import (or one with failures) is offered again until it finishes, the plan is dropped, or Start over:
+  // "Your last Import didn't finish" with Resume (once the list is loaded), unless the Import screen is showing.
+  const unfinishedImport = viewer && screen !== 'import' ? imports.unfinished : null
+  const unfinishedSummary = unfinishedImport && importSummary(unfinishedImport)
+  const resumeNotice: Notice | null = unfinishedSummary && {
+    tone: 'info',
+    message: `Your last Import didn't finish: ${unfinishedSummary.left + unfinishedSummary.failed} of ${unfinishedSummary.total} scores still to write.`,
+    action: list ? { label: 'Resume Import', onClick: () => void imports.resume().then(showResumed) } : undefined,
+  }
 
   /** The screen for the engine's next prompt: Rough Sort, a Duel, or the finished Ranking. */
   function rankingScreen(state: RankingState, titleLanguage: TitleLanguage) {
@@ -846,7 +861,7 @@ export function App() {
     const shared = { state, entries, titleLanguage, mediaType, onUndo: () => answer({ type: 'undo' }) }
     // Score New Titles: every settled new title can be imported before the rest are (ADR 0010).
     const settled = state.newTitles?.titles.filter((t) => t.settled).length ?? 0
-    const early = settled > 0 ? { settled, onOpen: list && !openingPreview ? openPreview : undefined } : undefined
+    const early = settled > 0 ? { settled, onOpen: list && !imports.openingPreview ? openPreview : undefined } : undefined
     if (splitBand !== null) {
       const band = splitBand
       return (
@@ -980,14 +995,13 @@ export function App() {
           />
         )
       case 'all-complete':
-        return <CompleteScreen {...shared} onScore={list && !openingPreview ? openPreview : undefined} />
+        return <CompleteScreen {...shared} onScore={list && !imports.openingPreview ? openPreview : undefined} />
     }
   }
 
   return (
     <Shell
-      // A cut-off Import (or one with failures) is offered again until it finishes, the plan is dropped, or Start over.
-      notice={notice ?? imports.notice(Boolean(list))}
+      notice={notice ?? resumeNotice}
       toast={toast?.message}
       sidebar={
         inRanking ? (
@@ -1047,16 +1061,17 @@ export function App() {
           entries={entries}
           titleLanguage={viewer.titleLanguage}
           format={importView.state.format}
-          onConfirm={() => void imports.write(importView.state)}
+          onConfirm={imports.confirm}
           onStop={imports.stop}
-          onResume={() => imports.resume(importView.state)}
-          onRetry={() => imports.resume(retryFailed(importView.state))}
+          onResume={() => void imports.resume().then(showResumed)}
+          onRetry={() => void imports.retry().then(showResumed)}
           onBack={() => goTo(importEnded ? 'start' : 'preview')}
           ended={Boolean(importEnded)}
         />
-      ) : inRanking && inPreview ? (
+      ) : inRanking && inPreview && previewRead ? (
         <PreviewScreen
           state={ranking}
+          preview={previewRead}
           entries={entries}
           oldScores={oldScores}
           titleLanguage={viewer.titleLanguage}
@@ -1065,9 +1080,9 @@ export function App() {
           onSettings={changeScoring}
           onSwitchGoal={isNewTitles(ranking) ? undefined : requestSortGoal}
           onRefine={ranking.prompt.kind === 'all-complete' ? undefined : refineFromPreview}
-          overrides={imports.ticks}
+          overrides={ticks}
           onTick={imports.tick}
-          onImport={importView?.stage === 'running' ? undefined : (plan) => imports.plan(plan, scoring)}
+          onImport={importView?.stage === 'running' ? undefined : () => imports.planImport() && goTo('import')}
           onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
           onMove={isNewTitles(ranking) ? undefined : setPreviewMoving}
           onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}

@@ -3,19 +3,17 @@ import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.
 import { BANDS, type RankingState, type SwitchableGoal } from '../../ranking/engine.ts'
 import { refineDuels } from '../../ranking/estimate.ts'
 import {
-  importPlan,
   isTicked,
-  previewRows,
   settledRows,
   suspectAnchors,
-  type PendingWrite,
+  type PreviewRead,
   type PreviewRow,
   type SettledRow,
   type TickOverrides,
   type UnsettledRow,
 } from '../../ranking/preview.ts'
 import { goalOf, isNewTitles, isScores } from '../../ranking/sortGoal.ts'
-import { formatLevel, hasHumanStep, levelOfRaw, levels, score, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
+import { formatLevel, hasHumanStep, levelOfRaw, levels, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { SortGoalSeg } from '../SortGoalSeg.tsx'
@@ -39,6 +37,8 @@ type Filter = 'changing' | 'all'
  */
 export function PreviewScreen(props: {
   state: RankingState
+  /** `state` read into Preview rows and the Import plan, under `settings` and `overrides`. */
+  preview: PreviewRead
   entries: ReadonlyMap<number, ListEntry>
   /** Old AniList score (100-point) of every title in the Pool; ranked titles missing here are never written. */
   oldScores: ReadonlyMap<number, number>
@@ -48,7 +48,7 @@ export function PreviewScreen(props: {
   onSettings: (settings: ScoringSettings) => void
   overrides: TickOverrides
   onTick: (id: number, ticked: boolean) => void
-  onImport?: (plan: PendingWrite[]) => void
+  onImport?: () => void
   onRerank?: (id: number) => void
   onMove?: (id: number) => void
   onBringBack?: (id: number) => void
@@ -69,12 +69,7 @@ export function PreviewScreen(props: {
   const [showUnsettled, setShowUnsettled] = useState(false)
 
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
-  const scores = useMemo(() => score(state, format, settings), [state, format, settings])
-  const allRows = useMemo(
-    () => previewRows(state, scores, oldScores, format, (id) => titleName(entries.get(id), id, titleLanguage)),
-    [state, scores, oldScores, format, entries, titleLanguage],
-  )
-  const plan = importPlan(allRows, overrides)
+  const { scores, rows: allRows, plan } = props.preview
   // Score rows hold settled titles only (#25); unsettled ones (Scores, after a settings change) are never ticked.
   const rows = settledRows(allRows)
   const changing = rows.filter((r) => r.changed).length
@@ -179,7 +174,7 @@ export function PreviewScreen(props: {
           </div>
         </div>
         <div className="grow" />
-        <button className="go" disabled={!props.onImport || plan.length === 0} onClick={() => props.onImport?.(plan)}>
+        <button className="go" disabled={!props.onImport || plan.length === 0} onClick={props.onImport}>
           Import {count(plan.length, 'score')} →
         </button>
       </div>

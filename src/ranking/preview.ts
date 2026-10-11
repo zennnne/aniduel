@@ -3,7 +3,7 @@
 import type { ScoreFormat } from '../anilist/types.ts'
 import { compareNames } from '../names.ts'
 import { BANDS, type BandIndex, type NewTitlesState, type Prompt, type RankingState } from './engine.ts'
-import { levelOfRaw, scoreRawOf, type Scores } from './scoring.ts'
+import { levelOfRaw, score, scoreRawOf, type Scores, type ScoringSettings } from './scoring.ts'
 import { isScores } from './sortGoal.ts'
 
 /**
@@ -162,4 +162,24 @@ export function importPlan(rows: readonly PreviewRow[], overrides: TickOverrides
   return rows
     .filter((row) => isTicked(row, overrides))
     .map((row) => ({ mediaId: row.id, scoreRaw: row.scoreRaw, oldScore100: row.oldScore100 }))
+}
+
+/** A Ranking as Preview shows it: every title's level, one row per title, and the Import plan of the ticked rows. */
+export type PreviewRead = { scores: Scores; rows: PreviewRow[]; plan: PendingWrite[] }
+
+/**
+ * Reads a Ranking into Preview rows and the Import plan. Preview and a resumed Import both read it here, so both make
+ * the same plan.
+ */
+export function readPreview(
+  ranking: RankingState,
+  format: ScoreFormat,
+  settings: ScoringSettings,
+  oldScores: ReadonlyMap<number, number>,
+  name: (id: number) => string,
+  ticks: TickOverrides,
+): PreviewRead {
+  const scores = score(ranking, format, settings)
+  const rows = previewRows(ranking, scores, oldScores, format, name)
+  return { scores, rows, plan: importPlan(rows, ticks) }
 }
