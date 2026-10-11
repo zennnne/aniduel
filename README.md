@@ -79,6 +79,8 @@ A thin AniList list leaves little to rank. **Catch-up** fills it in: it shows an
 - **With a near-empty list**, Catch-up first asks roughly when you started watching anime.
 - **When you are done**, it offers to go on to Score New Titles if you qualify, or to your default Sort Goal if not.
 
+So if you already have a scoring scale of your own, the two make a full loop: Catch-up adds the titles you have watched, then Score New Titles gives them scores without changing the ones you already have.
+
 ## Development
 
 Requires Node 22+.
