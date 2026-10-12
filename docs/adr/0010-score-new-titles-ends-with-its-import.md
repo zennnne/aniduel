@@ -1,5 +1,7 @@
 # A Score New Titles Ranking ends with its Import
 
+_Amended by [ADR 0011](0011-keep-my-scale-a-hand-picked-pool.md): the goal is now called Keep My Scale, and the list of titles left unsettled is kept for the next Picker._
+
 Under Scores and Full Ranking a Ranking outlives its Import: the user can come back, fix it and import again. Score New Titles (ADR 0009) is different: once a new title's score is written it is an ordinary scored title, an Anchor for next time, and the user wants to import the settled titles without finishing the rest. So Preview can be opened as soon as one new title is Settled, and when the Import has written every score it planned with none failed, the whole Ranking is thrown away: the Duel log, the ticks, Forgotten marks and Suspect Anchors. Titles still without a score start fresh in the next Ranking, against Anchors that now include the titles just imported.
 
 ## Rules

@@ -5,7 +5,7 @@ Helps AniList users build their scores from scratch by comparing titles from the
 ## Language
 
 **Pool**:
-The set of titles from one user's list (one media type, filtered by list status) that is being ranked.
+The set of titles from one user's list (one media type) that is being ranked: every title of the chosen list statuses, or under Keep My Scale the titles the user picked by hand.
 _Avoid_: Queue, selection
 
 **Rough Sort**:
@@ -33,7 +33,7 @@ A Duel asked under the Scores Sort Goal because something moved a level boundary
 _Avoid_: Re-duel, extra Duel
 
 **Settled**:
-A title is settled when more Duels can no longer change its score under the current settings. Under Scores and Score New Titles, only settled titles can be ticked and imported.
+A title is settled when more Duels can no longer change its score under the current settings. Under Scores and Keep My Scale, only settled titles can be ticked and imported.
 _Avoid_: Final, locked, done
 
 **Ranking**:
@@ -73,8 +73,8 @@ The smallest gap between the scores a title can get: every level of the Score Fo
 _Avoid_: Precision, rounding, granularity
 
 **Sort Goal**:
-What the Duels aim for, chosen by the user. Scores stops once every title's score is settled, so titles with the same score have no order among themselves; Full Ranking keeps going until every title has its own place. The two share one Pool and the user can switch between them at any time without losing answers. Score New Titles scores only titles without a score, by Duels against Anchors, and can only be chosen when a Ranking starts. Its Ranking ends with its Import: once the Import has written every chosen score, nothing of that Ranking is kept, and titles still without a score start fresh in the next one.
-_Avoid_: Mode, fast mode, quick mode
+What the Duels aim for, chosen by the user. Scores stops once every title's score is settled, so titles with the same score have no order among themselves; Full Ranking keeps going until every title has its own place. The two share one Pool and the user can switch between them at any time without losing answers. Keep My Scale scores only the titles the user picks by hand, whether or not they already have a score, by Duels against Anchors, so every other score stays as it is. It can only be chosen when a Ranking starts, and its Pool can't be added to afterwards. Its Ranking ends with its Import: once the Import has written every chosen score, nothing of that Ranking is kept except the list of titles that were not yet Settled, which the user is offered to pick again next time.
+_Avoid_: Mode, fast mode, quick mode, Score New Titles (the old name of Keep My Scale)
 
 **Preview**:
 The screen that shows every title's old and new score before an Import, where the user ticks which titles to write and fixes the Ranking.
@@ -93,15 +93,19 @@ A file holding one Ranking's Duel log and settings, which the user can Restore i
 _Avoid_: Export, progress file, save file
 
 **Anchor**:
-A title in the user's list, of any status, that already has an AniList score, used as a fixed reference point when scoring unscored titles. Its score is never changed.
+A title in the user's list, of any status, that already has an AniList score and is not itself being scored in this Ranking, used as a fixed reference point for the titles that are. Its score is never changed.
 _Avoid_: Reference, benchmark, scored title
+
+**Picker**:
+The screen where the user picks by hand the titles a Keep My Scale Ranking will score, from every title on their list except Planning ones, before that Ranking starts.
+_Avoid_: Selection, chooser, title list
 
 **Suspect Anchor**:
 An Anchor whose Duel results have contradicted its own score at least twice. It stops being used as a reference, and its score is still left untouched.
 _Avoid_: Wrong anchor, outlier
 
 **Closer-to prompt**:
-The one-off question asked when a new title beats every Anchor of one score and loses to every Anchor of the next: which of the two scores is it closer to. Its answer settles the title.
+The one-off question asked when a title being scored under Keep My Scale beats every Anchor of one score and loses to every Anchor of the next: which of the two scores is it closer to. Its answer settles the title.
 _Avoid_: Tie-break, rounding question
 
 **Catch-up**:
