@@ -146,6 +146,11 @@ a {
 .go.danger {
   background: var(--danger);
 }
+/* A second button beside a main one, as in a dialog's "Not now" */
+.go.quiet {
+  background: var(--fg2);
+  color: var(--tx-strong);
+}
 .go.sm {
   padding: 7px 12px;
   font-size: 12px;

@@ -7,6 +7,7 @@ import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { SubBandButtons } from '../SubBandChoice.tsx'
 import { titleName } from '../meta.ts'
+import { useMobile } from '../useMobile.ts'
 import './board.css'
 
 /** A mouse drag starts after this many pixels; a touch drag after holding this long (moving earlier scrolls). */
@@ -16,20 +17,6 @@ const TOUCH_SLOP = 8
 /** Distance from a list's top or bottom edge where a drag scrolls it, and how far per frame. */
 const EDGE = 50
 const EDGE_STEP = 14
-
-const MOBILE = '(max-width: 720px)'
-
-function useMobile(): boolean {
-  const [mobile, setMobile] = useState(() => window.matchMedia?.(MOBILE).matches ?? false)
-  useEffect(() => {
-    const query = window.matchMedia?.(MOBILE)
-    if (!query) return
-    const onChange = () => setMobile(query.matches)
-    query.addEventListener('change', onChange)
-    return () => query.removeEventListener('change', onChange)
-  }, [])
-  return mobile
-}
 
 type Card = BoardTitle & { name: string; entry: ListEntry | undefined }
 

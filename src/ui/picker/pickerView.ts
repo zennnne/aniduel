@@ -8,6 +8,7 @@ import { anchorsOf, estimateKeepMyScaleDuels, keepMyScaleEligibility, MIN_ANCHOR
 import { DEFAULT_STATUSES, displayTitle, OFFERED_STATUSES, roughSortOrder } from '../../pool/pool.ts'
 import type { AnchorScore } from '../../ranking/engine.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
+import { count } from '../meta.ts'
 
 export type PickerInput = {
   /** The Media Type's list, fetched for every offered status. */
@@ -97,6 +98,8 @@ export type PickerView = {
   rows: PickerRow[]
   summary: PickerSummary
   confirm: PickerConfirm
+  /** How many titles of each status the status filter offers there are on the list, whatever the other filters (#67). */
+  statusCounts: Partial<Record<ListStatus, number>>
   /** The release years the year filter offers: those of every title the Picker can list, newest first. */
   years: number[]
   /** Every genre on the titles the Picker can list, by name. */
@@ -106,6 +109,8 @@ export type PickerView = {
    * search. The chosen ones first, then the most common, then by name.
    */
   tags: PickerFacet[]
+  /** How many tags are offered before the tag search narrows them, for the tag search box (#67). */
+  tagCount: number
   /**
    * What "Add N without a score" adds: the unscored titles not yet picked that the status, year, genre and tag filters
    * show. The search box is ignored (#61 story 26), so a forgotten search never makes it add fewer than it says.
@@ -119,7 +124,30 @@ export type PickerView = {
    * show none is left out. Resetting the search and every filter (`wayOut(filters, 'reset')`) is always there too.
    */
   nothingMatches: { change: PickerChange; count: number }[] | null
+  /**
+   * How many filters are on, for the badge on the phone's filters button (#67): each list status shown, the year, and
+   * each chosen genre and tag. The search box and the sort sit outside that button and don't count.
+   */
+  activeFilters: number
+  /** What the dock at the bottom shows beside the summary (#67). */
+  dock: PickerDock
 }
+
+/** The dock's own outputs (#67): what the summary's numbers don't say. */
+export type PickerDock = {
+  /** How many picks have a score, which their Ranking will replace. */
+  replacing: number
+  /** The covers stacked in the dock: the last titles picked, the latest first, at most `DOCK_COVERS`. */
+  covers: ListEntry[]
+  /**
+   * Null while Confirm is allowed. Otherwise the line the dock shows in place of the Anchors left: plain with nothing
+   * picked, a warning when the picks leave too few Anchors or scores. `confirm.reason` says the same at more length.
+   */
+  blocked: { text: string; warn: boolean } | null
+}
+
+/** How many covers the dock stacks. */
+export const DOCK_COVERS = 6
 
 /** A way out of "nothing matches". */
 export type PickerChange = 'search' | 'statuses' | 'years' | 'genres-tags'
@@ -297,7 +325,49 @@ export function pickerView(input: PickerInput): PickerView {
       ? null
       : CHANGES.map((change) => ({ change, count: shownWith(wayOut(filters, change)) })).filter((w) => w.count > 0)
   const years = [...new Set(pickable(list).flatMap((e) => (e.year === null ? [] : [e.year])))].sort((a, b) => b - a)
-  return { rows, summary, confirm: confirmOf(pickedEntries, anchors, summary, titleLanguage), years, genres, tags, addUnscored, pickAll, nothingMatches }
+  // The picks keep the order they were ticked in (a Set keeps insertion order), so the latest are at the end.
+  const byId = new Map(pickedEntries.map((e) => [e.mediaId, e]))
+  const latest = [...picked].flatMap((id) => byId.get(id) ?? []).reverse()
+  const statusCounts = Object.fromEntries(OFFERED_STATUSES.map((status) => [status, 0]))
+  for (const e of pickable(list)) if (e.status in statusCounts) statusCounts[e.status]++
+  const dock: PickerDock = {
+    replacing: pickedEntries.filter((e) => levelOfRaw(scoreFormat, e.oldScore100) > 0).length,
+    covers: latest.slice(0, DOCK_COVERS),
+    blocked: blockedOf(summary),
+  }
+  return {
+    rows,
+    summary,
+    confirm: confirmOf(pickedEntries, anchors, summary, titleLanguage),
+    years,
+    genres,
+    tags,
+    addUnscored,
+    pickAll,
+    nothingMatches,
+    dock,
+    statusCounts,
+    tagCount: tagNames.size,
+    activeFilters: filters.statuses.length + (filters.year === null ? 0 : 1) + filters.genres.length + filters.tags.length,
+  }
+}
+
+/** The dock's line when Confirm is not allowed, in the order `confirmOf` checks. */
+function blockedOf(summary: PickerSummary): PickerDock['blocked'] {
+  const untick = 'Untick some titles that have a score.'
+  if (summary.picked === 0) return { text: 'Nothing picked yet.', warn: false }
+  if (summary.anchors < MIN_ANCHORS)
+    return {
+      text: `Only ${count(summary.anchors, 'Anchor')} left, ${MIN_ANCHORS} needed. ${untick}`,
+      warn: true,
+    }
+  if (summary.scores < MIN_ANCHOR_SCORES) {
+    return {
+      text: `Anchors left on only ${count(summary.scores, 'score')}, ${MIN_ANCHOR_SCORES} needed. ${untick}`,
+      warn: true,
+    }
+  }
+  return null
 }
 
 function confirmOf(picked: readonly ListEntry[], anchors: AnchorScore[], summary: PickerSummary, language: TitleLanguage): PickerConfirm {

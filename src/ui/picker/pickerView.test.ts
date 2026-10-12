@@ -98,6 +98,17 @@ describe("the Picker's status filter", () => {
     const list = ALL_STATUSES.map((status) => entry(0, { status }))
     expect(shown(view({ list, filters: filters({ statuses: ['DROPPED', 'PAUSED'] }) }))).toEqual(ids([list[3], list[4]]))
   })
+
+  it('counts the titles of each offered status on the whole list, whatever the other filters', () => {
+    const list = [entry(0), entry(80, { year: 2020 }), entry(0, { status: 'DROPPED' }), entry(0, { status: 'PLANNING' })]
+    expect(view({ list, filters: filters({ year: 2020, search: 'zzz' }) }).statusCounts).toEqual({
+      COMPLETED: 2,
+      REPEATING: 0,
+      CURRENT: 0,
+      PAUSED: 0,
+      DROPPED: 1,
+    })
+  })
 })
 
 describe("the Picker's search", () => {
@@ -183,6 +194,14 @@ describe("the Picker's genre and tag filters", () => {
     expect(view({ list }).tags.map((t) => t.name)).toEqual(['Cute Girls Doing Cute Things', 'Iyashikei', 'Male Protagonist'])
     const searched = view({ list, filters: filters({ tags: ['Iyashikei'], tagSearch: 'CUTE' }) })
     expect(searched.tags.map((t) => t.name)).toEqual(['Iyashikei', 'Cute Girls Doing Cute Things'])
+  })
+
+  it('count every tag offered for the tag search box, whatever is typed in it', () => {
+    const list = [
+      entry(0, { tags: [{ name: 'Iyashikei', rank: 90 }, { name: 'Twist', rank: 90, spoiler: true }] }),
+      entry(0, { tags: [{ name: 'Band', rank: 90 }, { name: 'Faint', rank: 20 }] }),
+    ]
+    expect(view({ list, filters: filters({ tagSearch: 'band' }) }).tagCount).toBe(2)
   })
 })
 
@@ -403,6 +422,46 @@ describe('the starting picks', () => {
     expect(startingPicks([...list, planning], { from: 'start' }, [fresh[0].mediaId, planning.mediaId, 99999])).toEqual(
       new Set([fresh[0].mediaId]),
     )
+  })
+})
+
+describe('the count of active filters', () => {
+  it('counts each list status shown, the year, and each chosen genre and tag, but not the search or the sort', () => {
+    const list = [entry(0)]
+    expect(view({ list }).activeFilters).toBe(2)
+    const f = filters({ statuses: ['DROPPED'], year: 2020, genres: ['Drama'], tags: ['Military', 'Space'], search: 'x', sort: 'title' })
+    expect(view({ list, filters: f }).activeFilters).toBe(5)
+  })
+})
+
+describe("the Picker's dock", () => {
+  it('counts the picks that replace a score', () => {
+    const { anchors, fresh, list } = scaleList(3)
+    expect(view({ list, picked: new Set(ids(fresh)) }).dock.replacing).toBe(0)
+    expect(view({ list, picked: new Set([fresh[0].mediaId, anchors[0].mediaId, anchors[5].mediaId]) }).dock.replacing).toBe(2)
+  })
+
+  it('stacks the covers of the last six titles picked, the latest first, leaving out picks gone from the list', () => {
+    const { list } = scaleList(0)
+    const picks = [...ids(list.slice(0, 7)), 99999]
+    expect(ids(view({ list, picked: new Set(picks) }).dock.covers)).toEqual(ids(list.slice(1, 7)).reverse())
+    expect(view({ list }).dock.covers).toEqual([])
+  })
+
+  it('says why Confirm is not allowed, in orange when the picks leave too few Anchors or scores', () => {
+    const { anchors, fresh, list } = scaleList(1)
+    expect(view({ list }).dock.blocked).toEqual({ text: 'Nothing picked yet.', warn: false })
+    expect(view({ list, picked: new Set(ids(fresh)) }).dock.blocked).toBeNull()
+    expect(view({ list, picked: new Set(ids(anchors.slice(0, 6))) }).dock.blocked).toEqual({
+      text: 'Only 18 Anchors left, 20 needed. Untick some titles that have a score.',
+      warn: true,
+    })
+    const three = Array.from({ length: 30 }, (_, i) => entry([90, 80, 70][i % 3]))
+    const sevens = new Set(ids(three.filter((e) => e.oldScore100 === 70)))
+    expect(view({ list: three, picked: sevens }).dock.blocked).toEqual({
+      text: 'Anchors left on only 2 scores, 3 needed. Untick some titles that have a score.',
+      warn: true,
+    })
   })
 })
 
