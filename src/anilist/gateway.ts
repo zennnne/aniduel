@@ -206,7 +206,10 @@ export async function trendingCovers(deps: { fetch: typeof fetch }, count: numbe
   }))
 }
 
-export function createAniListGateway(deps: { fetch: typeof fetch; token: string }): AniListGateway {
+/** What the app reaches AniList with: a `fetch` and the login's token. */
+export type AniListSession = { fetch: typeof fetch; token: string }
+
+export function createAniListGateway(deps: AniListSession): AniListGateway {
   let lastRateLimit: RateLimit = { remaining: null, resetAt: null }
 
   function authed<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {

@@ -1,4 +1,5 @@
-// Test helpers (not used by the app): a fake AniList behind a fake `fetch`, and a clock that never waits.
+// Test helpers: a fake AniList behind a fake `fetch`, and a clock that never waits. The app uses the fake only in
+// dev, behind `?fake-anilist` (src/dev/fakeSession.ts).
 import type { Clock } from '../clock.ts'
 import type { MediaType, ScoreFormat } from './types.ts'
 
@@ -24,7 +25,12 @@ type Reply =
   | { kind: 'network' }
   | { kind: 'api'; status: number }
 
-export type FakeOptions = { remaining?: (n: number) => number; statuses?: Record<number, string> }
+export type FakeOptions = {
+  remaining?: (n: number) => number
+  statuses?: Record<number, string>
+  /** Romaji names by media id; a title without one is `T<id>`. */
+  titles?: Record<number, string>
+}
 
 /** What the fake answers to `Viewer`. Change `scoreFormat` to play the user changing it on AniList. */
 export type FakeViewer = { id: number; name: string; scoreFormat: ScoreFormat }
@@ -59,7 +65,7 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
       const { statusIn = [] } = body.variables
       listReads.push({ type: body.variables.type!, statuses: statusIn, at: clock.now() })
       const entries = [...store]
-        .map(([mediaId, score]) => listEntry(mediaId, score, statuses.get(mediaId)))
+        .map(([mediaId, score]) => listEntry(mediaId, score, statuses.get(mediaId), options.titles?.[mediaId]))
         .filter((e) => statusIn.includes(e.status))
       return json(200, { data: { MediaListCollection: { hasNextChunk: false, lists: [{ entries }] } } })
     }
@@ -95,14 +101,14 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
   return { fetch: fetch as typeof globalThis.fetch, store, statuses, writes, listReads, script, viewer }
 }
 
-function listEntry(mediaId: number, score: number, status = 'COMPLETED') {
+function listEntry(mediaId: number, score: number, status = 'COMPLETED', romaji = `T${mediaId}`) {
   return {
     mediaId,
     status,
     score,
     completedAt: null,
     media: {
-      title: { romaji: `T${mediaId}`, english: null, native: null },
+      title: { romaji, english: null, native: null },
       coverImage: null,
       bannerImage: null,
       startDate: null,

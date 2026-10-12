@@ -1,6 +1,6 @@
 // Screens are chosen from app state, not by a router (ADR 0004).
 import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from 'react'
-import { AniListError, createAniListGateway, trendingCovers } from '../anilist/gateway.ts'
+import { AniListError, createAniListGateway, trendingCovers, type AniListSession } from '../anilist/gateway.ts'
 import type { Cover, ListEntry, ListStatus, MediaType, Viewer } from '../anilist/types.ts'
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
@@ -117,10 +117,14 @@ function droppedMessage(dropped: DroppedImport): string {
   }
 }
 
-export function App() {
+const browserFetch: typeof fetch = (...args) => window.fetch(...args)
+
+/** `fake`: dev only (#68), a session on a fake AniList in place of the login and the network. */
+export function App({ fake }: { fake?: AniListSession }) {
   const { theme, toggleTheme } = useTheme()
+  const aniListFetch = fake?.fetch ?? browserFetch
   const [token, setToken] = useState<string | null>(() =>
-    restoreSession({ location: window.location, history: window.history, storage: localStorage }),
+    fake ? fake.token : restoreSession({ location: window.location, history: window.history, storage: localStorage }),
   )
   const [viewer, setViewer] = useState<Viewer | null>(null)
   const [lists, setLists] = useState<Partial<Record<MediaType, ListEntry[]>>>({})
@@ -146,12 +150,12 @@ export function App() {
   // follows the Pool size (#38). A saved Ranking's goal lives in its log. Not reset on logout: logging in again loads the page anew.
   const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
 
-  const gateway = useMemo(() => (token ? createAniListGateway({ fetch: window.fetch.bind(window), token }) : null), [token])
+  const gateway = useMemo(() => (token ? createAniListGateway({ fetch: aniListFetch, token }) : null), [aniListFetch, token])
   // The write queue's requests and Catch-up's reads take turns in one limiter, so together they keep to AniList's rate limit.
   const limiter = useMemo(() => (token ? createRequestLimiter(browserClock) : null), [token])
   const candidateSource = useMemo(
-    () => (token && limiter ? aniListCandidateSource({ fetch: window.fetch.bind(window), token, clock: browserClock, limiter }) : null),
-    [token, limiter],
+    () => (token && limiter ? aniListCandidateSource({ fetch: aniListFetch, token, clock: browserClock, limiter }) : null),
+    [aniListFetch, token, limiter],
   )
   const viewerId = viewer?.id ?? null
   // One write queue for Import's scores and Catch-up's statuses.
@@ -216,13 +220,13 @@ export function App() {
   useEffect(() => {
     if (!needTrending) return
     let cancelled = false
-    trendingCovers({ fetch: window.fetch.bind(window) }, COLLAGE_TILES)
+    trendingCovers({ fetch: aniListFetch }, COLLAGE_TILES)
       .then((covers) => !cancelled && setTrending(covers))
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [needTrending])
+  }, [needTrending, aniListFetch])
 
   const showToast = (message: ReactNode) => setToast({ message })
   useEffect(() => {
@@ -277,7 +281,8 @@ export function App() {
   function endSession(deleteProgress: boolean) {
     writes.stop() // before the user's progress is deleted, so nothing written after is saved again
     catchUp.close()
-    logout(localStorage, { userId: viewer?.id ?? null, deleteProgress })
+    // The fake session has no token of its own: the one in storage is the real login's, and stays.
+    if (!fake) logout(localStorage, { userId: viewer?.id ?? null, deleteProgress })
     setToken(null)
     setViewer(null)
     setLists({})

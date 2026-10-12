@@ -1,5 +1,9 @@
 # AniDuel!
 
+## Checking UI
+
+To see a screen without an AniList login, run `npm run dev` and open `http://localhost:5173/aniduel/?fake-anilist`: Start, signed in against a fake AniList with a fixed list (`src/dev/fakeSession.ts`). Every page load starts fresh. The fake has no Catch-up suggestions (the screen shows its error), and Manga shows the same titles as Anime.
+
 ## Agent skills
 
 ### Issue tracker
