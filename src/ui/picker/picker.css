@@ -79,14 +79,9 @@
   font-size: 11px;
 }
 .pk-sel {
-  padding: 6px 8px;
-  border-radius: 8px;
-  border: none;
-  background: var(--fg2);
-  color: var(--tx-strong);
-  font: inherit;
-  font-weight: 800;
+  padding: 7px 10px;
   width: 100%;
+  flex-shrink: 0;
 }
 .pk-mini {
   font-size: 12px;

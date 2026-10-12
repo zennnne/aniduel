@@ -281,6 +281,92 @@ a {
   font-size: 13px;
 }
 
+/* Select (Select.tsx): a button showing the chosen option, and our own list of options placed against the window */
+.sel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--fg2);
+  color: var(--tx-strong);
+  font-weight: 800;
+  text-align: left;
+  white-space: nowrap;
+  min-width: 0;
+}
+.sel > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sel > i {
+  font-style: normal;
+  font-size: 9px;
+  opacity: 0.7;
+  transition: transform 0.15s;
+}
+.sel.open {
+  box-shadow: inset 0 0 0 2px var(--blue);
+}
+.sel.open > i {
+  transform: rotate(180deg);
+}
+.sel-pop {
+  position: fixed;
+  z-index: 70;
+  background: var(--fg);
+  color: var(--tx-strong);
+  border-radius: 12px;
+  padding: 6px;
+  max-height: 280px;
+  overflow: auto;
+  scrollbar-width: thin;
+  font-size: 14px;
+  font-weight: 400;
+  /* The thin ring keeps it off the page in the dark theme, where a shadow hardly shows. */
+  box-shadow:
+    0 10px 34px #0004,
+    0 0 0 1px color-mix(in srgb, var(--tx) 25%, transparent);
+}
+.sel-it {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.sel-it.act {
+  background: var(--fg2);
+}
+.sel-it > i {
+  font-style: normal;
+  font-weight: 900;
+  width: 14px;
+  flex: none;
+  color: transparent;
+}
+.sel-it.on {
+  font-weight: 800;
+}
+.sel-it.on > i {
+  color: var(--blue);
+}
+.sel-it > em {
+  margin-left: auto;
+  padding-left: 12px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--tx);
+}
+.sel-it.off {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* Shared atoms (issue #4 prototype, section 0) */
 .col {
   display: flex;

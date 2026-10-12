@@ -159,6 +159,13 @@ describe("the Picker's release-year filter", () => {
     const list = [entry(0, { year: 2019 }), entry(0, { year: 2024 }), entry(0, { year: 2019, status: 'DROPPED' }), entry(0, { year: 2001, status: 'PLANNING' })]
     expect(view({ list }).years).toEqual([2024, 2019])
   })
+
+  it('counts the titles of each year and of all years, whatever the filters', () => {
+    const list = [entry(0, { year: 2019 }), entry(0, { year: 2024 }), entry(0, { year: 2019, status: 'DROPPED' }), entry(0, { year: null })]
+    const v = view({ list, filters: filters({ year: 2024, search: 'nothing has this' }) })
+    expect(v.yearCounts).toEqual({ 2019: 2, 2024: 1 })
+    expect(v.listed).toBe(4)
+  })
 })
 
 describe("the Picker's genre and tag filters", () => {

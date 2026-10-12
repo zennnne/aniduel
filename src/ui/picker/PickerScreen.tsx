@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { ListEntry, ListStatus, MediaType, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
 import { OFFERED_STATUSES } from '../../pool/pool.ts'
 import { count } from '../meta.ts'
+import { Select } from '../Select.tsx'
 import { statusLabel } from '../start/statusLabel.ts'
 import { useMobile } from '../useMobile.ts'
 import './picker.css'
@@ -127,30 +128,27 @@ export function PickerScreen(props: {
         })}
       </div>
       <div className="pk-lab">Release year</div>
-      <select
+      <Select
         className="pk-sel"
-        aria-label="Release year"
-        value={filters.year ?? ''}
-        onChange={(e) => patch({ year: e.target.value === '' ? null : Number(e.target.value) })}
-      >
-        <option value="">All years</option>
-        {view.years.map((y) => (
-          <option key={y} value={y}>
-            {y}
-          </option>
-        ))}
-      </select>
+        label="Release year"
+        value={filters.year}
+        options={[
+          { value: null, label: 'All years', count: view.listed },
+          ...view.years.map((y) => ({ value: y, label: String(y), count: view.yearCounts[y] })),
+        ]}
+        onChange={(year) => patch({ year })}
+      />
       <button className={chosenFacets > 0 ? 'pk-gbtn on' : 'pk-gbtn'} onClick={openGenres}>
         Genres and tags…<span className="pk-v">{chosenFacets > 0 ? `${chosenFacets} chosen` : 'Any'}</span>
       </button>
       <div className="pk-lab">Sort</div>
-      <select className="pk-sel" aria-label="Sort" value={filters.sort} onChange={(e) => patch({ sort: e.target.value as PickerSort })}>
-        {(Object.keys(SORT_LABEL) as PickerSort[]).map((sort) => (
-          <option key={sort} value={sort}>
-            Sort: {SORT_LABEL[sort]}
-          </option>
-        ))}
-      </select>
+      <Select
+        className="pk-sel"
+        label="Sort"
+        value={filters.sort}
+        options={(Object.keys(SORT_LABEL) as PickerSort[]).map((sort) => ({ value: sort, label: SORT_LABEL[sort] }))}
+        onChange={(sort) => patch({ sort })}
+      />
     </>
   )
 

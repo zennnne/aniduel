@@ -28,7 +28,7 @@
   gap: 14px;
   margin-bottom: 14px;
 }
-.pv-set label {
+.pv-set .pv-lab {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -50,15 +50,6 @@
 }
 .pv-filter {
   margin-bottom: 10px;
-}
-.lsel {
-  font: inherit;
-  padding: 5px 8px;
-  border-radius: 8px;
-  border: none;
-  background: var(--fg2);
-  color: var(--tx-strong);
-  font-weight: 800;
 }
 .tl {
   display: flex;

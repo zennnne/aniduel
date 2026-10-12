@@ -16,6 +16,7 @@ import { goalOf, isKeepMyScale, isScores } from '../../ranking/sortGoal.ts'
 import { formatLevel, hasHumanStep, levelOfRaw, levels, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
+import { Select } from '../Select.tsx'
 import { SortGoalSeg } from '../SortGoalSeg.tsx'
 import { SCORE_FORMAT_LABEL } from './scoreFormat.ts'
 import { keepMyScaleUnsettledSummary, unsettledSummary } from './unsettledCard.ts'
@@ -188,26 +189,24 @@ export function PreviewScreen(props: {
         </div>
       ) : (
         <div className="pv-set">
-          <label>
+          <span className="pv-lab">
             Best
-            <select className="lsel" value={settings.best} onChange={(e) => pick('best', Number(e.target.value))}>
-              {options.map((l) => (
-                <option key={l} value={l} disabled={l <= settings.worst}>
-                  {label(l)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
+            <Select
+              label="Best"
+              value={settings.best}
+              options={options.map((l) => ({ value: l, label: label(l), disabled: l <= settings.worst }))}
+              onChange={(l) => pick('best', l)}
+            />
+          </span>
+          <span className="pv-lab">
             Worst
-            <select className="lsel" value={settings.worst} onChange={(e) => pick('worst', Number(e.target.value))}>
-              {options.map((l) => (
-                <option key={l} value={l} disabled={l >= settings.best}>
-                  {label(l)}
-                </option>
-              ))}
-            </select>
-          </label>
+            <Select
+              label="Worst"
+              value={settings.worst}
+              options={options.map((l) => ({ value: l, label: label(l), disabled: l >= settings.best }))}
+              onChange={(l) => pick('worst', l)}
+            />
+          </span>
           <div className="seg">
             {(['linear', 'bell'] as const).map((d) => (
               <button key={d} className={settings.distribution === d ? 'on' : ''} onClick={() => onSettings({ ...settings, distribution: d })}>

@@ -114,6 +114,10 @@ export type PickerView = {
   statusCounts: Partial<Record<ListStatus, number>>
   /** The release years the year filter offers: those of every title the Picker can list, newest first. */
   years: number[]
+  /** How many titles the Picker can list were released in each of `years`, whatever the filters. */
+  yearCounts: Record<number, number>
+  /** How many titles the Picker can list at all, whatever the filters: the count beside "All years". */
+  listed: number
   /** Every genre on the titles the Picker can list, by name. */
   genres: PickerFacet[]
   /**
@@ -361,7 +365,11 @@ export function pickerView(input: PickerInput): PickerView {
     rows.length > 0
       ? null
       : CHANGES.map((change) => ({ change, count: shownWith(wayOut(filters, change)) })).filter((w) => w.count > 0)
-  const years = [...new Set(pickable(list).flatMap((e) => (e.year === null ? [] : [e.year])))].sort((a, b) => b - a)
+  const yearCounts: Record<number, number> = {}
+  for (const e of pickable(list)) if (e.year !== null) yearCounts[e.year] = (yearCounts[e.year] ?? 0) + 1
+  const years = Object.keys(yearCounts)
+    .map(Number)
+    .sort((a, b) => b - a)
   // The picks keep the order they were ticked in (a Set keeps insertion order), so the latest are at the end.
   const byId = new Map(pickedEntries.map((e) => [e.mediaId, e]))
   const latest = [...picked].flatMap((id) => byId.get(id) ?? []).reverse()
@@ -378,6 +386,8 @@ export function pickerView(input: PickerInput): PickerView {
     summary,
     confirm,
     years,
+    yearCounts,
+    listed: pickable(list).length,
     genres,
     tags,
     addUnscored,
