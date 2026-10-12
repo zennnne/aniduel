@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -b",
-    "eval:catchup": "node scripts/catchup-eval.ts"
+    "eval:catchup": "node scripts/catchup-eval.ts",
+    "eval:keep-my-scale": "node scripts/keep-my-scale-eval.ts"
   },
   "dependencies": {
     "react": "^19.2.8",
