@@ -9,7 +9,7 @@ Score New Titles (ADR 0009) scored every title without a score. Users also want 
 - **The Picker replaces the status chips for this goal.** It lists every title except Planning ones, filtered by list status (Completed and Repeating at first) and release year, with a search. "Add all without a score" adds every unscored title the filters show, whatever the search says. It opens with nothing ticked from Start, and with the unscored Completed and Repeating titles ticked from Catch-up's exit offer.
 - **The Pool is fixed once the Ranking starts.** Nothing is added later, by hand or by sync; sync only takes out titles that left the list. Forgotten takes a title out as before.
 - **Titles left unsettled are remembered.** When the Import ends the Ranking, the titles that were not yet Settled are kept as a list (no answers), per user and Media Type, in the browser only. Before the next Picker opens the user is asked whether to pick them again; saying no keeps the list, and it is asked again until the next Keep My Scale Ranking starts, which replaces it. A Ranking dropped without an Import leaves no such list.
-- **The Duel log still says `score-new-titles`.** Logs and Backups already written keep working (ADR 0005); only the name users see, the glossary and the code's own names change.
+- **The Sort Goal's value in the code is still `score-new-titles`.** No Duel log or Backup carries it: a log starts this goal with its `anchors-set` event and replay reports the value. So logs and Backups already written keep working with nothing to migrate (ADR 0005); only the name users see, the glossary and the code's own names change.
 
 ## Considered Options
 
