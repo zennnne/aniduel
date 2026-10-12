@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE · Picker (#63)</title>
+<!-- PROTOTYPE, throwaway (#63). Round 1 chose the cover wall (rounds/round1-overall-shape.src.html).
+     Round 2 chose K1 + F1 (a rail that can be closed) + S1 (rounds/round2-component-groups.src.html).
+     Round 3: single components, five variants each: the title card (C), the closed rail (R), the dock (D). Built by build.mjs. -->
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ---- theme, copied from src/ui/theme.css ---- */
+:root{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc;--danger:#e05555;--warn:#f2b13d;--on-accent:#fff;--shadow:#0002;--good:#3fae5a;--why:#b7791f;color-scheme:light}
+:root.dark{--bg:#0b1622;--fg:#151f2e;--fg2:#1f2a3c;--tx:#9fadbd;--tx-strong:#edf1f5;--nav:#0b1622;--navtx:#9fadbd;--why:#f2b13d;color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:Overpass,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;background:#11131c;color:var(--tx)}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font:inherit;color:inherit}
+.small{font-size:12px}.strong{color:var(--tx-strong)}.fine{opacity:.7}.grow{flex:1;min-width:0}
+.link{color:var(--blue);text-decoration:underline}
+.go{background:var(--blue);color:var(--on-accent);font-weight:800;padding:13px 22px;border-radius:12px;display:inline-flex;gap:10px;align-items:center;justify-content:center;white-space:nowrap}
+.go:disabled{opacity:.4;cursor:not-allowed}
+.cv{object-fit:cover;display:block;background:var(--c,var(--blue));flex-shrink:0}
+.ph{background:linear-gradient(160deg,var(--c,var(--blue)),var(--nav))}
+.chips{display:flex;flex-wrap:wrap;gap:6px;scrollbar-width:none}
+.chip{padding:6px 11px;border-radius:999px;background:var(--fg2);font-size:13px;display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
+.chip.on{background:var(--blue);color:var(--on-accent);font-weight:700}
+.chip .cnt{opacity:.7;font-size:11px}
+.lsel{padding:6px 8px;border-radius:8px;border:none;background:var(--fg2);color:var(--tx-strong);font-weight:800}
+.mini-b{font-size:12px;padding:6px 10px;border-radius:8px;background:var(--fg2);color:var(--tx-strong);display:inline-flex;align-items:center;gap:4px;font-weight:700;white-space:nowrap}
+.mini-b:hover:not(:disabled){background:var(--blue);color:var(--on-accent)}
+.mini-b:disabled{opacity:.4;cursor:not-allowed}
+.mini-b.on{background:var(--blue);color:var(--on-accent)}
+
+/* ---- stage: the mocked app's viewport ---- */
+#stage{height:100vh;width:100%;margin:0 auto;background:var(--bg);position:relative;overflow:hidden;container:app/inline-size}
+body.phone #stage{width:390px;height:min(800px,calc(100vh - 40px));margin-top:20px;border-radius:26px;box-shadow:0 0 0 8px #000,0 0 0 10px #444}
+#app{height:100%;position:relative}
+.scr{height:100%;display:flex;flex-direction:column;min-height:0;color:var(--tx)}
+.h1{font-size:26px;font-weight:900;color:var(--tx-strong);line-height:1.1;white-space:nowrap}
+.back{font-weight:700;color:var(--tx);padding:6px 10px;border-radius:8px;background:var(--fg2);white-space:nowrap}
+.srch{display:flex;align-items:center;gap:6px;background:var(--fg);border-radius:10px;padding:0 10px;min-width:120px;flex:1;max-width:340px;box-shadow:inset 0 0 0 1px var(--fg2)}
+.srch input{border:none;outline:none;background:none;padding:8px 0;width:100%;color:var(--tx-strong)}
+.stt{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.stt i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.rep{font-size:11px;font-weight:800;color:#8a5a00;background:color-mix(in srgb,var(--warn) 30%,var(--fg));border-radius:6px;padding:1px 6px;white-space:nowrap}
+.dark .rep{color:var(--warn)}
+.why{color:var(--why);font-weight:700}
+.nomatch{grid-column:1/-1;margin:auto;padding:40px 20px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.nomatch .k{font-size:26px;color:var(--tx-strong)}
+.nomatch b{color:var(--tx-strong);font-size:16px}
+.box{width:20px;height:20px;border-radius:6px;box-shadow:inset 0 0 0 2px var(--tx);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:transparent;font-weight:900;font-size:13px;opacity:.6}
+.box.on{background:var(--blue);box-shadow:none;color:#fff;opacity:1}
+.toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--nav);color:#fff;padding:10px 16px;border-radius:10px;z-index:40;box-shadow:0 6px 24px #0006;font-size:13px;max-width:90%}
+.lab{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+
+/* ---- skeleton ---- */
+.body{flex:1;min-height:0;display:flex}
+.col{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column}
+.hrow{display:flex;align-items:center;gap:12px;padding:16px 20px 8px;flex-wrap:wrap}
+.ww{flex:1;min-height:0;position:relative;display:flex}
+.wall{flex:1;overflow:auto;min-height:0;padding:12px 20px 24px;display:grid;gap:14px 12px;align-content:start}
+.wall{padding-bottom:120px!important}
+.sec{grid-column:1/-1;display:flex;align-items:center;gap:8px;padding:6px 2px;font-weight:800;color:var(--tx-strong);font-size:15px;text-align:left;border-bottom:2px solid var(--fg2);position:sticky;top:-12px;background:var(--bg);z-index:3}
+.sec.off{opacity:.55}
+.sec i{width:9px;height:9px;border-radius:50%}
+.sec .cnt{font-weight:400;font-size:12px;color:var(--tx)}
+.sec .tg{margin-left:auto;font-size:12px;color:var(--blue)}
+
+/* ================= C · the title card ================= */
+.wall{grid-template-columns:repeat(auto-fill,minmax(118px,1fr))}
+.cd{text-align:left;display:flex;flex-direction:column;gap:5px;min-width:0;position:relative}
+.cd .im{position:relative;border-radius:8px;overflow:hidden;aspect-ratio:2/3;box-shadow:0 4px 14px var(--shadow);display:block;flex-shrink:0;width:100%}
+.cd .im .cv{width:100%;height:100%}
+.cd .tt{color:var(--tx-strong);font-weight:700;font-size:12px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cd .mt{font-size:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.bs{position:absolute;background:#000b;color:#fff;border-radius:6px;padding:1px 7px;font-weight:900;font-size:14px}
+.bs.none{font-size:10px;font-weight:700;background:#000a;border:1px dashed #fff9}
+.tk{position:absolute;width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;color:transparent}
+/* C1 as chosen in round 2 */
+.c1 .bs{left:6px;bottom:6px}
+.c1 .tk{right:6px;top:6px;background:#0008;box-shadow:inset 0 0 0 2px #fffc}
+.c1.on .im{outline:4px solid var(--blue);outline-offset:-1px}
+.c1.on .tk{background:var(--blue);box-shadow:none;color:#fff}
+.c1 .rp{position:absolute;left:0;right:0;top:0;background:var(--warn);color:#2b2d42;font-size:10px;font-weight:900;text-align:center;padding:2px}
+/* C2 quiet: no empty ring, the score badge itself says "9 → ?" */
+.c2 .bs{left:6px;top:6px}
+.c2 .tk{right:6px;top:6px}
+.c2.on .tk{background:var(--blue);color:#fff;box-shadow:0 0 0 2px #fff}
+.c2 .im{transition:transform .1s}
+.c2.on .im{outline:4px solid var(--blue);outline-offset:2px;transform:scale(.93)}
+.c2.on .bs{background:var(--blue);border:none}.c2.on .bs.re{background:var(--warn);color:#2b2d42}
+/* C3 a bar across the cover says what picking does; status only named when it isn't Completed */
+.c3 .bs{right:6px;top:6px;font-size:16px;padding:2px 8px}.c3 .bs.none{font-size:10px;padding:1px 6px}
+.c3 .stp{position:absolute;left:6px;top:6px;font-size:10px;font-weight:800;color:#fff;border-radius:5px;padding:1px 6px}
+.c3 .pb{position:absolute;left:0;right:0;bottom:0;padding:5px 4px;text-align:center;font-size:11px;font-weight:900;color:#fff;background:var(--blue);display:none}
+.c3 .pb.re{background:var(--warn);color:#2b2d42}
+.c3.on .pb{display:block}
+.c3.on .im{outline:4px solid var(--blue);outline-offset:-1px}
+.c3 .tt{-webkit-line-clamp:1}
+/* C4 photo-picker: a picked cover shrinks into a blue frame */
+.c4 .fr{border-radius:8px;display:block;position:relative}
+.c4 .bs{left:6px;bottom:6px}
+.c4 .tk{left:-6px;top:-6px;z-index:2}
+.c4:hover .tk{background:var(--fg);box-shadow:inset 0 0 0 2px var(--tx);left:5px;top:5px;opacity:.85}
+.c4 .im{transition:transform .1s}
+.c4.on .fr{background:color-mix(in srgb,var(--blue) 30%,var(--bg))}
+.c4.on .im{transform:scale(.84);box-shadow:none}
+.c4.on .tk{background:var(--blue);color:#fff;box-shadow:0 0 0 2px var(--fg);left:-6px;top:-6px;opacity:1}
+/* C5 nothing on the cover: one data line under it; picked = tint and a big tick */
+.c5 .ln{display:flex;align-items:center;gap:6px;font-size:11px;flex-wrap:wrap}.c5 .sc5{white-space:nowrap}
+.c5 .sc5{font-weight:900;font-size:13px;color:var(--tx-strong);background:var(--fg2);border-radius:6px;padding:0 6px}
+.c5 .sc5.none{font-weight:700;font-size:10px;border:1px dashed var(--tx);background:none;color:var(--tx)}
+.c5 .sc5.re{background:var(--warn);color:#2b2d42}
+.c5 .pk{position:absolute;inset:0;background:color-mix(in srgb,var(--blue) 40%,transparent);display:none;align-items:center;justify-content:center;color:#fff;font-size:44px;font-weight:900;text-shadow:0 2px 10px #0008}
+.c5.on .pk{display:flex}
+.c5.on .im{outline:3px solid var(--blue);outline-offset:-1px}
+
+/* ================= R · the rail and how it closes ================= */
+.rail{width:230px;flex-shrink:0;background:var(--fg);padding:16px;display:flex;flex-direction:column;gap:12px;overflow:auto;min-height:0;position:relative;z-index:8}
+.rail .lab{margin-bottom:-6px}
+.rail .srch{flex:none;background:var(--fg2);box-shadow:none}
+.rail .rh{display:flex;align-items:center;gap:8px}
+.rtog{width:28px;height:28px;border-radius:7px;background:var(--fg2);color:var(--tx-strong);font-weight:900;flex-shrink:0}
+.rtog:hover{background:var(--blue);color:#fff}
+.rail .rtog{margin-left:auto}
+.ck{display:flex;align-items:center;gap:8px;padding:5px 4px;border-radius:8px;text-align:left;color:var(--tx-strong);width:100%}
+.ck .cnt{margin-left:auto;font-size:12px;color:var(--tx)}
+.rail .lsel,.rail .mini-b{width:100%;justify-content:center}
+.fbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 20px 4px}
+.fbar .h1{font-size:20px}
+/* R1 slim strip */
+.strip{width:44px;flex-shrink:0;background:var(--fg);display:flex;flex-direction:column;align-items:center;gap:10px;padding:16px 0}
+.strip .vt{writing-mode:vertical-rl;font-weight:800;color:var(--tx-strong);font-size:12px;letter-spacing:.04em;margin-top:6px}
+/* R3 drawer over the wall */
+.scrim{position:absolute;inset:0;background:#0007;z-index:7}
+.rail.over{position:absolute;left:0;top:0;bottom:0;box-shadow:10px 0 40px #0007}
+/* R4 one line of tokens */
+.tok{display:inline-flex;align-items:center;gap:6px;background:color-mix(in srgb,var(--blue) 18%,var(--fg));color:var(--tx-strong);border-radius:999px;padding:4px 6px 4px 10px;font-size:12px;font-weight:700}
+.tok b{opacity:.6}
+/* R5 icon rail */
+.irail{width:72px;flex-shrink:0;background:var(--fg);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 6px}
+.irail .ib{width:60px;border-radius:10px;padding:7px 2px 5px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;color:var(--tx-strong);position:relative}
+.irail .ib:hover{background:var(--fg2)}
+.irail .ib .g{font-size:18px;line-height:1}
+.irail .ib .bd{position:absolute;right:6px;top:2px;background:var(--blue);color:#fff;border-radius:999px;font-size:10px;font-weight:900;padding:0 5px}
+.irail .ib.on{background:var(--blue);color:#fff}.irail .ib.on .bd{background:#fff;color:var(--blue)}
+.irail .ib:disabled{opacity:.4}
+
+/* ================= D · the dock ================= */
+.dock{position:absolute;left:50%;transform:translateX(-50%);bottom:18px;background:var(--nav);color:#fff;border-radius:18px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:16px;box-shadow:0 12px 40px #0008;z-index:5;max-width:calc(100% - 40px);width:max-content}
+.dark .dock,.dark .tray{box-shadow:0 0 0 1px #ffffff33,0 12px 40px #000}
+.stack{display:flex}
+.stack .cv{width:26px;height:36px;border-radius:4px;margin-left:-10px;box-shadow:0 0 0 2px var(--nav)}
+.stack .cv:first-child{margin-left:0}
+.dock .tx{display:flex;flex-direction:column;gap:1px;font-size:12px;color:#fffc;min-width:0;text-align:left}
+.dock .tx b{font-size:15px;color:#fff}
+.dock .why{color:var(--warn)}
+/* D2 dock opens a tray of the picks */
+.dopen{display:flex;align-items:center;gap:12px;border-radius:12px;padding:4px 8px 4px 4px;margin:-4px 0 -4px -8px}
+.dopen:hover{background:#ffffff14}
+.tray{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 10px);width:min(620px,calc(100cqw - 24px));background:var(--fg);color:var(--tx);border-radius:16px;box-shadow:0 12px 40px #0007;padding:12px 14px;max-height:330px;overflow:auto;display:flex;flex-direction:column;gap:8px;text-align:left}
+.tray .its{display:flex;flex-wrap:wrap;gap:6px}
+.tray .it{display:flex;align-items:center;gap:8px;background:var(--fg2);border-radius:8px;padding:3px 8px 3px 3px;max-width:260px;color:var(--tx-strong);font-size:12px}
+.tray .it .cv{width:22px;height:31px;border-radius:3px}
+.tray .it span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tray .it b{opacity:.5}
+/* D3 three numbers, and a bubble for the reason */
+.seg3{display:flex;gap:18px}
+.seg3 div{display:flex;flex-direction:column;font-size:11px;color:#fffc;white-space:nowrap}
+.seg3 b{font-size:20px;color:#fff;line-height:1.1}
+.seg3 .bad b{color:var(--warn)}
+.bub{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 10px);background:var(--warn);color:#2b2d42;font-weight:800;font-size:12px;padding:7px 12px;border-radius:10px;width:max-content;max-width:min(440px,calc(100cqw - 24px));text-align:center}
+.bub::after{content:'';position:absolute;left:50%;top:100%;margin-left:-6px;border:6px solid transparent;border-top-color:var(--warn)}
+/* D4 two chips: new and replacing */
+.dch{display:flex;gap:6px}
+.dchip{border-radius:10px;padding:5px 10px;background:#ffffff1f;color:#fff;font-size:11px;display:flex;flex-direction:column;line-height:1.15;text-align:left;white-space:nowrap}
+.dchip b{font-size:17px}
+.dchip.re{background:var(--warn);color:#2b2d42}
+.dchip.z{opacity:.4}
+/* D5 the dock is the button */
+.dock.d5{padding:6px;gap:0;flex-direction:column;align-items:stretch;border-radius:20px}
+.d5 .go{padding:13px 26px;border-radius:14px;flex-direction:column;gap:0;line-height:1.2}
+.d5 .go small{font-weight:400;font-size:11px;opacity:.9}
+.d5 .note{font-size:12px;color:#fffc;padding:4px 12px 6px;text-align:center;max-width:380px}
+.d5 .hint{padding:8px 18px;font-size:13px;color:#fffc}
+
+@container app (max-width:720px){
+  .body{flex-direction:column}
+  .h1{font-size:21px}
+  .fbar{padding:8px 12px 4px;gap:6px}
+  .rail{width:auto;padding:10px 12px;gap:8px;display:grid;grid-template-columns:1fr 1fr;overflow:visible}
+  .rail .rh,.rail .srch,.rail .sts{grid-column:1/-1}.rail .lab{display:none}
+  .rail .sts{display:flex;overflow:auto;gap:4px;scrollbar-width:none}.rail .ck{width:auto;white-space:nowrap;background:var(--fg2);padding:4px 8px}
+  .rail.over{right:0;bottom:auto;border-radius:0 0 16px 16px}
+  .strip{width:auto;flex-direction:row;padding:8px 12px}.strip .vt{writing-mode:horizontal-tb;margin:0}
+  .irail{width:auto;flex-direction:row;padding:6px 8px;gap:2px;overflow:auto}.irail .ib{width:54px;flex-shrink:0}
+  .wall{padding:10px 12px 130px;gap:10px 8px;grid-template-columns:repeat(3,1fr)}
+  .dock{left:8px;right:8px;transform:none;max-width:none;width:auto;bottom:8px;gap:10px;padding-left:12px}
+  .dock .stack{display:none}.dock .tx{flex:1}.dock .go{padding:10px 14px}
+  .seg3{gap:10px;flex:1}.seg3 b{font-size:16px}.seg3 div span{white-space:normal;font-size:10px}
+  .dch{flex:1}.dock .tx.x4{display:none}
+  .d5 .go{width:100%}
+}
+
+/* ================= prototype picker (not part of any design) ================= */
+#pp{position:fixed;right:16px;bottom:96px;z-index:999;background:#1b1030;color:#fff;border:2px solid #ff4fd8;border-radius:14px;box-shadow:0 10px 40px #000a;font:12px/1.3 ui-monospace,Consolas,monospace;width:310px;user-select:none}
+#pp .grip{cursor:move;padding:6px 10px;color:#ff9be8;display:flex;justify-content:space-between;border-bottom:1px solid #ff4fd855}
+#pp .ax{display:grid;grid-template-columns:28px 1fr 28px;align-items:center;padding:5px 8px;gap:6px;text-align:center;cursor:pointer;border-left:4px solid transparent}
+#pp .ax.on{background:#ff4fd822;border-left-color:#ff4fd8}
+#pp .ax button{background:#ffffff26;color:#fff;border-radius:7px;height:26px;font-weight:900;font-size:14px}
+#pp .ax.on button{background:#ff4fd8;color:#1b1030}
+#pp .ax small{display:block;color:#ff9be8;font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+#pp .hint{padding:2px 10px 6px;color:#ffffff88;font-size:10px}
+#pp .sts{display:flex;flex-wrap:wrap;gap:4px;padding:4px 8px 8px;border-top:1px solid #ff4fd855}
+#pp .sts button{background:#ffffff1a;border-radius:6px;padding:4px 7px;color:#fff}
+#pp .sts button.on{background:#ff4fd8;color:#1b1030;font-weight:900}
+#pp .sts hr{flex-basis:100%;border:none;height:0}
+</style>
+</head>
+<body>
+<div id="stage"><div id="app"></div></div>
+<div id="pp"></div>
+<script>
+const DATA = /*DATA*/null;
+const BASE = DATA.base, ALL = DATA.base.concat(DATA.extra);
+const ST = { COMPLETED: ['Completed', '#3fae5a'], REPEATING: ['Repeating', '#3db4f2'], CURRENT: ['Watching', '#f2a03d'], PAUSED: ['Paused', '#8f67d8'], DROPPED: ['Dropped', '#e05555'] };
+const AXES = {
+  c: ['Title card', [['C1', 'As chosen: ring, tick, banner'], ['C2', 'Quiet: badge says 9 → ?'], ['C3', 'Bar across the cover'], ['C4', 'Photo-picker frame'], ['C5', 'Clean cover, data line below']]],
+  r: ['Rail, closed', [['R1', 'Slim strip'], ['R2', 'Gone, one Filters button'], ['R3', 'Drawer over the wall'], ['R4', 'Line of tokens + search'], ['R5', 'Icon rail with badges']]],
+  d: ['Dock', [['D1', 'As chosen: stack + 2 lines'], ['D2', 'Opens a tray of picks'], ['D3', 'Three numbers + bubble'], ['D4', 'Two chips: new / replacing'], ['D5', 'The dock is the button']]],
+};
+const STATES = [['empty', 'Nothing picked'], ['catchup', 'From Catch-up'], ['mix', 'Mix'], ['few', 'Too few Anchors'], ['long', '1000+ titles'], ['nomatch', 'No match']];
+const SORTS = [['default', 'No score first, then newest'], ['title', 'Title'], ['score', 'Score'], ['year', 'Release year']];
+const S = { c: 'C1', r: 'R1', d: 'D1', ax: 'c', open: true, preset: 'mix', phone: false, dark: false, picked: new Set(), statuses: new Set(), year: '', search: '', sort: 'default', only: false, long: false, sheet: false, toast: '' };
+
+function preset(p) {
+  Object.assign(S, { preset: p, long: p === 'long', search: p === 'nomatch' ? 'zzz' : '', year: '', sort: 'default', only: false, sheet: false, toast: '' });
+  S.statuses = new Set(['COMPLETED', 'REPEATING']);
+  const un = BASE.filter((t) => !t.score), sc = BASE.filter((t) => t.score);
+  const ts = p === 'empty' ? [] : p === 'catchup' ? un.filter((t) => t.status === 'COMPLETED' || t.status === 'REPEATING')
+    : p === 'few' ? un.slice(0, 3).concat(sc.slice(0, 10)) : un.slice(0, 5).concat([sc[2], sc[9], sc[19]]);
+  S.picked = new Set(ts.map((t) => t.id));
+}
+
+function view() {
+  const list = S.long ? ALL : BASE, P = S.picked;
+  const okF = (t) => S.statuses.has(t.status) && (!S.year || String(t.year) === S.year);
+  const q = S.search.trim().toLowerCase();
+  const byT = (a, b) => a.title.localeCompare(b.title);
+  const cmp = { default: (a, b) => !!a.score - !!b.score || b.done - a.done || byT(a, b), title: byT, score: (a, b) => b.score - a.score || byT(a, b), year: (a, b) => (b.year || 0) - (a.year || 0) || byT(a, b) };
+  const rows = list.filter((t) => okF(t) && (!q || t.title.toLowerCase().includes(q)) && (!S.only || P.has(t.id))).sort(cmp[S.sort]);
+  const picked = list.filter((t) => P.has(t.id));
+  const anchors = list.filter((t) => t.score && !P.has(t.id));
+  const scores = new Set(anchors.map((t) => t.score));
+  const cnt = {};
+  list.forEach((t) => { cnt[t.status] = (cnt[t.status] || 0) + 1; });
+  const reason = !picked.length ? 'Nothing picked yet.' : anchors.length < 20 ? `Only ${anchors.length} Anchors left, 20 needed. Untick some titles that have a score.` : scores.size < 3 ? `Anchors left on only ${scores.size} scores, 3 needed. Untick some titles that have a score.` : '';
+  return { list, rows, picked, anchors, scores: scores.size, cnt, reason, blocked: !!reason && picked.length > 0,
+    rescored: picked.filter((t) => t.score).length, addN: list.filter((t) => !t.score && !P.has(t.id) && okF(t)).length,
+    duels: picked.length * (Math.ceil(Math.log2(scores.size + 1)) + 2), years: [...new Set(list.map((t) => t.year).filter(Boolean))].sort((a, b) => b - a) };
+}
+
+/* ---- shared fragments ---- */
+const h = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const cv = (t) => t.cover ? `<img class="cv" loading="lazy" src="${t.cover}" style="--c:${t.color || '#3db4f2'}" alt="">` : `<span class="cv ph" style="--c:${t.color || '#3db4f2'}"></span>`;
+const stt = (t) => `<span class="stt"><i style="background:${ST[t.status][1]}"></i>${ST[t.status][0]}</span>`;
+const on = (t) => S.picked.has(t.id) ? 'on' : '';
+const repl = (t) => S.picked.has(t.id) && t.score;
+const tick = (t) => `data-act="tick" data-id="${t.id}"`;
+const fSearch = () => `<label class="srch"><span>⌕</span><input data-in="search" placeholder="Search titles" value="${h(S.search)}"></label>`;
+const fChecks = (v) => `<div class="sts">${Object.keys(ST).map((k) => `<button class="ck" data-act="status" data-id="${k}"><span class="box ${S.statuses.has(k) ? 'on' : ''}">✓</span>${ST[k][0]}<span class="cnt">${v.cnt[k] || 0}</span></button>`).join('')}</div>`;
+const fYear = (v) => `<select class="lsel" data-in="year"><option value="">All years</option>${v.years.map((y) => `<option ${S.year == y ? 'selected' : ''}>${y}</option>`).join('')}</select>`;
+const fSort = () => `<select class="lsel" data-in="sort">${SORTS.map(([k, l]) => `<option value="${k}" ${S.sort === k ? 'selected' : ''}>Sort: ${l}</option>`).join('')}</select>`;
+const fAdd = (v) => `<button class="mini-b" data-act="addall" ${v.addN ? '' : 'disabled'}>＋ Add ${v.addN} without a score</button>`;
+const fClear = (v) => `<button class="mini-b" data-act="clear" ${v.picked.length ? '' : 'disabled'}>Clear picks</button>`;
+const fOnly = (v) => `<button class="mini-b ${S.only ? 'on' : ''}" data-act="only">Picked only (${v.picked.length})</button>`;
+const fBack = () => `<button class="back" data-act="back">← Start</button>`;
+const fGo = (v) => `<button class="go" data-act="go" ${v.reason ? 'disabled' : ''}>Start Duels</button>`;
+const noMatch = (v) => v.rows.length ? '' : `<div class="nomatch"><div class="k">(・_・?)</div><b>No titles match</b><span>${S.search ? `Nothing matches “${h(S.search)}” with these filters.` : S.only ? 'Nothing picked shows with these filters.' : 'No titles with these filters.'}</span><button class="link" data-act="reset">Reset search and filters</button></div>`;
+const stack = (v) => v.picked.length ? `<div class="stack">${v.picked.slice(0, 6).map(cv).join('')}</div>` : '';
+const fsum = (v) => `${[...S.statuses].map((k) => ST[k][0]).join(', ') || 'No status'} · ${S.year || 'All years'}`;
+
+/* ---- C · the title card ---- */
+const CARD = {
+  C1: (t) => `<button class="cd c1 ${on(t)}" ${tick(t)}><span class="im">${cv(t)}${repl(t) ? '<span class="rp">replaces score</span>' : ''}<span class="tk">✓</span><span class="bs ${t.score ? '' : 'none'}">${t.score || 'no score'}</span></span>
+    <span class="tt">${h(t.title)}</span><span class="mt"><span>${t.year || '—'}</span>${stt(t)}</span></button>`,
+  C2: (t) => `<button class="cd c2 ${on(t)}" ${tick(t)}><span class="im">${cv(t)}<span class="tk">✓</span><span class="bs ${t.score ? '' : 'none'} ${repl(t) ? 're' : ''}">${t.score ? (repl(t) ? `${t.score} → ?` : t.score) : 'no score'}</span></span>
+    <span class="tt">${h(t.title)}</span><span class="mt">${t.year || '—'} · ${ST[t.status][0]}</span></button>`,
+  C3: (t) => `<button class="cd c3 ${on(t)}" ${tick(t)}><span class="im">${cv(t)}${t.status === 'COMPLETED' ? '' : `<span class="stp" style="background:${ST[t.status][1]}">${ST[t.status][0]}</span>`}<span class="bs ${t.score ? '' : 'none'}">${t.score || 'no score'}</span>
+    <span class="pb ${repl(t) ? 're' : ''}">${repl(t) ? `✓ Replaces ${t.score}` : '✓ Picked'}</span></span><span class="tt">${h(t.title)}</span><span class="mt">${t.year || '—'}</span></button>`,
+  C4: (t) => `<button class="cd c4 ${on(t)}" ${tick(t)}><span class="fr"><span class="tk">✓</span><span class="im">${cv(t)}<span class="bs ${t.score ? '' : 'none'}">${t.score || 'no score'}</span></span></span>
+    <span class="tt">${h(t.title)}</span><span class="mt"><span>${t.year || '—'}</span>${repl(t) ? `<span class="rep">replaces ${t.score}</span>` : stt(t)}</span></button>`,
+  C5: (t) => `<button class="cd c5 ${on(t)}" ${tick(t)}><span class="im">${cv(t)}<span class="pk">✓</span></span>
+    <span class="ln"><span class="sc5 ${t.score ? '' : 'none'} ${repl(t) ? 're' : ''}">${t.score ? (repl(t) ? `${t.score} → ?` : t.score) : 'no score'}</span><span>${t.year || '—'}</span>${stt(t)}</span><span class="tt">${h(t.title)}</span></button>`,
+};
+
+/* ---- R · the rail and how it closes: { side, top, over } ---- */
+const fullRail = (v, cls, closeLabel) => `<aside class="rail ${cls}"><div class="rh">${fBack()}<button class="rtog" data-act="rail" title="Hide filters">${closeLabel}</button></div><div class="h1">Choose titles</div>${fSearch()}
+  <div class="lab">List status</div>${fChecks(v)}<div class="lab">Release year</div>${fYear(v)}<div class="lab">Sort</div>${fSort()}${fAdd(v)}${fOnly(v)}${fClear(v)}</aside>`;
+const RAIL = {
+  R1: (v) => S.open ? { side: fullRail(v, '', '«') } : { side: `<aside class="strip"><button class="rtog" data-act="rail" title="Show filters">»</button><span class="vt">Choose titles</span></aside>` },
+  R2: (v) => S.open ? { side: fullRail(v, '', '✕') } : { top: `<div class="fbar">${fBack()}<div class="h1">Choose titles</div><button class="mini-b" data-act="rail" style="padding:8px 12px">☰ Filters</button><span class="small fine">${fsum(v)} · ${v.rows.length} shown</span></div>` },
+  R3: (v) => ({ top: `<div class="fbar">${fBack()}<div class="h1">Choose titles</div><button class="mini-b ${S.open ? 'on' : ''}" data-act="rail" style="padding:8px 12px">☰ Filters · ${S.statuses.size + (S.year ? 1 : 0)}</button><span class="small fine">${v.rows.length} shown</span></div>`,
+    over: S.open ? `<div class="scrim" data-act="rail"></div>${fullRail(v, 'over', '✕')}` : '' }),
+  R4: (v) => S.open ? { side: fullRail(v, '', '«') } : { top: `<div class="fbar"><button class="rtog" data-act="rail" title="Show filters">»</button>${fBack()}${fSearch()}
+      ${[...S.statuses].map((k) => `<span class="tok">${ST[k][0]}<button data-act="status" data-id="${k}"><b>✕</b></button></span>`).join('')}${S.year ? `<span class="tok">${S.year}<button data-act="year" data-id=""><b>✕</b></button></span>` : ''}${fAdd(v)}<span class="small fine">${v.rows.length} shown</span></div>` },
+  R5: (v) => S.open ? { side: fullRail(v, '', '«') } : { side: `<aside class="irail"><button class="rtog" data-act="rail" title="Show filters">»</button>
+      <button class="ib" data-act="rail"><span class="g">⌕</span>Search${S.search ? '<span class="bd">1</span>' : ''}</button><button class="ib" data-act="rail"><span class="g">☰</span>Status<span class="bd">${S.statuses.size}</span></button>
+      <button class="ib" data-act="rail"><span class="g">▦</span>${S.year || 'Year'}</button><button class="ib" data-act="rail"><span class="g">⇅</span>Sort</button>
+      <button class="ib" data-act="addall" ${v.addN ? '' : 'disabled'} title="Add ${v.addN} without a score"><span class="g">＋</span>Add ${v.addN}</button>
+      <button class="ib ${S.only ? 'on' : ''}" data-act="only"><span class="g">✓</span>Picked<span class="bd">${v.picked.length}</span></button><span class="grow"></span><button class="ib" data-act="back"><span class="g">←</span>Start</button></aside>` },
+};
+
+/* ---- D · the dock ---- */
+const picks = (v) => `${v.picked.length} picked${v.rescored ? ` · ${v.rescored} replace a score` : ''}`;
+const line2 = (v) => v.reason || `${v.anchors.length} Anchors left on ${v.scores} scores · ≈ ${v.duels} Duels`;
+const DOCK = {
+  D1: (v) => `<div class="dock">${stack(v)}<div class="tx"><b>${picks(v)}</b><span class="${v.blocked ? 'why' : ''}">${line2(v)}</span></div>${fGo(v)}</div>`,
+  D2: (v) => { const it = (t) => `<span class="it">${cv(t)}<span>${h(t.title)}</span>${t.score ? `<span class="rep">was ${t.score}</span>` : ''}<button ${tick(t)}><b>✕</b></button></span>`;
+    const un = v.picked.filter((t) => !t.score), re = v.picked.filter((t) => t.score);
+    return `<div class="dock">${S.sheet ? `<div class="tray">${v.picked.length ? '' : '<span class="fine">Nothing picked yet. Tap a cover to pick it.</span>'}
+        ${un.length ? `<div class="lab">Without a score · ${un.length}</div><div class="its">${un.map(it).join('')}</div>` : ''}${re.length ? `<div class="lab">Score will be replaced · ${re.length}</div><div class="its">${re.map(it).join('')}</div>` : ''}
+        ${v.picked.length ? '<button class="link small" data-act="clear" style="align-self:flex-start">Clear picks</button>' : ''}</div>` : ''}
+      <button class="dopen" data-act="sheet">${stack(v)}<div class="tx"><b>${picks(v)} ${S.sheet ? '▾' : '▴'}</b><span class="${v.blocked ? 'why' : ''}">${line2(v)}</span></div></button>${fGo(v)}</div>`; },
+  D3: (v) => `<div class="dock">${v.blocked ? `<div class="bub">${v.reason}</div>` : ''}<div class="seg3"><div><b>${v.picked.length}</b><span>picked${v.rescored ? ` · ${v.rescored} replace` : ''}</span></div><div class="${v.blocked ? 'bad' : ''}"><b>${v.anchors.length}</b><span>Anchors · ${v.scores} scores</span></div><div><b>≈ ${v.duels}</b><span>Duels</span></div></div>${fGo(v)}</div>`,
+  D4: (v) => `<div class="dock"><div class="dch"><button class="dchip ${v.picked.length - v.rescored ? '' : 'z'}" data-act="only"><b>${v.picked.length - v.rescored}</b>get a first score</button><button class="dchip re ${v.rescored ? '' : 'z'}" data-act="only"><b>${v.rescored}</b>get a new score</button></div>
+    <div class="tx x4"><span class="${v.blocked ? 'why' : ''}">${v.blocked ? v.reason : `${v.anchors.length} Anchors left on ${v.scores} scores`}</span><span>≈ ${v.duels} Duels</span></div>${fGo(v)}</div>`,
+  D5: (v) => `<div class="dock d5">${!v.picked.length ? '<div class="hint">Tap covers to pick the titles to score</div>' : `${v.blocked ? `<div class="note why">${v.reason}</div>` : v.rescored ? `<div class="note">${v.rescored} scores will be replaced · ${v.anchors.length} Anchors left on ${v.scores} scores</div>` : ''}
+    <button class="go" data-act="go" ${v.reason ? 'disabled' : ''}><span>Start Duels</span><small>${v.picked.length} titles · ≈ ${v.duels} Duels</small></button>`}</div>`,
+};
+
+function screen(v) {
+  const r = RAIL[S.r](v);
+  return `<div class="scr"><div class="body">${r.side || ''}<div class="col">${r.top || ''}<div class="ww"><div class="wall" data-scroll>${v.rows.map(CARD[S.c]).join('')}${noMatch(v)}</div>${DOCK[S.d](v)}</div></div></div>${r.over || ''}</div>`;
+}
+
+
+/* ---- render + events ---- */
+const app = document.getElementById('app'), pp = document.getElementById('pp');
+function render() {
+  const act = document.activeElement, focus = act && act.dataset && act.dataset.in === 'search' ? [act.selectionStart, act.selectionEnd] : null;
+  const tops = [...app.querySelectorAll('[data-scroll]')].map((e) => e.scrollTop), key = S.c + S.r + S.open, was = app.dataset.d;
+  app.innerHTML = screen(view()) + (S.toast ? `<div class="toast">${S.toast}</div>` : '');
+  app.dataset.d = key;
+  if (was === key) app.querySelectorAll('[data-scroll]').forEach((e, i) => (e.scrollTop = tops[i] || 0));
+  if (focus) { const i = app.querySelector('[data-in=search]'); if (i) { i.focus(); i.setSelectionRange(focus[0], focus[1]); } }
+  document.documentElement.classList.toggle('dark', S.dark); document.body.classList.toggle('phone', S.phone);
+  pp.querySelectorAll('.ax').forEach((row) => { const a = row.dataset.ax, [label, opts] = AXES[a], i = opts.findIndex((o) => o[0] === S[a]);
+    row.classList.toggle('on', S.ax === a); row.querySelector('.name').innerHTML = `<small>${label} · ${i + 1}/${opts.length}</small><b>${opts[i][0]} · ${opts[i][1]}</b>`; });
+  pp.querySelectorAll('[data-p]').forEach((b) => b.classList.toggle('on', b.dataset.p === S.preset));
+  pp.querySelector('[data-t=phone]').classList.toggle('on', S.phone); pp.querySelector('[data-t=open]').classList.toggle('on', S.open); pp.querySelector('[data-t=dark]').classList.toggle('on', S.dark);
+  history.replaceState(null, '', '#' + [S.c, S.r, S.d, S.open ? '' : 'closed', S.preset, S.phone ? 'phone' : '', S.dark ? 'dark' : ''].filter(Boolean).join(','));
+}
+app.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act, id = b.dataset.id, flip = (set, k) => (set.has(k) ? set.delete(k) : set.add(k));
+  S.toast = '';
+  if (a === 'tick') flip(S.picked, Number(id));
+  else if (a === 'status') flip(S.statuses, id);
+  else if (a === 'addall') (S.long ? ALL : BASE).forEach((t) => { if (!t.score && S.statuses.has(t.status) && (!S.year || String(t.year) === S.year)) S.picked.add(t.id); });
+  else if (a === 'clear') S.picked.clear();
+  else if (a === 'only') S.only = !S.only;
+  else if (a === 'year') S.year = id;
+  else if (a === 'sheet') S.sheet = !S.sheet;
+  else if (a === 'rail') S.open = !S.open;
+  else if (a === 'reset') { S.search = ''; S.year = ''; S.only = false; S.statuses = new Set(['COMPLETED', 'REPEATING']); }
+  else if (a === 'go') S.toast = `Prototype: the Duels would start here with ${S.picked.size} titles.`;
+  else if (a === 'back') S.toast = 'Prototype: back to Start.';
+  e.stopPropagation(); render();
+});
+app.addEventListener('input', (e) => { const k = e.target.dataset.in; if (k) { S[k] = e.target.value; render(); } });
+
+pp.innerHTML = `<div class="grip"><span>PROTOTYPE · Picker #63 · round 3</span><span>⠿</span></div>
+  ${Object.keys(AXES).map((a) => `<div class="ax" data-ax="${a}"><button data-n="-1">←</button><div class="name"></div><button data-n="1">→</button></div>`).join('')}
+  <div class="hint">↑/↓ choose the row · ←/→ switch its variant</div>
+  <div class="sts">${STATES.map(([k, l]) => `<button data-p="${k}">${l}</button>`).join('')}<hr><button data-t="open">Rail open</button><button data-t="phone">📱 Phone</button><button data-t="dark">🌙 Dark</button></div>`;
+const step = (n) => { const opts = AXES[S.ax][1], i = opts.findIndex((o) => o[0] === S[S.ax]); S[S.ax] = opts[(i + n + opts.length) % opts.length][0]; S.sheet = false; render(); };
+pp.addEventListener('click', (e) => {
+  const row = e.target.closest('.ax'), b = e.target.closest('button');
+  if (row) { S.ax = row.dataset.ax; return b && b.dataset.n ? step(Number(b.dataset.n)) : render(); }
+  if (!b) return;
+  if (b.dataset.p) preset(b.dataset.p); else if (b.dataset.t) S[b.dataset.t] = !S[b.dataset.t];
+  render();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input,textarea,select,[contenteditable]')) return;
+  const ks = Object.keys(AXES), i = ks.indexOf(S.ax);
+  if (e.key === 'ArrowLeft') step(-1); else if (e.key === 'ArrowRight') step(1);
+  else if (e.key === 'ArrowUp') { S.ax = ks[(i + ks.length - 1) % ks.length]; render(); } else if (e.key === 'ArrowDown') { S.ax = ks[(i + 1) % ks.length]; render(); } else return;
+  e.preventDefault();
+});
+pp.querySelector('.grip').addEventListener('pointerdown', (e) => {
+  const r = pp.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+  const move = (m) => Object.assign(pp.style, { left: m.clientX - dx + 'px', top: m.clientY - dy + 'px', right: 'auto', bottom: 'auto' });
+  addEventListener('pointermove', move); addEventListener('pointerup', () => removeEventListener('pointermove', move), { once: true });
+});
+
+const hash = location.hash.slice(1).split(',');
+preset(hash.find((x) => STATES.some((s) => s[0] === x)) || 'mix');
+for (const a in AXES) { const hit = hash.find((x) => AXES[a][1].some((o) => o[0] === x)); if (hit) S[a] = hit; }
+S.open = !hash.includes('closed'); S.phone = hash.includes('phone'); S.dark = hash.includes('dark');
+render();
+</script>
+</body>
+</html>

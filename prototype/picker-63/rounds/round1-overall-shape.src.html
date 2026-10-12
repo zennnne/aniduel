@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE · Picker (#63)</title>
+<!-- PROTOTYPE, throwaway (#63). Round 1: five overall shapes of the Picker screen, switched with the floating
+     picker bottom-right (or ←/→). One mocked app, one state; only the layout changes. Built by build.mjs. -->
+<link href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;700;800;900&display=swap" rel="stylesheet">
+<style>
+/* ---- theme, copied from src/ui/theme.css ---- */
+:root{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc;--danger:#e05555;--warn:#f2b13d;--on-accent:#fff;--shadow:#0002;--good:#3fae5a;color-scheme:light}
+:root.dark{--bg:#0b1622;--fg:#151f2e;--fg2:#1f2a3c;--tx:#9fadbd;--tx-strong:#edf1f5;--nav:#0b1622;--navtx:#9fadbd;color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{font-family:Overpass,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;background:#11131c;color:var(--tx)}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font:inherit;color:inherit}
+.small{font-size:12px}.strong{color:var(--tx-strong)}.fine{opacity:.7}.grow{flex:1;min-width:0}
+.link{color:var(--blue);text-decoration:underline}
+.go{background:var(--blue);color:var(--on-accent);font-weight:800;padding:13px 22px;border-radius:12px;display:inline-flex;gap:10px;align-items:center;justify-content:center;white-space:nowrap}
+.go:disabled{opacity:.4;cursor:not-allowed}
+.cv{object-fit:cover;display:block;background:var(--c,var(--blue));flex-shrink:0}
+.ph{background:linear-gradient(160deg,var(--c,var(--blue)),var(--nav))}
+.chips{display:flex;flex-wrap:wrap;gap:6px;scrollbar-width:none}
+.chip{padding:6px 11px;border-radius:999px;background:var(--fg2);font-size:13px;display:inline-flex;gap:6px;align-items:center;white-space:nowrap}
+.chip.on{background:var(--blue);color:var(--on-accent);font-weight:700}
+.chip .cnt{opacity:.7;font-size:11px}
+.lsel{padding:6px 8px;border-radius:8px;border:none;background:var(--fg2);color:var(--tx-strong);font-weight:800}
+.mini-b{font-size:12px;padding:6px 10px;border-radius:8px;background:var(--fg2);color:var(--tx-strong);display:inline-flex;align-items:center;gap:4px;font-weight:700;white-space:nowrap}
+.mini-b:hover:not(:disabled){background:var(--blue);color:var(--on-accent)}
+.mini-b:disabled{opacity:.4;cursor:not-allowed}
+.mini-b.on{background:var(--blue);color:var(--on-accent)}
+
+/* ---- stage: the mocked app's viewport ---- */
+#stage{height:100vh;width:100%;margin:0 auto;background:var(--bg);position:relative;overflow:hidden;container:app/inline-size}
+body.phone #stage{width:390px;height:min(800px,calc(100vh - 40px));margin-top:20px;border-radius:26px;box-shadow:0 0 0 8px #000,0 0 0 10px #444}
+#app{height:100%;position:relative}
+.scr{height:100%;display:flex;flex-direction:column;min-height:0;color:var(--tx)}
+.h1{font-size:28px;font-weight:900;color:var(--tx-strong);line-height:1.1}
+.back{font-weight:700;color:var(--tx);padding:6px 10px;border-radius:8px;background:var(--fg2);white-space:nowrap}
+.srch{display:flex;align-items:center;gap:6px;background:var(--fg);border-radius:10px;padding:0 10px;min-width:0;flex:1;max-width:340px;box-shadow:inset 0 0 0 1px var(--fg2)}
+.srch input{border:none;outline:none;background:none;padding:8px 0;width:100%;color:var(--tx-strong)}
+.sc{font-weight:900;color:var(--tx-strong)}
+.sc.none{font-weight:700;font-size:11px;color:var(--tx);border:1px dashed var(--tx);border-radius:6px;padding:1px 5px;opacity:.8;white-space:nowrap}
+.stt{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+.stt i{width:7px;height:7px;border-radius:50%;display:inline-block}
+.rep{font-size:11px;font-weight:800;color:#8a5a00;background:color-mix(in srgb,var(--warn) 30%,var(--fg));border-radius:6px;padding:1px 6px;white-space:nowrap}
+.dark .rep{color:var(--warn)}
+.why{color:#b7791f;font-weight:700}
+.dark .why{color:var(--warn)}
+.nomatch{margin:auto;padding:40px 20px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.nomatch .k{font-size:26px;color:var(--tx-strong)}
+.nomatch b{color:var(--tx-strong);font-size:16px}
+.box{width:20px;height:20px;border-radius:6px;box-shadow:inset 0 0 0 2px var(--tx);display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;color:transparent;font-weight:900;font-size:13px;opacity:.6}
+.on>.box,.box.on{background:var(--blue);box-shadow:none;color:#fff;opacity:1}
+.toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);background:var(--nav);color:#fff;padding:10px 16px;border-radius:10px;z-index:40;box-shadow:0 6px 24px #0006;font-size:13px;max-width:90%}
+
+/* ================= A · Checklist + bottom bar ================= */
+.A .hd{display:flex;align-items:center;gap:12px;padding:18px 28px 10px}
+.A .tools{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:0 28px 8px}
+.A .list{flex:1;min-height:0;overflow:auto;padding:4px 28px 14px;display:flex;flex-direction:column;gap:4px}
+.A .rw{display:grid;grid-template-columns:20px 36px 1fr auto;gap:12px;align-items:center;background:var(--fg);border-radius:10px;padding:6px 14px 6px 12px;text-align:left;flex-shrink:0;box-shadow:inset 3px 0 0 transparent}
+.A .rw.on{box-shadow:inset 4px 0 0 var(--blue);background:color-mix(in srgb,var(--blue) 12%,var(--fg))}
+.A .rw .cv{width:36px;height:50px;border-radius:4px}
+.A .rw .tt{color:var(--tx-strong);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.A .rw .mt{font-size:12px;display:flex;gap:10px;margin-top:2px}
+.A .rw .r{display:flex;align-items:center;gap:8px;font-size:18px}
+.A .sum{display:flex;align-items:center;gap:18px;padding:12px 28px;background:var(--fg);box-shadow:0 -6px 24px var(--shadow);z-index:2}
+.A .sum .n{font-size:22px;font-weight:900;color:var(--tx-strong);line-height:1}
+.A .sum .st{display:flex;flex-direction:column;gap:2px}
+.A .sum .msg{flex:1;min-width:0;text-align:right}
+@container app (max-width:720px){
+  .A .hd{padding:12px 14px 8px}.A .h1{font-size:22px}
+  .A .tools{padding:0 14px 8px;gap:6px}.A .tools .chips{flex-wrap:nowrap;overflow:auto;width:100%;order:5}
+  .A .list{padding:4px 10px 10px}
+  .A .sum{padding:10px 14px;gap:10px;flex-wrap:wrap}.A .sum .msg{order:9;flex-basis:100%;text-align:left}.A .sum .go{margin-left:auto;padding:10px 16px}
+  .A .sum .n{font-size:18px}
+}
+
+/* ================= B · Basket ================= */
+.B{display:grid!important;grid-template-columns:1fr 360px}
+.B .left{display:flex;flex-direction:column;min-height:0;min-width:0}
+.B .hd{display:flex;align-items:center;gap:12px;padding:18px 22px 10px}
+.B .tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:0 22px 8px}
+.B .list{flex:1;min-height:0;overflow:auto;padding:4px 22px 16px;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px;align-content:start}
+.B .rw{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:center;background:var(--fg);border-radius:10px;padding:6px 10px 6px 6px;text-align:left}
+.B .rw .cv{width:44px;height:62px;border-radius:5px}
+.B .rw .tt{color:var(--tx-strong);font-weight:700;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.2}
+.B .rw .mt{font-size:12px;display:flex;gap:8px;margin-top:3px;align-items:center;flex-wrap:wrap}
+.B .rw .plus{width:30px;height:30px;border-radius:50%;background:var(--fg2);color:var(--tx-strong);font-weight:900;font-size:16px;display:flex;align-items:center;justify-content:center}
+.B .rw.on{opacity:.5}.B .rw.on .plus{background:var(--blue);color:#fff}
+.B .bk{background:var(--fg);display:flex;flex-direction:column;min-height:0;box-shadow:-6px 0 30px var(--shadow);z-index:2}
+.B .bk .top{padding:18px 18px 8px;display:flex;align-items:center;gap:8px}
+.B .bk .top b{font-size:20px;font-weight:900;color:var(--tx-strong)}
+.B .bk .items{flex:1;min-height:0;overflow:auto;padding:0 12px 8px;display:flex;flex-direction:column;gap:3px}
+.B .bk .gh{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:10px 6px 4px}
+.B .bk .it{display:grid;grid-template-columns:26px 1fr auto 22px;gap:8px;align-items:center;padding:3px 6px;border-radius:8px;flex-shrink:0}
+.B .bk .it:hover{background:var(--fg2)}
+.B .bk .it .cv{width:26px;height:36px;border-radius:3px}
+.B .bk .it .tt{color:var(--tx-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.B .bk .it .x{font-weight:900;opacity:.6}
+.B .bk .none{margin:auto;text-align:center;padding:20px;line-height:1.5}
+.B .bk .ft{padding:12px 18px 18px;display:flex;flex-direction:column;gap:10px;border-top:1px solid var(--fg2)}
+.B .bk .stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.B .bk .stats div{background:var(--fg2);border-radius:10px;padding:8px;display:flex;flex-direction:column}
+.B .bk .stats b{font-size:20px;font-weight:900;color:var(--tx-strong)}
+.B .bk .stats span{font-size:11px;line-height:1.2}
+.B .bk .go{width:100%}
+.B .sheet-t{display:none}
+@container app (max-width:720px){
+  .B{grid-template-columns:1fr}
+  .B .hd{padding:12px 14px 8px}.B .h1{font-size:22px}.B .tools{padding:0 14px 8px}.B .tools .chips{flex-wrap:nowrap;overflow:auto;width:100%}
+  .B .list{padding:4px 10px 150px}
+  .B .bk{position:absolute;left:0;right:0;bottom:0;max-height:75%;border-radius:18px 18px 0 0;box-shadow:0 -8px 30px #0005}
+  .B .bk .top{padding:10px 16px 6px}.B .sheet-t{display:inline-flex;margin-left:auto}
+  .B .bk:not(.open) .items{display:none}
+  .B .bk .ft{padding:8px 14px 12px;border-top:none}.B .bk .stats b{font-size:16px}.B .bk .stats div{padding:5px 8px}
+}
+
+/* ================= C · Cover wall + dock ================= */
+.C{display:grid!important;grid-template-columns:230px 1fr}
+.C .rail{background:var(--fg);padding:18px 16px;display:flex;flex-direction:column;gap:12px;overflow:auto;min-height:0}
+.C .rail .h1{font-size:24px}
+.C .rail .lab{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;margin-bottom:-6px}
+.C .rail .srch{flex:none;background:var(--fg2);box-shadow:none}
+.C .rail .ck{display:flex;align-items:center;gap:8px;padding:5px 4px;border-radius:8px;text-align:left;color:var(--tx-strong);width:100%}
+.C .rail .ck .cnt{margin-left:auto;font-size:12px;color:var(--tx)}
+.C .rail .lsel,.C .rail .mini-b{width:100%;justify-content:center}
+.C .wall{overflow:auto;min-height:0;padding:18px 20px 110px;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:14px 12px;align-content:start}
+.C .cd{text-align:left;display:flex;flex-direction:column;gap:5px;min-width:0}
+.C .cd .im{position:relative;border-radius:8px;overflow:hidden;aspect-ratio:2/3;box-shadow:0 4px 14px var(--shadow)}
+.C .cd .cv{width:100%;height:100%}
+.C .cd .bs{position:absolute;left:6px;bottom:6px;background:#000b;color:#fff;border-radius:6px;padding:1px 7px;font-weight:900;font-size:14px}
+.C .cd .bs.none{font-size:10px;font-weight:700;background:#000a;border:1px dashed #fff9}
+.C .cd .tk{position:absolute;right:6px;top:6px;width:24px;height:24px;border-radius:50%;background:#0008;box-shadow:inset 0 0 0 2px #fffc;color:transparent;display:flex;align-items:center;justify-content:center;font-weight:900}
+.C .cd.on .im{outline:4px solid var(--blue);outline-offset:-1px}
+.C .cd.on .tk{background:var(--blue);box-shadow:none;color:#fff}
+.C .cd .rp{position:absolute;left:0;right:0;top:0;background:var(--warn);color:#2b2d42;font-size:10px;font-weight:900;text-align:center;padding:2px}
+.C .cd .tt{color:var(--tx-strong);font-weight:700;font-size:12px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.C .cd .mt{font-size:11px;display:flex;gap:6px}
+.C .dock{position:absolute;left:calc(230px + 50%);transform:translateX(calc(-50% - 115px));bottom:18px;background:var(--nav);color:#fff;border-radius:18px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:16px;box-shadow:0 12px 40px #0008;z-index:5;max-width:calc(100% - 270px)}
+.C .dock .stack{display:flex}
+.C .dock .stack .cv{width:26px;height:36px;border-radius:4px;margin-left:-10px;box-shadow:0 0 0 2px var(--nav)}
+.C .dock .stack .cv:first-child{margin-left:0}
+.C .dock .tx{display:flex;flex-direction:column;gap:1px;font-size:12px;color:#fffc;min-width:0}
+.C .dock .tx b{font-size:15px;color:#fff}
+.C .dock .why{color:var(--warn)}
+@container app (max-width:720px){
+  .C{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .C .rail{padding:12px 14px;gap:8px;display:grid;grid-template-columns:1fr 1fr}
+  .C .rail .h1,.C .rail .srch,.C .rail .sts{grid-column:1/-1}.C .rail .lab{display:none}
+  .C .rail .sts{display:flex;overflow:auto;gap:4px}.C .rail .ck{width:auto;white-space:nowrap;background:var(--fg2);padding:4px 8px}
+  .C .wall{grid-template-columns:repeat(3,1fr);padding:12px 12px 130px;gap:10px 8px}
+  .C .dock{left:8px;right:8px;transform:none;max-width:none;bottom:8px;gap:10px}
+  .C .dock .stack{display:none}.C .dock .tx{flex:1}.C .dock .go{padding:10px 14px}
+}
+
+/* ================= D · Score shelves + cockpit ================= */
+.D{display:grid!important;grid-template-columns:270px 1fr}
+.D .side{background:var(--nav);color:var(--navtx);padding:16px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto}
+.D .logo{font-weight:900;color:#fff;font-size:18px}.D .logo b{color:var(--blue)}
+.D .side .back{background:#ffffff14;color:var(--navtx);align-self:flex-start}
+.D .side .big{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.D .side .big div{background:#ffffff0d;border-radius:10px;padding:10px}
+.D .side .big b{display:block;font-size:26px;font-weight:900;color:#fff;line-height:1}
+.D .side .lab{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.D .side .br{display:grid;grid-template-columns:26px 1fr 46px;gap:8px;align-items:center;font-size:12px;padding:3px 4px}
+.D .side .br b{color:#fff;font-size:14px}
+.D .side .br .bar{height:8px;border-radius:4px;background:#ffffff1a;overflow:hidden;display:flex}
+.D .side .br .bar i{background:var(--blue);display:block;height:100%}
+.D .side .br .bar u{background:var(--warn);display:block;height:100%}
+.D .side .br.zero{color:var(--warn)}.D .side .br.zero b{color:var(--warn)}
+.D .side .br span{text-align:right}
+.D .side .go{margin-top:auto;width:100%}
+.D .side .why{color:var(--warn)}
+.D .mainp{display:flex;flex-direction:column;min-height:0;min-width:0}
+.D .tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:16px 22px 10px}
+.D .shelves{flex:1;min-height:0;overflow:auto;padding:0 22px 22px;display:flex;flex-direction:column;gap:6px}
+.D .sh{display:grid;grid-template-columns:92px 1fr;background:var(--fg);border-radius:12px;flex-shrink:0}
+.D .sh .k{background:var(--fg2);border-radius:12px 0 0 12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px 4px;text-align:center}
+.D .sh .k b{font-size:26px;font-weight:900;color:var(--tx-strong);line-height:1}
+.D .sh .k.ns b{font-size:14px}
+.D .sh .k span{font-size:11px;line-height:1.2}
+.D .sh .k .z{color:#b7791f;font-weight:800}
+.D .sh .c{display:flex;flex-wrap:wrap;gap:8px;padding:8px}
+.D .cd{width:64px;text-align:left;position:relative}
+.D .cd .cv{width:64px;height:90px;border-radius:6px}
+.D .cd .tt{font-size:10px;line-height:1.15;color:var(--tx-strong);margin-top:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.D .cd .y{position:absolute;left:3px;top:70px;font-size:9px;background:#000b;color:#fff;border-radius:3px;padding:0 3px}
+.D .cd .tk{position:absolute;right:3px;top:3px;width:20px;height:20px;border-radius:50%;background:var(--blue);color:#fff;font-weight:900;font-size:12px;display:none;align-items:center;justify-content:center}
+.D .cd.on .cv{outline:3px solid var(--blue);outline-offset:1px}
+.D .cd.on .tk{display:flex}
+.D .cd .dot{position:absolute;left:4px;top:4px;width:9px;height:9px;border-radius:50%;box-shadow:0 0 0 2px #000a}
+.D .mob{display:none}
+@container app (max-width:720px){
+  .D{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .D .side{padding:10px 12px;gap:8px;overflow:visible}
+  .D .logo,.D .side .lab,.D .side .brs{display:none}
+  .D .side .top{display:flex;gap:8px;align-items:center}
+  .D .side .big b{font-size:18px;display:inline;margin-right:4px}.D .side .big div{padding:6px 10px}
+  .D .mob{display:flex;gap:4px;flex-wrap:wrap;font-size:11px}
+  .D .mob span{background:#ffffff14;border-radius:6px;padding:2px 6px}.D .mob .z{background:var(--warn);color:#2b2d42;font-weight:800}
+  .D .side .go{margin:0;padding:10px}
+  .D .tools{padding:10px 12px}.D .tools .chips{flex-wrap:nowrap;overflow:auto;width:100%}
+  .D .shelves{padding:0 10px 14px}.D .sh{grid-template-columns:54px 1fr}.D .sh .k b{font-size:20px}
+  .D .cd{width:56px}.D .cd .cv{width:56px;height:80px}.D .cd .y{top:62px}
+}
+
+/* ================= E · Dense table ================= */
+.E .hd{display:flex;align-items:center;gap:12px;padding:16px 28px 12px;background:var(--fg);flex-wrap:wrap}
+.E .tiles{display:flex;gap:8px;margin-left:auto;align-items:stretch}
+.E .tile{background:var(--fg2);border-radius:10px;padding:6px 12px;display:flex;flex-direction:column;justify-content:center;min-width:86px}
+.E .tile b{font-size:20px;font-weight:900;color:var(--tx-strong);line-height:1.1}
+.E .tile span{font-size:11px}
+.E .tile.bad{box-shadow:inset 0 0 0 2px var(--warn)}
+.E .whybar{background:color-mix(in srgb,var(--warn) 22%,var(--fg));padding:7px 28px;font-size:13px}
+.E .tools{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 28px 8px}
+.E .tabs{display:inline-flex;background:var(--fg2);border-radius:10px;padding:3px}
+.E .tabs button{padding:6px 14px;border-radius:8px;font-weight:700}
+.E .tabs button.on{background:var(--blue);color:var(--on-accent)}
+.E .tbl{flex:1;min-height:0;overflow:auto;margin:0 28px 16px;background:var(--fg);border-radius:12px}
+.E .tr{display:grid;grid-template-columns:40px minmax(0,1fr) 110px 70px 120px;align-items:center;width:100%;text-align:left;padding:0 10px;height:34px;border-bottom:1px solid var(--fg2)}
+.E .th{position:sticky;top:0;background:var(--fg);z-index:2;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;height:36px;box-shadow:0 1px 0 var(--fg2)}
+.E .th button{text-align:left;font:inherit;letter-spacing:inherit;text-transform:inherit}
+.E .th button.on{color:var(--blue)}
+.E .tr.on{background:color-mix(in srgb,var(--blue) 13%,var(--fg))}
+.E .tr:not(.th):hover{background:var(--fg2)}
+.E .tr .tt{color:var(--tx-strong);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:10px;display:flex;align-items:center;gap:8px}
+.E .tr .tt .cv{width:18px;height:25px;border-radius:2px}
+.E .tr .tt span{overflow:hidden;text-overflow:ellipsis}
+.E .tr .s{display:flex;gap:6px;align-items:center}
+@container app (max-width:720px){
+  .E .hd{padding:10px 12px}.E .h1{font-size:20px}
+  .E .tiles{margin:0;width:100%;order:9}.E .tile{min-width:0;flex:1;padding:4px 8px}.E .tile b{font-size:16px}
+  .E .hd .go{margin-left:auto;padding:9px 14px}
+  .E .whybar{padding:6px 12px}.E .tools{padding:8px 12px}.E .tools .chips{flex-wrap:nowrap;overflow:auto;width:100%}
+  .E .tbl{margin:0 8px 8px}
+  .E .tr{grid-template-columns:30px minmax(0,1fr) 92px;padding:0 6px}.E .tr>:nth-child(4),.E .tr>:nth-child(5){display:none}
+}
+
+/* ================= prototype picker (not part of any design) ================= */
+#pp{position:fixed;right:16px;bottom:96px;z-index:999;background:#1b1030;color:#fff;border:2px solid #ff4fd8;border-radius:14px;box-shadow:0 10px 40px #000a;font:12px/1.3 ui-monospace,Consolas,monospace;width:300px;user-select:none}
+#pp .grip{cursor:move;padding:6px 10px;color:#ff9be8;display:flex;justify-content:space-between;border-bottom:1px solid #ff4fd855}
+#pp .nav{display:grid;grid-template-columns:34px 1fr 34px;align-items:center;padding:8px;gap:6px;text-align:center}
+#pp .nav button{background:#ff4fd8;color:#1b1030;border-radius:8px;height:30px;font-weight:900;font-size:16px}
+#pp .nav b{font-size:13px;display:block}
+#pp .sts{display:flex;flex-wrap:wrap;gap:4px;padding:0 8px 8px}
+#pp .sts button{background:#ffffff1a;border-radius:6px;padding:4px 7px;color:#fff}
+#pp .sts button.on{background:#ff4fd8;color:#1b1030;font-weight:900}
+#pp .sts hr{flex-basis:100%;border:none;height:0}
+</style>
+</head>
+<body>
+<div id="stage"><div id="app"></div></div>
+<div id="pp"></div>
+<script>
+const DATA = /*DATA*/null;
+const BASE = DATA.base, ALL = DATA.base.concat(DATA.extra);
+const ST = { COMPLETED: ['Completed', '#3fae5a'], REPEATING: ['Repeating', '#3db4f2'], CURRENT: ['Watching', '#f2a03d'], PAUSED: ['Paused', '#8f67d8'], DROPPED: ['Dropped', '#e05555'] };
+const DESIGNS = [['A', 'Checklist + bottom bar'], ['B', 'Basket: list → your Pool'], ['C', 'Cover wall + dock'], ['D', 'Score shelves + cockpit'], ['E', 'Dense table, summary on top']];
+const STATES = [['empty', 'Nothing picked'], ['catchup', 'From Catch-up'], ['mix', 'Mix'], ['few', 'Too few Anchors'], ['long', '1000+ titles'], ['nomatch', 'No match']];
+const SORTS = [['default', 'No score first, then newest'], ['title', 'Title'], ['score', 'Score'], ['year', 'Release year']];
+const S = { design: 'A', preset: 'empty', phone: false, dark: false, picked: new Set(), statuses: new Set(), year: '', search: '', sort: 'default', only: false, long: false, sheet: false, toast: '' };
+
+function preset(p) {
+  Object.assign(S, { preset: p, long: p === 'long', search: p === 'nomatch' ? 'zzz' : '', year: '', sort: 'default', only: false, sheet: false, toast: '' });
+  S.statuses = new Set(['COMPLETED', 'REPEATING']);
+  const un = BASE.filter((t) => !t.score), sc = BASE.filter((t) => t.score);
+  const ts = p === 'empty' ? [] : p === 'catchup' ? un.filter((t) => t.status === 'COMPLETED' || t.status === 'REPEATING')
+    : p === 'few' ? un.slice(0, 3).concat(sc.slice(0, 10)) : un.slice(0, 5).concat([sc[2], sc[9], sc[19]]);
+  S.picked = new Set(ts.map((t) => t.id));
+}
+
+function view() {
+  const list = S.long ? ALL : BASE, P = S.picked;
+  const okF = (t) => S.statuses.has(t.status) && (!S.year || String(t.year) === S.year);
+  const q = S.search.trim().toLowerCase();
+  const byT = (a, b) => a.title.localeCompare(b.title);
+  const cmp = { default: (a, b) => !!a.score - !!b.score || b.done - a.done || byT(a, b), title: byT, score: (a, b) => b.score - a.score || byT(a, b), year: (a, b) => (b.year || 0) - (a.year || 0) || byT(a, b) };
+  const rows = list.filter((t) => okF(t) && (!q || t.title.toLowerCase().includes(q)) && (!S.only || P.has(t.id))).sort(cmp[S.sort]);
+  const picked = list.filter((t) => P.has(t.id));
+  const anchors = list.filter((t) => t.score && !P.has(t.id));
+  const scores = new Set(anchors.map((t) => t.score));
+  const perScore = [10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((s) => ({ s, total: list.filter((t) => t.score === s).length, left: anchors.filter((t) => t.score === s).length })).filter((x) => x.total);
+  const cnt = {}; list.forEach((t) => (cnt[t.status] = (cnt[t.status] || 0) + 1));
+  const reason = !picked.length ? 'Nothing picked yet.' : anchors.length < 20 ? `Only ${anchors.length} Anchors left, 20 needed. Untick some titles that have a score.` : scores.size < 3 ? `Anchors left on only ${scores.size} scores, 3 needed. Untick some titles that have a score.` : '';
+  return { list, rows, picked, anchors, scores: scores.size, perScore, cnt, reason, blocked: !!reason && picked.length > 0,
+    rescored: picked.filter((t) => t.score).length, addN: list.filter((t) => !t.score && !P.has(t.id) && okF(t)).length,
+    duels: picked.length * (Math.ceil(Math.log2(scores.size + 1)) + 2), years: [...new Set(list.map((t) => t.year).filter(Boolean))].sort((a, b) => b - a) };
+}
+
+/* ---- shared fragments ---- */
+const h = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const cv = (t) => t.cover ? `<img class="cv" loading="lazy" src="${t.cover}" style="--c:${t.color || '#3db4f2'}" alt="">` : `<span class="cv ph" style="--c:${t.color || '#3db4f2'}"></span>`;
+const sc = (t) => t.score ? `<b class="sc">${t.score}</b>` : `<span class="sc none">no score</span>`;
+const stt = (t) => `<span class="stt"><i style="background:${ST[t.status][1]}"></i>${ST[t.status][0]}</span>`;
+const on = (t) => S.picked.has(t.id) ? 'on' : '';
+const fSearch = () => `<label class="srch"><span>⌕</span><input data-in="search" placeholder="Search titles" value="${h(S.search)}"></label>`;
+const fChips = (v) => `<div class="chips">${Object.keys(ST).map((k) => `<button class="chip ${S.statuses.has(k) ? 'on' : ''}" data-act="status" data-id="${k}">${ST[k][0]} <span class="cnt">${v.cnt[k] || 0}</span></button>`).join('')}</div>`;
+const fYear = (v) => `<select class="lsel" data-in="year"><option value="">All years</option>${v.years.map((y) => `<option ${S.year == y ? 'selected' : ''}>${y}</option>`).join('')}</select>`;
+const fSort = () => `<select class="lsel" data-in="sort">${SORTS.map(([k, l]) => `<option value="${k}" ${S.sort === k ? 'selected' : ''}>Sort: ${l}</option>`).join('')}</select>`;
+const fAdd = (v) => `<button class="mini-b" data-act="addall" ${v.addN ? '' : 'disabled'}>＋ Add ${v.addN} without a score</button>`;
+const fClear = (v) => `<button class="mini-b" data-act="clear" ${v.picked.length ? '' : 'disabled'}>Clear picks</button>`;
+const fOnly = (v) => `<button class="mini-b ${S.only ? 'on' : ''}" data-act="only">Picked only (${v.picked.length})</button>`;
+const fBack = () => `<button class="back" data-act="back">← Start</button>`;
+const fGo = (v) => `<button class="go" data-act="go" ${v.reason ? 'disabled' : ''}>Start Duels</button>`;
+const noMatch = (v) => v.rows.length ? '' : `<div class="nomatch"><div class="k">(・_・?)</div><b>No titles match</b><span>${S.search ? `Nothing matches “${h(S.search)}” with these filters.` : S.only ? 'Nothing picked shows with these filters.' : 'No titles with these filters.'}</span><button class="link" data-act="reset">Reset search and filters</button></div>`;
+
+/* ---- A · Checklist + bottom bar ---- */
+function A(v) {
+  return `<div class="scr A">
+    <header class="hd">${fBack()}<div class="h1">Choose titles</div><span class="fine small">Keep My Scale · Anime</span></header>
+    <div class="tools">${fSearch()}${fChips(v)}${fYear(v)}${fSort()}</div>
+    <div class="tools">${fAdd(v)}${fClear(v)}${fOnly(v)}<span class="small fine">${v.rows.length} shown</span></div>
+    <div class="list" data-scroll>${v.rows.map((t) => `<button class="rw ${on(t)}" data-act="tick" data-id="${t.id}"><span class="box">✓</span>${cv(t)}
+      <span class="grow"><div class="tt">${h(t.title)}</div><div class="mt"><span>${t.year || '—'}</span>${stt(t)}</div></span>
+      <span class="r">${on(t) && t.score ? '<span class="rep">will be replaced</span>' : ''}${sc(t)}</span></button>`).join('')}${noMatch(v)}</div>
+    <footer class="sum">
+      <div class="st"><span class="n">${v.picked.length}</span><span class="small">picked${v.rescored ? ` · ${v.rescored} replace a score` : ''}</span></div>
+      <div class="st"><span class="n" ${v.blocked ? 'style="color:#b7791f"' : ''}>${v.anchors.length}</span><span class="small">Anchors left on ${v.scores} scores</span></div>
+      <div class="st"><span class="n">≈ ${v.duels}</span><span class="small">Duels</span></div>
+      <div class="msg small ${v.blocked ? 'why' : ''}">${v.reason}</div>${fGo(v)}
+    </footer></div>`;
+}
+
+/* ---- B · Basket ---- */
+function B(v) {
+  const item = (t) => `<div class="it">${cv(t)}<span class="tt">${h(t.title)}</span>${t.score ? `<span class="rep">was ${t.score}</span>` : '<span></span>'}<button class="x" data-act="tick" data-id="${t.id}" title="Remove">✕</button></div>`;
+  const un = v.picked.filter((t) => !t.score), re = v.picked.filter((t) => t.score);
+  return `<div class="scr B"><div class="left">
+    <header class="hd">${fBack()}<div class="h1">Choose titles</div></header>
+    <div class="tools">${fSearch()}${fYear(v)}${fSort()}</div><div class="tools">${fChips(v)}${fAdd(v)}</div>
+    <div class="list" data-scroll>${v.rows.map((t) => `<button class="rw ${on(t)}" data-act="tick" data-id="${t.id}">${cv(t)}
+      <span class="grow"><div class="tt">${h(t.title)}</div><div class="mt">${sc(t)}<span>${t.year || '—'}</span>${stt(t)}</div></span><span class="plus">${on(t) ? '✓' : '+'}</span></button>`).join('')}${noMatch(v)}</div></div>
+    <aside class="bk ${S.sheet ? 'open' : ''}"><div class="top"><b>Your picks</b><span class="chip on">${v.picked.length}</span><span class="grow"></span>${fClear(v)}<button class="mini-b sheet-t" data-act="sheet">${S.sheet ? 'Hide ▾' : 'Show ▴'}</button></div>
+      <div class="items" data-scroll>${v.picked.length ? '' : '<div class="none">Nothing picked yet.<br><span class="small">Tap a title to add it here.</span></div>'}
+        ${un.length ? `<div class="gh">Without a score · ${un.length}</div>${un.map(item).join('')}` : ''}
+        ${re.length ? `<div class="gh">Score will be replaced · ${re.length}</div>${re.map(item).join('')}` : ''}</div>
+      <div class="ft"><div class="stats"><div><b>${v.picked.length}</b><span>picked</span></div><div><b ${v.blocked ? 'style="color:#b7791f"' : ''}>${v.anchors.length}</b><span>Anchors left on ${v.scores} scores</span></div><div><b>≈ ${v.duels}</b><span>Duels</span></div></div>
+        ${v.blocked ? `<div class="small why">${v.reason}</div>` : ''}${fGo(v)}</div></aside></div>`;
+}
+
+/* ---- C · Cover wall + dock ---- */
+function C(v) {
+  return `<div class="scr C"><aside class="rail">${fBack().replace('class="back"', 'class="back" style="align-self:flex-start"')}<div class="h1">Choose titles</div>${fSearch()}
+      <div class="lab">List status</div><div class="sts">${Object.keys(ST).map((k) => `<button class="ck" data-act="status" data-id="${k}"><span class="box ${S.statuses.has(k) ? 'on' : ''}">✓</span>${ST[k][0]}<span class="cnt">${v.cnt[k] || 0}</span></button>`).join('')}</div>
+      <div class="lab">Release year</div>${fYear(v)}<div class="lab">Sort</div>${fSort()}
+      ${fAdd(v)}${fOnly(v)}${fClear(v)}</aside>
+    <div class="wall" data-scroll>${v.rows.map((t) => `<button class="cd ${on(t)}" data-act="tick" data-id="${t.id}"><span class="im">${cv(t)}${on(t) && t.score ? '<span class="rp">replaces score</span>' : ''}<span class="tk">✓</span><span class="bs ${t.score ? '' : 'none'}">${t.score || 'no score'}</span></span>
+      <span class="tt">${h(t.title)}</span><span class="mt"><span>${t.year || '—'}</span>${stt(t)}</span></button>`).join('')}${noMatch(v)}</div>
+    <div class="dock">${v.picked.length ? `<div class="stack">${v.picked.slice(0, 6).map(cv).join('')}</div>` : ''}
+      <div class="tx"><b>${v.picked.length} picked${v.rescored ? ` · ${v.rescored} replace a score` : ''}</b><span class="${v.blocked ? 'why' : ''}">${v.blocked ? v.reason : `${v.anchors.length} Anchors left on ${v.scores} scores · ≈ ${v.duels} Duels`}</span></div>${fGo(v)}</div></div>`;
+}
+
+/* ---- D · Score shelves + cockpit ---- */
+function D(v) {
+  const groups = [0, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((s) => ({ s, ts: v.rows.filter((t) => t.score === s), a: v.perScore.find((x) => x.s === s) })).filter((g) => g.ts.length);
+  return `<div class="scr D"><aside class="side"><div class="logo">Ani<b>Duel!</b></div>
+      <div class="top">${fBack()}<div class="big"><div><b>${v.picked.length}</b>picked</div><div><b>≈ ${v.duels}</b>Duels</div></div></div>
+      <div class="lab">Anchors left · ${v.anchors.length} on ${v.scores} scores</div>
+      <div class="brs">${v.perScore.map((x) => `<div class="br ${x.left ? '' : 'zero'}"><b>${x.s}</b><div class="bar"><i style="width:${(x.left / x.total) * 100}%"></i><u style="width:${((x.total - x.left) / x.total) * 100}%"></u></div><span>${x.left}/${x.total}</span></div>`).join('')}</div>
+      <div class="mob">${v.perScore.map((x) => `<span class="${x.left ? '' : 'z'}">${x.s}: ${x.left}</span>`).join('')}</div>
+      ${v.reason ? `<div class="small ${v.blocked ? 'why' : 'fine'}">${v.reason}</div>` : ''}${fGo(v)}</aside>
+    <div class="mainp"><div class="tools"><div class="h1" style="margin-right:8px">Choose titles</div>${fSearch()}${fYear(v)}${fChips(v)}${fAdd(v)}${fClear(v)}</div>
+      <div class="shelves" data-scroll>${groups.map((g) => `<div class="sh"><div class="k ${g.s ? '' : 'ns'}"><b>${g.s || 'No score'}</b>${g.s ? `<span class="${g.a.left ? '' : 'z'}">${g.a.left} of ${g.a.total}<br>Anchors left</span>` : `<span>${g.ts.length} titles</span>`}</div>
+        <div class="c">${g.ts.map((t) => `<button class="cd ${on(t)}" data-act="tick" data-id="${t.id}" title="${h(t.title)} · ${t.year || ''} · ${ST[t.status][0]}">${cv(t)}<i class="dot" style="background:${ST[t.status][1]}"></i><span class="y">${t.year || ''}</span><span class="tk">✓</span><span class="tt">${h(t.title)}</span></button>`).join('')}</div></div>`).join('')}${noMatch(v)}</div></div></div>`;
+}
+
+/* ---- E · Dense table ---- */
+function E(v) {
+  const th = (k, l) => `<button class="${S.sort === k ? 'on' : ''}" data-act="sort" data-id="${k}">${l}${S.sort === k ? ' ▾' : ''}</button>`;
+  return `<div class="scr E"><header class="hd">${fBack()}<div class="h1">Choose titles</div>
+      <div class="tiles"><div class="tile"><b>${v.picked.length}</b><span>picked${v.rescored ? ` · ${v.rescored} rescored` : ''}</span></div><div class="tile ${v.blocked ? 'bad' : ''}"><b>${v.anchors.length}</b><span>Anchors left · ${v.scores} scores</span></div><div class="tile"><b>≈ ${v.duels}</b><span>Duels</span></div></div>${fGo(v)}</header>
+    ${v.blocked ? `<div class="whybar why">⚠ ${v.reason}</div>` : ''}
+    <div class="tools"><div class="tabs"><button class="${S.only ? '' : 'on'}" data-act="tab" data-id="">All</button><button class="${S.only ? 'on' : ''}" data-act="tab" data-id="1">Picked ${v.picked.length}</button></div>${fSearch()}${fChips(v)}${fYear(v)}${fAdd(v)}${fClear(v)}</div>
+    <div class="tbl" data-scroll><div class="tr th"><span></span>${th('title', 'Title')}${th('score', 'Score')}${th('year', 'Year')}<span>Status ${th('default', '· newest')}</span></div>
+      ${v.rows.map((t) => `<button class="tr ${on(t)}" data-act="tick" data-id="${t.id}"><span class="box">✓</span><span class="tt">${cv(t)}<span>${h(t.title)}</span></span><span class="s">${sc(t)}${on(t) && t.score ? '<span class="rep">replaced</span>' : ''}</span><span>${t.year || '—'}</span>${stt(t)}</button>`).join('')}${noMatch(v)}</div></div>`;
+}
+
+/* ---- render + events ---- */
+const app = document.getElementById('app'), pp = document.getElementById('pp');
+function render() {
+  const act = document.activeElement, focus = act && act.dataset && act.dataset.in === 'search' ? [act.selectionStart, act.selectionEnd] : null;
+  const old = app.querySelectorAll('[data-scroll]'), tops = [...old].map((e) => e.scrollTop), was = app.dataset.d;
+  app.innerHTML = ({ A, B, C, D, E })[S.design](view()) + (S.toast ? `<div class="toast">${S.toast}</div>` : '');
+  app.dataset.d = S.design;
+  if (was === S.design) app.querySelectorAll('[data-scroll]').forEach((e, i) => (e.scrollTop = tops[i] || 0));
+  if (focus) { const i = app.querySelector('[data-in=search]'); if (i) { i.focus(); i.setSelectionRange(focus[0], focus[1]); } }
+  document.documentElement.classList.toggle('dark', S.dark); document.body.classList.toggle('phone', S.phone);
+  const i = DESIGNS.findIndex((d) => d[0] === S.design);
+  pp.querySelector('.name').innerHTML = `<b>${S.design} · ${DESIGNS[i][1]}</b>${i + 1} / ${DESIGNS.length}`;
+  pp.querySelectorAll('[data-p]').forEach((b) => b.classList.toggle('on', b.dataset.p === S.preset));
+  pp.querySelector('[data-t=phone]').classList.toggle('on', S.phone); pp.querySelector('[data-t=dark]').classList.toggle('on', S.dark);
+  location.hash = [S.design, S.preset, S.phone ? 'phone' : '', S.dark ? 'dark' : ''].filter(Boolean).join(',');
+}
+app.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const a = b.dataset.act, id = b.dataset.id, flip = (set, k) => (set.has(k) ? set.delete(k) : set.add(k));
+  S.toast = '';
+  if (a === 'tick') flip(S.picked, Number(id));
+  else if (a === 'status') flip(S.statuses, id);
+  else if (a === 'addall') (S.long ? ALL : BASE).forEach((t) => { if (!t.score && S.statuses.has(t.status) && (!S.year || String(t.year) === S.year)) S.picked.add(t.id); });
+  else if (a === 'clear') S.picked.clear();
+  else if (a === 'only') S.only = !S.only;
+  else if (a === 'tab') S.only = !!id;
+  else if (a === 'sort') S.sort = id;
+  else if (a === 'sheet') S.sheet = !S.sheet;
+  else if (a === 'reset') { S.search = ''; S.year = ''; S.only = false; S.statuses = new Set(['COMPLETED', 'REPEATING']); }
+  else if (a === 'go') S.toast = `Prototype: the Duels would start here with ${S.picked.size} titles.`;
+  else if (a === 'back') S.toast = 'Prototype: back to Start.';
+  render();
+});
+app.addEventListener('input', (e) => { const k = e.target.dataset.in; if (k) { S[k] = e.target.value; render(); } });
+
+pp.innerHTML = `<div class="grip"><span>PROTOTYPE · Picker #63 · round 1</span><span>⠿</span></div>
+  <div class="nav"><button data-n="-1">←</button><div class="name"></div><button data-n="1">→</button></div>
+  <div class="sts">${STATES.map(([k, l]) => `<button data-p="${k}">${l}</button>`).join('')}<hr><button data-t="phone">📱 Phone</button><button data-t="dark">🌙 Dark</button></div>`;
+const step = (n) => { const i = DESIGNS.findIndex((d) => d[0] === S.design); S.design = DESIGNS[(i + n + DESIGNS.length) % DESIGNS.length][0]; S.only = false; render(); };
+pp.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.n) return step(Number(b.dataset.n));
+  if (b.dataset.p) preset(b.dataset.p); else if (b.dataset.t) S[b.dataset.t] = !S[b.dataset.t];
+  render();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.target.closest('input,textarea,select,[contenteditable]')) return;
+  if (e.key === 'ArrowLeft') step(-1); else if (e.key === 'ArrowRight') step(1);
+});
+pp.querySelector('.grip').addEventListener('pointerdown', (e) => {
+  const r = pp.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+  const move = (m) => Object.assign(pp.style, { left: m.clientX - dx + 'px', top: m.clientY - dy + 'px', right: 'auto', bottom: 'auto' });
+  addEventListener('pointermove', move); addEventListener('pointerup', () => removeEventListener('pointermove', move), { once: true });
+});
+
+const hash = location.hash.slice(1).split(',');
+preset(STATES.some((s) => s[0] === hash[1]) ? hash[1] : 'mix');
+if (DESIGNS.some((d) => d[0] === hash[0])) S.design = hash[0];
+S.phone = hash.includes('phone'); S.dark = hash.includes('dark');
+render();
+</script>
+</body>
+</html>
