@@ -322,13 +322,35 @@ a {
   padding: 6px;
   max-height: 280px;
   overflow: auto;
+  /* A thin thumb on a clear track, so the scrollbar never squares off the list's right corners. */
   scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--tx) 45%, transparent) transparent;
   font-size: 14px;
   font-weight: 400;
   /* The thin ring keeps it off the page in the dark theme, where a shadow hardly shows. */
   box-shadow:
     0 10px 34px #0004,
     0 0 0 1px color-mix(in srgb, var(--tx) 25%, transparent);
+}
+/* Where the scrollbar can be drawn by hand: a round thumb with no arrows, ending short of the corners. */
+@supports selector(::-webkit-scrollbar) {
+  .sel-pop {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+  .sel-pop::-webkit-scrollbar {
+    width: 10px;
+  }
+  .sel-pop::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 8px 0;
+  }
+  .sel-pop::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--tx) 45%, transparent);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+  }
 }
 .sel-it {
   display: flex;
