@@ -12,11 +12,14 @@ You pick a **Sort Goal** when a Ranking starts.
 | --- | --- | --- |
 | **Scores** | you just want new scores on AniList | every title's score is settled |
 | **Full Ranking** | you also want an exact order of your titles | every title has its own place |
-| [**Keep My Scale**](#keep-my-scale) | you like the scores you have and only want to score the titles that have none | every unscored title has a score |
+| [**Keep My Scale**](#keep-my-scale) | you like the scores you have and only want to score the titles you pick | every picked title has a score |
 
 Scores and Full Ranking rebuild every score from scratch and share the steps below. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch between the two at any time without losing answers. Keep My Scale works differently and is described in [its own section](#keep-my-scale).
 
 Titles missing from your list? [**Catch-up**](#catch-up) (anime only) suggests anime you have probably watched, so you can add them before you rank.
+
+![Start: Anime chosen, with Keep My Scale selected as the Sort Goal](docs/screenshots/start.png)
+*Start: pick a Media Type and a Sort Goal. With Keep My Scale selected, the next step is choosing the titles.*
 
 ## How it works
 
@@ -31,6 +34,12 @@ Titles missing from your list? [**Catch-up**](#catch-up) (anime only) suggests a
    - the **Distribution**: Linear or Bell
    - the **Score Step**: fine, or human steps like every 0.5 / every 5
 6. **Import** — write the chosen scores back to your AniList list (throttled, resumable, retries on rate limits).
+
+![A Duel between two titles of the Loved Band](docs/screenshots/duel.png)
+*A Duel: pick the better title, or call them the same. The sidebar shows each Band's progress and the Ranking so far.*
+
+![Preview: new scores grouped by score level, each cover showing its old score](docs/screenshots/preview.png)
+*Preview: every title under its new score, with the old score on its cover, before anything is written.*
 
 Progress is saved in your browser. Use **Backup** / **Restore** to move a Ranking to another browser. The Pool syncs with AniList when you come back, so added or removed titles are picked up.
 
@@ -55,11 +64,22 @@ Switching keeps every answer. Switching to Full Ranking first shows about how ma
 
 ### Keep My Scale
 
-For when you already have a scoring scale and don't want it changed. Titles that already have an AniList score are **Anchors**: fixed reference points whose scores are never touched. Each title without a score is put through Duels against Anchors only, and gets the score of the Anchors it sits among.
+For when you already have a scoring scale and don't want it changed. You pick the titles to score in the **Picker**: titles without a score, and titles whose score you no longer trust. Every other title with an AniList score is an **Anchor**: a fixed reference point whose score is never touched. Each picked title is put through Duels against Anchors only, and gets the score of the Anchors it sits among; its old score plays no part.
+
+**The Picker**
+
+- Lists every title on your list except Planning ones, as a wall of covers with each title's score, release year and list status.
+- Search, filter by list status, release year, genres and tags, and sort. Titles you picked stay picked when a filter hides them.
+- **Add N without a score** picks every unscored title the filters show; **Pick all N shown** picks everything shown, search included.
+- The dock at the bottom shows how many titles you picked, how many Anchors and scores they leave, and about how many Duels they take. It won't start with fewer than 20 Anchors on 3 scores.
+- Titles left unsettled when a Keep My Scale Ranking ends are offered again the next time you open the Picker.
+
+![The Picker: a wall of covers with eight titles picked, filters on the left and the summary in a dock at the bottom](docs/screenshots/picker.png)
+*The Picker: picked titles are ringed in blue; a picked title that already has a score reads `9 → ?`, since its score will be replaced.*
 
 **When you can use it**
 
-- Offered on Start when your list has at least 20 Anchors on at least 3 different scores.
+- Offered on Start when your list has at least 20 titles with a score, on at least 3 different scores.
 - It can only be chosen when a Ranking starts, and can't be switched with the other two Sort Goals.
 
 **How it differs from the steps above**
@@ -69,7 +89,10 @@ For when you already have a scoring scale and don't want it changed. Titles that
 - A title that beats every Anchor of one score and loses to every Anchor of the next gets a one-off **Closer-to prompt**: which of the two scores is it closer to.
 - An Anchor whose Duel results contradict its own score twice becomes a **Suspect Anchor**. It stops being used as a reference and is listed on Preview.
 - Preview opens as soon as one title is settled, so you can import some scores without finishing the rest.
-- The Ranking ends with its Import. Titles still without a score start fresh next time, against Anchors that now include the ones just imported.
+- The Ranking ends with its Import. Picked titles not yet settled can be picked again next time and start fresh, against Anchors that now include the ones just imported.
+
+![A Keep My Scale Duel: a picked title against an Anchor, with the Anchors by score in the sidebar](docs/screenshots/keep-my-scale.png)
+*Keep My Scale: each Duel puts a picked title against an Anchor. The sidebar shows the Anchors by score and where the title can still land.*
 
 ### Catch-up
 
@@ -88,7 +111,10 @@ How it works:
 - **What you do:** mark each one Completed, Dropped, Planning or Paused, then save to get the next batch. Saves are written to AniList in the background.
 - **Titles you leave unmarked** are **Passed** and aren't suggested again for 30 days.
 - **With a near-empty list**, Catch-up first asks roughly when you started watching anime.
-- **When you are done**, it offers to go on to Keep My Scale if you qualify, or to your default Sort Goal if not.
+- **When you are done**, it offers to go on to Keep My Scale if you qualify, with every unscored Completed and Repeating title already picked in the Picker, or to your default Sort Goal if not.
+
+![Catch-up: a batch of 20 suggested anime, some marked Completed, Dropped, Planning or Paused](docs/screenshots/catch-up.png)
+*Catch-up: tap a cover to mark it; unmarked titles are Passed for 30 days.*
 
 So if you already have a scoring scale of your own, the two make a full loop: Catch-up adds the titles you have watched, then Keep My Scale gives them scores without changing the ones you already have.
 
