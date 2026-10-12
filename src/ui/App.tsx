@@ -5,6 +5,7 @@ import type { Cover, ListEntry, ListStatus, MediaType, Viewer } from '../anilist
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
+import { createUnsettledStore } from '../persistence/unsettledTitles.ts'
 import { browserClock } from '../clock.ts'
 import { importSummary } from '../import/importState.ts'
 import type { DroppedImport, ImportProgress } from '../import/previewImport.ts'
@@ -78,6 +79,7 @@ import { NO_RANKING_UI, leftRanking, splitSkipped, titlesAdded, type RankingUi }
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { SCREENS, rankingShown, shownScreen, splitBandOf, type RankingShown, type Screen, type Shown } from './shownScreen.ts'
+import { PickAgainDialog } from './picker/PickAgainDialog.tsx'
 import { PickerScreen } from './picker/PickerScreen.tsx'
 import { startingPicks, type PickerEntry } from './picker/pickerView.ts'
 import { StartScreen } from './start/StartScreen.tsx'
@@ -88,7 +90,7 @@ import { useDuelLog } from './useDuelLog.ts'
 /** What the Picker's Confirm starts a Keep My Scale Ranking on (#64). */
 type KeepMyScaleStart = { order: number[]; anchors: AnchorScore[] }
 
-type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-keep-my-scale'
+type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-keep-my-scale' | 'pick-again'
 
 const TOAST_MS = 4000
 
@@ -157,6 +159,8 @@ export function App({ fake }: { fake?: AniListSession }) {
   const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
   // How the Picker was last opened, which decides its starting picks (#64); the picks themselves live in the Picker.
   const [pickerEntry, setPickerEntry] = useState<PickerEntry>({ from: 'start' })
+  // The remembered unsettled titles the user chose to pick again on the way in (#66); empty when they said no.
+  const [pickAgain, setPickAgain] = useState<readonly number[]>([])
   // What the Picker's Confirm would start, held while the Replace dialog asks about the saved Ranking.
   const [pickedStart, setPickedStart] = useState<KeepMyScaleStart | null>(null)
 
@@ -209,6 +213,9 @@ export function App({ fake }: { fake?: AniListSession }) {
       }),
     onFinished: endKeepMyScale,
   })
+
+  // The titles the last Keep My Scale Ranking left unsettled, for this user and Media Type (#66).
+  const unsettledStore = useMemo(() => (viewerId === null ? null : createUnsettledStore(localStorage, { userId: viewerId, mediaType })), [viewerId, mediaType])
 
   const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(localStorage, viewerId)), [viewerId])
   const catchUp = useCatchUp({
@@ -678,9 +685,23 @@ export function App({ fake }: { fake?: AniListSession }) {
     showToast(summary ? `${restored} · ${summary}` : restored)
   }
 
-  /** Opens the Picker (#64); it starts from the picks for how it was opened. */
+  /**
+   * Opens the Picker (#64); it starts from the picks for how it was opened. When the last Keep My Scale Ranking left
+   * titles unsettled that the Picker can show, the user is first asked whether to pick them again (#66).
+   */
   function openPicker(entry: PickerEntry) {
     setPickerEntry(entry)
+    if (unsettledStore && unsettledStore.titles(list ?? []).length > 0) {
+      setDialog('pick-again')
+      return
+    }
+    enterPicker([])
+  }
+
+  /** Opens the Picker, with the remembered titles to tick on top of the way in's own (#66). */
+  function enterPicker(remembered: readonly number[]) {
+    setPickAgain(remembered)
+    setDialog(null)
     goTo('picker')
   }
 
@@ -705,6 +726,8 @@ export function App({ fake }: { fake?: AniListSession }) {
     if (!viewer) return
     const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids: order })
     if (!saved(() => duelLog.save(log))) return
+    // The titles left unsettled last time are offered no more, whether or not they were picked again (#66).
+    createUnsettledStore(localStorage, { userId: viewer.id, mediaType }).clear()
     window.history.replaceState({ screen: 'start' }, '')
     goTo('ranking')
   }
@@ -727,12 +750,15 @@ export function App({ fake }: { fake?: AniListSession }) {
   }
 
   /**
-   * A Keep My Scale Ranking ends with its Import (ADR 0010): nothing of it is kept, settled or not. The Import
-   * screen stays on its summary; the titles it wrote are Anchors for the next Ranking.
+   * A Keep My Scale Ranking ends with its Import (ADR 0010): of it only the titles left unsettled are kept, without
+   * their answers, for the next Picker to offer (ADR 0011, #66). The Import screen stays on its summary; the titles it
+   * wrote are Anchors for the next Ranking.
    */
   function endKeepMyScale(key: RankingKey) {
     const current = duelLog.latest()
-    if (!current || !isKeepMyScale(replay(current))) return
+    const ended = current && replay(current)
+    if (!ended || !isKeepMyScale(ended)) return
+    saved(() => createUnsettledStore(localStorage, key).remember(ended))
     deleteDuelLog(localStorage, key)
     imports.discard(key)
     duelLog.show(null)
@@ -919,7 +945,7 @@ export function App({ fake }: { fake?: AniListSession }) {
             scoreFormat={shown.viewer.scoreFormat}
             titleLanguage={shown.viewer.titleLanguage}
             mediaType={mediaType}
-            initialPicks={startingPicks(list ?? [], pickerEntry)}
+            initialPicks={startingPicks(list ?? [], pickerEntry, pickAgain)}
             onBack={() => window.history.back()}
             onConfirm={confirmPicks}
           />
@@ -1237,6 +1263,14 @@ export function App({ fake }: { fake?: AniListSession }) {
             setDialog(null)
             setPickedStart(null)
           }}
+        />
+      )}
+      {dialog === 'pick-again' && unsettledStore && (
+        <PickAgainDialog
+          left={unsettledStore.titles(list ?? []).length}
+          onPickAgain={() => enterPicker(unsettledStore.titles(list ?? []))}
+          onSkip={() => enterPicker([])}
+          onCancel={() => setDialog(null)}
         />
       )}
       {dialog === 'start-over' && viewer && (

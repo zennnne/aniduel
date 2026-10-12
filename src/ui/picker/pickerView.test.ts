@@ -130,6 +130,20 @@ describe('the starting picks', () => {
   it('are nothing when the Picker is opened from Start', () => {
     expect(startingPicks(scaleList(3).list, { from: 'start' })).toEqual(new Set())
   })
+
+  it('add the remembered unsettled titles when the user says to pick them again (#66)', () => {
+    const { fresh, list } = scaleList(3)
+    const remembered = [fresh[0].mediaId, fresh[2].mediaId]
+    expect(startingPicks(list, { from: 'start' }, remembered)).toEqual(new Set(remembered))
+  })
+
+  it('never tick a remembered title the Picker cannot show (#66)', () => {
+    const { fresh, list } = scaleList(1)
+    const planning = entry(0, { status: 'PLANNING' })
+    expect(startingPicks([...list, planning], { from: 'start' }, [fresh[0].mediaId, planning.mediaId, 99999])).toEqual(
+      new Set([fresh[0].mediaId]),
+    )
+  })
 })
 
 describe('ticking a title', () => {

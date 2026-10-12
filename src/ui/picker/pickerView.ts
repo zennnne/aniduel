@@ -57,12 +57,21 @@ export type PickerView = {
 
 /**
  * How the Picker was opened, which decides its starting picks. From Start nothing is ticked (#64); Catch-up's exit
- * offer (#65) and the remembered unsettled titles (#66) add their own ways in here.
+ * offer (#65) adds its own way in here. The remembered unsettled titles (#66) come on top of any way in.
  */
 export type PickerEntry = { from: 'start' }
 
-/** The picks the Picker opens with, for the way it was opened. */
-export function startingPicks(_list: readonly ListEntry[], entry: PickerEntry): Set<number> {
+/**
+ * The picks the Picker opens with: those of the way it was opened, plus the remembered unsettled titles when the user
+ * chose to pick them again (#66), leaving out any the Picker can't show.
+ */
+export function startingPicks(list: readonly ListEntry[], entry: PickerEntry, remembered: readonly number[] = []): Set<number> {
+  const shown = new Set(pickable(list).map((e) => e.mediaId))
+  return new Set([...picksOfEntry(list, entry), ...remembered.filter((id) => shown.has(id))])
+}
+
+/** The picks the way in ticks by itself. */
+function picksOfEntry(_list: readonly ListEntry[], entry: PickerEntry): Set<number> {
   switch (entry.from) {
     case 'start':
       return new Set()
