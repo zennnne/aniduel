@@ -138,6 +138,9 @@ npm run dev        # http://localhost:5173/aniduel/
 | `npm run build` | Typecheck and build to `dist/` |
 | `npm run preview` | Serve the built `dist/` |
 | `npm run eval:catchup` | Holdout eval used to choose the Catch-up suggestion weights |
+| `npm run eval:keep-my-scale` | Simulated-user eval of the Keep My Scale placement rules; run it before and after changing one |
+
+To see a screen without an AniList login, open `http://localhost:5173/aniduel/?fake-anilist`: the app signed in against a fake AniList with a fixed list (`src/dev/fakeSession.ts`). Dev server only, and every page load starts fresh.
 
 Login uses AniList's OAuth implicit grant. Two AniList API clients are registered in `src/config.ts`: one for production (`https://zennnne.github.io/aniduel/`) and one for local dev (`http://localhost:5173/aniduel/`). The redirect URL must match exactly, so run the dev server on port 5173.
 
@@ -153,11 +156,12 @@ src/
   catchup/      Catch-up suggestions, batches, Passed titles, starting era, exit offer
   import/       Import plan and state
   writes/       Write queue and rate limiter shared by Import (scores) and Catch-up (list statuses)
-  persistence/  Saved progress and Backup files
-  ui/           React screens (Start, Rough Sort, Board, Band choice, Duel, Split, Preview, Import, Catch-up)
-scripts/        Catch-up holdout eval
+  persistence/  Saved progress, Backup files, and the titles a Keep My Scale Ranking left unsettled
+  dev/          Dev-only fake AniList session (`?fake-anilist`)
+  ui/           React screens (Start, Picker, Rough Sort, Board, Band choice, Duel, Split, Preview, Import, Catch-up)
+scripts/        Catch-up holdout eval and Keep My Scale simulated-user eval
 docs/adr/       Architecture decision records
-docs/research/  Research behind the Catch-up suggestions
+docs/research/  Research behind the Catch-up suggestions and Keep My Scale scoring
 ```
 
 Key design decisions:
@@ -170,7 +174,7 @@ Key design decisions:
 - [ADR 0006](docs/adr/0006-split-oversized-bands-into-sub-bands.md) — Oversized Bands split into three Sub-bands.
 - [ADR 0007](docs/adr/0007-sort-goal-scores-with-settings-in-the-duel-log.md) — Sort Goal: Scores or Full Ranking (the default follows the Pool size), with scoring settings in the Duel log.
 - [ADR 0008](docs/adr/0008-rough-sort-from-scores-as-one-event.md) — Rough Sort from Scores is one event that carries every Band choice.
-- [ADR 0009](docs/adr/0009-score-new-titles-against-anchors.md) — Keep My Scale: a third Sort Goal that scores unscored titles against fixed Anchors.
+- [ADR 0009](docs/adr/0009-score-new-titles-against-anchors.md) — Keep My Scale: a third Sort Goal that scores titles against fixed Anchors.
 - [ADR 0010](docs/adr/0010-score-new-titles-ends-with-its-import.md) — A Keep My Scale Ranking ends with its Import.
 - [ADR 0011](docs/adr/0011-keep-my-scale-a-hand-picked-pool.md) — Keep My Scale: the name of the third Sort Goal, and a Pool picked by hand.
 - [ADR 0012](docs/adr/0012-keep-my-scale-a-split-on-a-score-is-not-asked.md) — Keep My Scale: a title split on a score gets that score instead of the Closer-to prompt.
