@@ -33,6 +33,18 @@ describe('the fake session', () => {
     expect(new Set(list.map((e) => e.title.romaji)).size).toBe(list.length)
   })
 
+  it("gives titles release years, completion dates, genres and tags, spoiler and weak tags among them, for the Picker's filters", async () => {
+    const { list } = await signedIn()
+    expect(new Set(list.flatMap((e) => (e.year === null ? [] : [e.year]))).size).toBeGreaterThan(5)
+    expect(list.some((e) => e.year === null)).toBe(true)
+    expect(list.filter((e) => e.completedAt.year !== null).length).toBeGreaterThan(5)
+    expect(new Set(list.flatMap((e) => e.genres ?? [])).size).toBeGreaterThan(5)
+    const tags = list.flatMap((e) => e.tags ?? [])
+    expect(tags.some((t) => t.spoiler)).toBe(true)
+    expect(tags.some((t) => t.rank < 50)).toBe(true)
+    expect(new Set(tags.filter((t) => !t.spoiler && t.rank >= 50).map((t) => t.name)).size).toBeGreaterThan(10)
+  })
+
   it('offers Keep My Scale, with unscored titles to pick under the default statuses', async () => {
     const { viewer, list } = await signedIn()
     const start = startView({

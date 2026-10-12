@@ -65,6 +65,8 @@ const MEDIA_LIST_QUERY = `query ($userId: Int, $type: MediaType, $statusIn: [Med
           episodes
           chapters
           siteUrl
+          genres
+          tags { name rank isMediaSpoiler isGeneralSpoiler }
         }
       }
     }
@@ -105,6 +107,8 @@ type RawEntry = {
     episodes: number | null
     chapters: number | null
     siteUrl: string
+    genres?: string[] | null
+    tags?: Array<{ name: string; rank: number | null; isMediaSpoiler: boolean | null; isGeneralSpoiler: boolean | null }> | null
   }
 }
 
@@ -125,6 +129,8 @@ function toListEntry(raw: RawEntry): ListEntry {
     format: media.format,
     length: media.episodes ?? media.chapters ?? null,
     siteUrl: media.siteUrl,
+    genres: media.genres ?? [],
+    tags: (media.tags ?? []).map((t) => ({ name: t.name, rank: t.rank ?? 0, spoiler: Boolean(t.isMediaSpoiler || t.isGeneralSpoiler) })),
   }
 }
 

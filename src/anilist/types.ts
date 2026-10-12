@@ -42,7 +42,16 @@ export type ListEntry = {
   /** Episodes for anime, chapters for manga. */
   length: number | null
   siteUrl: string
+  /**
+   * AniList's genres and tags (#65), which the Picker filters on. Absent where an entry is built without them (a title
+   * Catch-up just added, test fixtures): such a title has no genre and no tag.
+   */
+  genres?: readonly string[]
+  tags?: readonly ListTag[]
 }
+
+/** One of a title's AniList tags: its rank (0–100, how strongly it applies) and whether it gives the story away. */
+export type ListTag = { name: string; rank: number; spoiler: boolean }
 
 /** What a cover tile needs. A ListEntry is one; so is a trending title from before login. */
 export type Cover = Pick<ListEntry, 'mediaId' | 'title' | 'coverUrl' | 'coverColor'>

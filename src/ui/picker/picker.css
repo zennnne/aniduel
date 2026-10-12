@@ -39,6 +39,69 @@
 .pk-hint {
   padding: 6px 24px;
 }
+.pk-filters {
+  padding: 6px 24px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pk-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.pk-search {
+  flex: 1;
+  min-width: 160px;
+  max-width: 360px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--fg2);
+  background: var(--fg);
+  color: var(--tx-strong);
+}
+.pk-filters select {
+  background: var(--fg);
+  color: var(--tx-strong);
+  border: 1px solid var(--fg2);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.pk-chip {
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: var(--fg2);
+  color: var(--tx);
+  font-size: 13px;
+}
+.pk-chip.on {
+  background: var(--blue);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+.pk-cnt {
+  opacity: 0.7;
+  font-size: 11px;
+}
+.pk-facets summary {
+  cursor: pointer;
+}
+.pk-lab {
+  margin: 8px 0 4px;
+  font-weight: 700;
+}
+.pk-tags {
+  margin-top: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.pk-empty {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .pk-list {
   list-style: none;
   margin: 0;
@@ -101,11 +164,76 @@
   .pk-top,
   .pk-summary,
   .pk-reason,
-  .pk-hint {
+  .pk-hint,
+  .pk-filters,
+  .pk-empty {
     padding-left: 16px;
     padding-right: 16px;
   }
-  .pk-list {
+  .pk-filters {
+  padding: 6px 24px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pk-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+.pk-search {
+  flex: 1;
+  min-width: 160px;
+  max-width: 360px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--fg2);
+  background: var(--fg);
+  color: var(--tx-strong);
+}
+.pk-filters select {
+  background: var(--fg);
+  color: var(--tx-strong);
+  border: 1px solid var(--fg2);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.pk-chip {
+  padding: 6px 11px;
+  border-radius: 999px;
+  background: var(--fg2);
+  color: var(--tx);
+  font-size: 13px;
+}
+.pk-chip.on {
+  background: var(--blue);
+  color: var(--on-accent);
+  font-weight: 700;
+}
+.pk-cnt {
+  opacity: 0.7;
+  font-size: 11px;
+}
+.pk-facets summary {
+  cursor: pointer;
+}
+.pk-lab {
+  margin: 8px 0 4px;
+  font-weight: 700;
+}
+.pk-tags {
+  margin-top: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.pk-empty {
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pk-list {
     padding: 0 16px 16px;
   }
   .pk-meta {

@@ -180,7 +180,39 @@ describe('AniList Gateway: list', () => {
       format: 'TV',
       length: 25,
       siteUrl: 'https://anilist.co/anime/7',
+      genres: [],
+      tags: [],
     })
+  })
+
+  it("fetches each title's genres and tags, with each tag's rank and whether it is a spoiler (#65)", async () => {
+    const tagged = entry(3, {
+      media: {
+        ...entry(3).media,
+        genres: ['Action', 'Drama'],
+        tags: [
+          { name: 'Military', rank: 91, isMediaSpoiler: false, isGeneralSpoiler: false },
+          { name: 'Twins', rank: 40, isMediaSpoiler: true, isGeneralSpoiler: false },
+          { name: 'Time Loop', rank: 70, isMediaSpoiler: false, isGeneralSpoiler: true },
+          { name: 'Unranked', rank: null, isMediaSpoiler: false, isGeneralSpoiler: false },
+        ],
+      },
+    })
+    const { fetch, calls } = fakeFetch({ json: chunk(false, [tagged, entry(4)]) })
+    const gateway = createAniListGateway({ fetch, token: 't' })
+
+    const [withTags, without] = await gateway.mediaList({ userId: 1, type: 'ANIME', statuses: ['COMPLETED'] })
+
+    expect(calls[0].body.query).toMatch(/genres/)
+    expect(calls[0].body.query).toMatch(/tags\s*\{\s*name\s+rank\s+isMediaSpoiler\s+isGeneralSpoiler\s*\}/)
+    expect(withTags.genres).toEqual(['Action', 'Drama'])
+    expect(withTags.tags).toEqual([
+      { name: 'Military', rank: 91, spoiler: false },
+      { name: 'Twins', rank: 40, spoiler: true },
+      { name: 'Time Loop', rank: 70, spoiler: true },
+      { name: 'Unranked', rank: 0, spoiler: false },
+    ])
+    expect(without).toMatchObject({ genres: [], tags: [] })
   })
 
   it('uses chapters as the length of a manga', async () => {

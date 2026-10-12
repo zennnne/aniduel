@@ -1,10 +1,18 @@
 // The Picker's view (#64, ADR 0011): the rows it lists, what the picks cost in Anchors, and what Confirm starts.
 import { describe, expect, it } from 'vitest'
 import type { ListEntry, ListStatus } from '../../anilist/types.ts'
-import { pickerView, startingPicks, togglePick, type PickerInput } from './pickerView.ts'
+import { addPicks, DEFAULT_PICKER_FILTERS, pickerView, wayOut, startingPicks, togglePick, type PickerFilters, type PickerInput } from './pickerView.ts'
 
 let nextId = 1
-type EntryOptions = { status?: ListStatus; completed?: number | null; year?: number | null; name?: string; english?: string | null }
+type EntryOptions = {
+  status?: ListStatus
+  completed?: number | null
+  year?: number | null
+  name?: string
+  english?: string | null
+  genres?: string[]
+  tags?: Array<{ name: string; rank: number; spoiler?: boolean }>
+}
 const entry = (oldScore100: number, options: EntryOptions = {}): ListEntry => {
   const mediaId = nextId++
   return {
@@ -20,6 +28,8 @@ const entry = (oldScore100: number, options: EntryOptions = {}): ListEntry => {
     format: null,
     length: null,
     siteUrl: '',
+    genres: options.genres ?? [],
+    tags: (options.tags ?? []).map((t) => ({ spoiler: false, ...t })),
   }
 }
 
@@ -28,12 +38,17 @@ const ids = (entries: readonly { mediaId: number }[]) => entries.map((e) => e.me
 const view = (input: Partial<PickerInput> & Pick<PickerInput, 'list'>) =>
   pickerView({ scoreFormat: 'POINT_10', titleLanguage: 'ROMAJI', picked: new Set(), ...input })
 
+/** The filters, starting from the Picker's defaults. */
+const filters = (over: Partial<PickerFilters> = {}): PickerFilters => ({ ...DEFAULT_PICKER_FILTERS, ...over })
+const ALL_STATUSES: ListStatus[] = ['COMPLETED', 'REPEATING', 'CURRENT', 'PAUSED', 'DROPPED']
+const shown = (v: { rows: readonly { entry: ListEntry }[] }) => ids(v.rows.map((r) => r.entry))
+
 describe("the Picker's rows", () => {
   it('list every title except Planning ones, with score (or none), release year and list status', () => {
     const scored = entry(85, { year: 2019, status: 'DROPPED' })
     const unscored = entry(0, { year: null, status: 'CURRENT' })
     const planning = entry(0, { status: 'PLANNING' })
-    const rows = view({ list: [scored, unscored, planning] }).rows
+    const rows = view({ list: [scored, unscored, planning], filters: filters({ statuses: ALL_STATUSES }) }).rows
     expect(rows).toHaveLength(2)
     expect(rows.find((r) => r.entry === scored)).toMatchObject({ score: '8', year: 2019, status: 'DROPPED', picked: false })
     expect(rows.find((r) => r.entry === unscored)).toMatchObject({ score: null, year: null, status: 'CURRENT', picked: false })
@@ -71,6 +86,236 @@ function scaleList(unscored: number) {
   const fresh = Array.from({ length: unscored }, () => entry(0))
   return { anchors, fresh, list: [...anchors, ...fresh] }
 }
+
+describe("the Picker's status filter", () => {
+  it('starts on Completed and Repeating', () => {
+    const list = ALL_STATUSES.map((status) => entry(0, { status }))
+    expect(DEFAULT_PICKER_FILTERS.statuses).toEqual(['COMPLETED', 'REPEATING'])
+    expect(shown(view({ list }))).toEqual(ids(list.slice(0, 2)))
+  })
+
+  it('shows the other offered statuses once switched on', () => {
+    const list = ALL_STATUSES.map((status) => entry(0, { status }))
+    expect(shown(view({ list, filters: filters({ statuses: ['DROPPED', 'PAUSED'] }) }))).toEqual(ids([list[3], list[4]]))
+  })
+})
+
+describe("the Picker's search", () => {
+  it("narrows the list by title in the user's title language, ignoring case and accents", () => {
+    const titan = entry(0, { name: 'Shingeki no Kyojin', english: 'Attack on Titan' })
+    const pokemon = entry(0, { name: 'Pokémon' })
+    const list = [titan, pokemon]
+    expect(shown(view({ list, titleLanguage: 'ENGLISH', filters: filters({ search: 'titan' }) }))).toEqual([titan.mediaId])
+    expect(shown(view({ list, titleLanguage: 'ROMAJI', filters: filters({ search: 'titan' }) }))).toEqual([])
+    expect(shown(view({ list, titleLanguage: 'ROMAJI', filters: filters({ search: ' KYOJIN ' }) }))).toEqual([titan.mediaId])
+    expect(shown(view({ list, filters: filters({ search: 'pokemon' }) }))).toEqual([pokemon.mediaId])
+  })
+})
+
+describe("the Picker's release-year filter", () => {
+  it('shows only that year, and a title with no year only under all years', () => {
+    const a = entry(0, { year: 2019 })
+    const b = entry(0, { year: 2024 })
+    const none = entry(0, { year: null })
+    const list = [a, b, none]
+    expect(shown(view({ list, filters: filters({ year: 2024 }) }))).toEqual([b.mediaId])
+    expect(new Set(shown(view({ list, filters: filters({ year: null }) })))).toEqual(new Set(ids(list)))
+  })
+
+  it('offers the release years of the titles the Picker can show, newest first', () => {
+    const list = [entry(0, { year: 2019 }), entry(0, { year: 2024 }), entry(0, { year: 2019, status: 'DROPPED' }), entry(0, { year: 2001, status: 'PLANNING' })]
+    expect(view({ list }).years).toEqual([2024, 2019])
+  })
+})
+
+describe("the Picker's genre and tag filters", () => {
+  const military = { name: 'Military', rank: 80 }
+  it('show only titles with every chosen genre and every chosen tag', () => {
+    const actionDrama = entry(0, { genres: ['Action', 'Drama'], tags: [military] })
+    const action = entry(0, { genres: ['Action'], tags: [military] })
+    const drama = entry(0, { genres: ['Drama'] })
+    const list = [actionDrama, action, drama]
+    expect(new Set(shown(view({ list, filters: filters({ genres: ['Action'] }) })))).toEqual(new Set(ids([actionDrama, action])))
+    expect(shown(view({ list, filters: filters({ genres: ['Action', 'Drama'] }) }))).toEqual([actionDrama.mediaId])
+    expect(new Set(shown(view({ list, filters: filters({ tags: ['Military'] }) })))).toEqual(new Set(ids([actionDrama, action])))
+    expect(shown(view({ list, filters: filters({ genres: ['Drama'], tags: ['Military'] }) }))).toEqual([actionDrama.mediaId])
+  })
+
+  it('count a tag for a title only at rank 50 or more', () => {
+    const strong = entry(0, { tags: [{ name: 'Time Loop', rank: 50 }] })
+    const weak = entry(0, { tags: [{ name: 'Time Loop', rank: 49 }] })
+    const v = view({ list: [strong, weak], filters: filters({ tags: ['Time Loop'] }) })
+    expect(shown(v)).toEqual([strong.mediaId])
+    expect(v.tags).toEqual([{ name: 'Time Loop', count: 1, chosen: true }])
+  })
+
+  it('never offer a spoiler tag, nor a tag that counts for no title', () => {
+    const list = [entry(0, { tags: [{ name: 'Twist', rank: 95, spoiler: true }, { name: 'Faint', rank: 10 }, military] })]
+    expect(view({ list }).tags.map((t) => t.name)).toEqual(['Military'])
+  })
+
+  it('give each genre and tag the count of titles it would show with the other filters and the search', () => {
+    const list = [
+      entry(0, { name: 'Alpha', genres: ['Action', 'Drama'], tags: [military] }),
+      entry(0, { name: 'Beta', genres: ['Action'], tags: [military] }),
+      entry(0, { name: 'Gamma', genres: ['Drama', 'Comedy'] }),
+      entry(0, { name: 'Delta', genres: ['Action'], status: 'DROPPED' }),
+    ]
+    expect(view({ list }).genres).toEqual([
+      { name: 'Action', count: 2, chosen: false },
+      { name: 'Comedy', count: 1, chosen: false },
+      { name: 'Drama', count: 2, chosen: false },
+    ])
+    const narrowed = view({ list, filters: filters({ genres: ['Action'], search: 'a' }) })
+    expect(narrowed.genres).toEqual([
+      { name: 'Action', count: 2, chosen: true },
+      { name: 'Comedy', count: 0, chosen: false },
+      { name: 'Drama', count: 1, chosen: false },
+    ])
+    expect(narrowed.tags).toEqual([{ name: 'Military', count: 2, chosen: false }])
+  })
+
+  it('list tags most common first, and the tag search narrows the tags offered but keeps the chosen ones', () => {
+    const list = [
+      entry(0, { tags: [{ name: 'Iyashikei', rank: 90 }, { name: 'Cute Girls Doing Cute Things', rank: 90 }] }),
+      entry(0, { tags: [{ name: 'Cute Girls Doing Cute Things', rank: 90 }, { name: 'Male Protagonist', rank: 60 }] }),
+    ]
+    expect(view({ list }).tags.map((t) => t.name)).toEqual(['Cute Girls Doing Cute Things', 'Iyashikei', 'Male Protagonist'])
+    const searched = view({ list, filters: filters({ tags: ['Iyashikei'], tagSearch: 'CUTE' }) })
+    expect(searched.tags.map((t) => t.name)).toEqual(['Iyashikei', 'Cute Girls Doing Cute Things'])
+  })
+})
+
+describe("the Picker's sorts", () => {
+  const b = entry(70, { name: 'B', year: 2020, completed: 2021 })
+  const a = entry(0, { name: 'a', year: 2015, completed: 2016 })
+  const c = entry(90, { name: 'C', year: null, completed: 2024 })
+  const d = entry(0, { name: 'D', year: 2023, completed: 2023 })
+  const e = entry(70, { name: 'E', year: 2020 })
+  const list = [b, a, c, d, e]
+
+  it('is unscored first, then most recently completed, then by title, by default', () => {
+    expect(DEFAULT_PICKER_FILTERS.sort).toBe('default')
+    expect(shown(view({ list }))).toEqual(ids([d, a, c, b, e]))
+  })
+
+  it('can be by title', () => {
+    expect(shown(view({ list, filters: filters({ sort: 'title' }) }))).toEqual(ids([a, b, c, d, e]))
+  })
+
+  it('can be by score, highest first and unscored last, then by title', () => {
+    expect(shown(view({ list, filters: filters({ sort: 'score' }) }))).toEqual(ids([c, b, e, a, d]))
+  })
+
+  it('can be by release year, newest first and titles without a year last, then by title', () => {
+    expect(shown(view({ list, filters: filters({ sort: 'year' }) }))).toEqual(ids([d, b, e, a, c]))
+  })
+})
+
+describe('"Add N without a score"', () => {
+  it('adds the unscored titles not yet picked that the status, year, genre and tag filters show', () => {
+    const fit = entry(0, { year: 2024, genres: ['Drama'], tags: [{ name: 'Iyashikei', rank: 80 }] })
+    const alsoFit = entry(0, { year: 2024, genres: ['Drama', 'Slice of Life'], tags: [{ name: 'Iyashikei', rank: 60 }] })
+    const pickedFit = entry(0, { year: 2024, genres: ['Drama'], tags: [{ name: 'Iyashikei', rank: 80 }] })
+    const scored = entry(80, { year: 2024, genres: ['Drama'], tags: [{ name: 'Iyashikei', rank: 80 }] })
+    const otherYear = entry(0, { year: 2023, genres: ['Drama'], tags: [{ name: 'Iyashikei', rank: 80 }] })
+    const otherGenre = entry(0, { year: 2024, genres: ['Action'], tags: [{ name: 'Iyashikei', rank: 80 }] })
+    const weakTag = entry(0, { year: 2024, genres: ['Drama'], tags: [{ name: 'Iyashikei', rank: 30 }] })
+    const dropped = entry(0, { year: 2024, genres: ['Drama'], tags: [{ name: 'Iyashikei', rank: 80 }], status: 'DROPPED' })
+    const list = [fit, alsoFit, pickedFit, scored, otherYear, otherGenre, weakTag, dropped]
+    const v = view({ list, picked: new Set([pickedFit.mediaId]), filters: filters({ year: 2024, genres: ['Drama'], tags: ['Iyashikei'] }) })
+    expect(new Set(v.addUnscored)).toEqual(new Set(ids([fit, alsoFit])))
+  })
+
+  it('ignores the search box, so its count is the same whatever is typed', () => {
+    const list = [entry(0, { name: 'Alpha' }), entry(0, { name: 'Beta' }), entry(80, { name: 'Gamma' })]
+    expect(view({ list, filters: filters({ search: 'alpha' }) }).addUnscored).toEqual(ids(list.slice(0, 2)))
+  })
+
+  it('adds nothing once every such title is picked', () => {
+    const list = [entry(0), entry(80)]
+    expect(view({ list, picked: new Set([list[0].mediaId]) }).addUnscored).toEqual([])
+  })
+})
+
+describe('"Pick all N shown"', () => {
+  it('counts the titles shown, search included, and picks those not yet picked', () => {
+    const alpha = entry(80, { name: 'Alpha' })
+    const alpine = entry(0, { name: 'Alpine' })
+    const beta = entry(0, { name: 'Beta' })
+    const v = view({ list: [alpha, alpine, beta], picked: new Set([alpine.mediaId]), filters: filters({ search: 'alp' }) })
+    expect(v.pickAll).toEqual({ shown: 2, ids: [alpha.mediaId] })
+    expect(addPicks(new Set([alpine.mediaId]), v.pickAll.ids)).toEqual(new Set([alpine.mediaId, alpha.mediaId]))
+  })
+
+  it('has nothing to pick when every title shown is picked', () => {
+    const list = [entry(0), entry(80)]
+    expect(view({ list, picked: new Set(ids(list)) }).pickAll).toEqual({ shown: 2, ids: [] })
+  })
+})
+
+describe('"Picked only"', () => {
+  it('shows only the picked titles that pass the other filters', () => {
+    const list = [entry(0), entry(80), entry(70), entry(0, { status: 'DROPPED' })]
+    const picked = new Set([list[1].mediaId, list[3].mediaId])
+    expect(shown(view({ list, picked, filters: filters({ pickedOnly: true }) }))).toEqual([list[1].mediaId])
+    expect(shown(view({ list, picked, filters: filters({ pickedOnly: true, statuses: ALL_STATUSES }) }))).toEqual(ids([list[3], list[1]]))
+  })
+})
+
+describe('picks hidden by the filters or the search', () => {
+  it('stay picked and keep counting', () => {
+    const { fresh, list } = scaleList(2)
+    const v = view({ list, picked: new Set([fresh[0].mediaId]), filters: filters({ search: 'nothing like this' }) })
+    expect(v.rows).toEqual([])
+    expect(v.summary.picked).toBe(1)
+    expect(v.confirm).toMatchObject({ allowed: true, order: [fresh[0].mediaId] })
+  })
+})
+
+describe('when nothing matches', () => {
+  const list = [
+    entry(0, { name: 'Alpha', year: 2020, genres: ['Drama'], status: 'DROPPED' }),
+    entry(0, { name: 'Beta', year: 2024, genres: ['Action'] }),
+    entry(0, { name: 'Bravo', year: 2020, genres: ['Action'] }),
+    entry(0, { name: 'Gamma', year: 2020, genres: ['Drama'] }),
+  ]
+
+  it('is not reported while titles show', () => {
+    expect(view({ list }).nothingMatches).toBeNull()
+  })
+
+  it('offers each change that brings titles back, with the count it gives, and leaves out the ones that give none', () => {
+    const f = filters({ search: 'alpha', year: 2024, genres: ['Action'] })
+    const v = view({ list, filters: f })
+    expect(v.rows).toEqual([])
+    // Clearing the search shows Beta; every status shows nothing (Alpha is from 2020); all years and clearing genres
+    // and tags show nothing either (Alpha is Dropped).
+    expect(v.nothingMatches).toEqual([{ change: 'search', count: 1 }])
+    // Nothing to offer when no single change brings a title back.
+    expect(view({ list, filters: filters({ statuses: ['PAUSED'], search: 'zzz' }) }).nothingMatches).toEqual([])
+  })
+
+  it('counts every way out separately', () => {
+    const v = view({ list, filters: filters({ statuses: ['DROPPED'], year: 2024, search: 'a' }) })
+    // Every status: Beta (2024, has an a). All years: Alpha. Clear the search: nothing (Alpha is 2020).
+    expect(v.nothingMatches).toEqual([
+      { change: 'statuses', count: 1 },
+      { change: 'years', count: 1 },
+    ])
+    const tagged = view({ list, filters: filters({ genres: ['Action'], tags: ['Iyashikei'] }) })
+    expect(tagged.nothingMatches).toEqual([{ change: 'genres-tags', count: 3 }])
+  })
+
+  it('applies a way out to the filters, and resetting clears the search and every filter but keeps the sort', () => {
+    const f = filters({ search: 'x', statuses: ['DROPPED'], year: 2020, genres: ['Drama'], tags: ['Iyashikei'], pickedOnly: true, sort: 'title' })
+    expect(wayOut(f, 'search')).toEqual({ ...f, search: '' })
+    expect(wayOut(f, 'statuses')).toEqual({ ...f, statuses: ALL_STATUSES })
+    expect(wayOut(f, 'years')).toEqual({ ...f, year: null })
+    expect(wayOut(f, 'genres-tags')).toEqual({ ...f, genres: [], tags: [] })
+    expect(wayOut(f, 'reset')).toEqual({ ...DEFAULT_PICKER_FILTERS, sort: 'title' })
+  })
+})
 
 describe("the Picker's summary", () => {
   it('counts the picks, the Anchors they leave and on how many scores, and about how many Duels', () => {
@@ -129,6 +374,21 @@ describe("the Picker's Confirm", () => {
 describe('the starting picks', () => {
   it('are nothing when the Picker is opened from Start', () => {
     expect(startingPicks(scaleList(3).list, { from: 'start' })).toEqual(new Set())
+  })
+
+  it("are every unscored Completed and Repeating title when the Picker is opened from Catch-up's exit offer", () => {
+    const { list } = scaleList(0)
+    const completed = entry(0)
+    const repeating = entry(0, { status: 'REPEATING' })
+    const others = (['CURRENT', 'PAUSED', 'DROPPED', 'PLANNING'] as const).map((status) => entry(0, { status }))
+    expect(startingPicks([...list, completed, repeating, ...others], { from: 'catch-up' })).toEqual(new Set([completed.mediaId, repeating.mediaId]))
+  })
+
+  it('add the remembered unsettled titles to those of Catch-up (#66)', () => {
+    const { list } = scaleList(0)
+    const completed = entry(0)
+    const dropped = entry(0, { status: 'DROPPED' })
+    expect(startingPicks([...list, completed, dropped], { from: 'catch-up' }, [dropped.mediaId])).toEqual(new Set([completed.mediaId, dropped.mediaId]))
   })
 
   it('add the remembered unsettled titles when the user says to pick them again (#66)', () => {

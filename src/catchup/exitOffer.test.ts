@@ -14,25 +14,25 @@ describe('the exit offer', () => {
     expect(exitOffer({ added: 14, anime: null })).toBeNull()
   })
 
-  it('offers Keep My Scale to a user who qualifies, with the count on Start’s Keep My Scale button', () => {
+  it('leads a user who qualifies to the Picker, naming the count on Start’s Keep My Scale button but not calling them new', () => {
     expect(exitOffer({ added: 14, anime: anime({ eligibleForKeepMyScale: true, unscored: 9 }) })).toEqual({
-      target: 'keep-my-scale',
+      target: 'picker',
       label: 'Score 9 titles →',
     })
     expect(exitOffer({ added: 14, anime: anime({ eligibleForKeepMyScale: true, unscored: 1 }) })?.label).toBe('Score 1 title →')
   })
 
-  it('asks to replace a saved Scores or Full Ranking Ranking with Keep My Scale', () => {
+  it('leads to the Picker over a saved Scores or Full Ranking Ranking too; its Confirm asks before replacing it', () => {
     expect(exitOffer({ added: 3, anime: anime({ eligibleForKeepMyScale: true, unscored: 9, saved: 'other' }) })).toEqual({
-      target: 'replace-with-keep-my-scale',
+      target: 'picker',
       label: 'Score 9 titles →',
     })
   })
 
-  it('carries on a saved Keep My Scale Ranking, which the titles without a score join', () => {
+  it('carries on a saved Keep My Scale Ranking, whose Pool is fixed, so it names no titles to score', () => {
     expect(exitOffer({ added: 3, anime: anime({ eligibleForKeepMyScale: true, unscored: 9, saved: 'keep-my-scale' }) })).toEqual({
       target: 'saved-ranking',
-      label: 'Score 9 titles →',
+      label: 'Continue ranking →',
     })
   })
 

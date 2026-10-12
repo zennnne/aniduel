@@ -19,14 +19,15 @@ export type ExitOfferInput = {
 }
 
 /**
- * Every target is Start on anime:
- * `keep-my-scale`: with Keep My Scale picked, to place the titles without a score on the user's own scale.
- * `replace-with-keep-my-scale`: asking to replace the saved Ranking with a Keep My Scale one (#46).
- * `saved-ranking`: with the saved Ranking as it is, to continue it.
- * `default-sort-goal`: with the Pool-size default Sort Goal, to build that scale first.
+ * Every target is on anime:
+ * `picker`: the Picker for Keep My Scale with every unscored Completed and Repeating title ticked (#65), to place them
+ * on the user's own scale. Over a saved Scores or Full Ranking Ranking, the Picker's Confirm asks to replace it (#46).
+ * `saved-ranking`: Start with the saved Ranking as it is, to continue it. A Keep My Scale one never takes in titles
+ * after it started (ADR 0011), so the titles just added wait for the next one.
+ * `default-sort-goal`: Start with the Pool-size default Sort Goal, to build that scale first.
  */
 export type ExitOffer = {
-  target: 'keep-my-scale' | 'replace-with-keep-my-scale' | 'saved-ranking' | 'default-sort-goal'
+  target: 'picker' | 'saved-ranking' | 'default-sort-goal'
   label: string
 }
 
@@ -36,10 +37,8 @@ export type ExitOffer = {
  */
 export function exitOffer({ added, anime }: ExitOfferInput): ExitOffer | null {
   if (added === 0 || !anime) return null
-  if (anime.eligibleForKeepMyScale && anime.unscored > 0) {
-    const label = `Score ${anime.unscored} ${anime.unscored === 1 ? 'title' : 'titles'} →`
-    if (anime.saved === 'none') return { target: 'keep-my-scale', label }
-    return { target: anime.saved === 'keep-my-scale' ? 'saved-ranking' : 'replace-with-keep-my-scale', label }
+  if (anime.eligibleForKeepMyScale && anime.unscored > 0 && anime.saved !== 'keep-my-scale') {
+    return { target: 'picker', label: `Score ${anime.unscored} ${anime.unscored === 1 ? 'title' : 'titles'} →` }
   }
   if (anime.saved !== 'none') return { target: 'saved-ranking', label: 'Continue ranking →' }
   return { target: 'default-sort-goal', label: 'Start Rough Sort →' }

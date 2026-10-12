@@ -1,11 +1,11 @@
 // The Picker's view (#64, ADR 0011): the titles a Keep My Scale Ranking can be started on, which of them are picked,
 // what the picks leave as Anchors, and what Confirm would start. Pure; App keeps the picks and adds the handlers.
 //
-// Built as a pipeline the later Picker tickets extend: `pickable` (every title but Planning ones) → rows in the
-// default order → summary and Confirm over the picks, which never depend on what the rows show.
+// A pipeline: `pickable` (every title but Planning ones) → the rows the filters and the search let through, in the
+// chosen sort (#65) → summary and Confirm over the picks, which never depend on what the rows show.
 import type { ListEntry, ListStatus, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import { anchorsOf, estimateKeepMyScaleDuels, keepMyScaleEligibility, MIN_ANCHOR_SCORES, MIN_ANCHORS } from '../../pool/anchors.ts'
-import { displayTitle, roughSortOrder } from '../../pool/pool.ts'
+import { anchorsOf, estimateKeepMyScaleDuels, keepMyScaleEligibility, MIN_ANCHOR_SCORES, MIN_ANCHORS, unscoredTitles } from '../../pool/anchors.ts'
+import { DEFAULT_STATUSES, displayTitle, OFFERED_STATUSES, roughSortOrder } from '../../pool/pool.ts'
 import type { AnchorScore } from '../../ranking/engine.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
 
@@ -16,6 +16,50 @@ export type PickerInput = {
   titleLanguage: TitleLanguage
   /** The ids ticked so far. Kept by App, in memory only (#61). */
   picked: ReadonlySet<number>
+  /** What narrows and orders the rows (#65); `DEFAULT_PICKER_FILTERS` when left out. In memory only, like the picks. */
+  filters?: PickerFilters
+}
+
+/** The Picker's filters, search and sort (#65). None of them touches the picks: a hidden pick stays picked. */
+export type PickerFilters = {
+  /** The list statuses shown, out of those Start offers. */
+  statuses: readonly ListStatus[]
+  /** Text typed in the search box, matched against the title in the user's title language. */
+  search: string
+  /** One release year, or null for all years (the only choice that shows titles without a year). */
+  year: number | null
+  /** Genres and tags a title must all have to show (#65). */
+  genres: readonly string[]
+  tags: readonly string[]
+  sort: PickerSort
+  /** "Picked only": just the picked titles (that pass the other filters). */
+  pickedOnly: boolean
+  /** Text typed in the tag choice's own search box; it narrows the tags offered, not the rows. */
+  tagSearch: string
+}
+
+/**
+ * How the rows are ordered. `default`: titles without a score first, then the most recently completed, then by title.
+ * `title`; `score`: highest first, titles without a score last; `year`: release year, newest first, none last.
+ */
+export type PickerSort = 'default' | 'title' | 'score' | 'year'
+
+/** A genre or tag the Picker offers, with the count of titles shown once it is chosen too. */
+export type PickerFacet = { name: string; count: number; chosen: boolean }
+
+/** A tag counts for a title from this rank up (#61); below it AniList's voters barely agree it applies. */
+export const MIN_TAG_RANK = 50
+
+/** What the Picker opens with: Completed and Repeating, the titles the user is most able to judge (#61). */
+export const DEFAULT_PICKER_FILTERS: PickerFilters = {
+  statuses: DEFAULT_STATUSES,
+  search: '',
+  year: null,
+  genres: [],
+  tags: [],
+  sort: 'default',
+  pickedOnly: false,
+  tagSearch: '',
 }
 
 /** One title the Picker lists. */
@@ -53,13 +97,56 @@ export type PickerView = {
   rows: PickerRow[]
   summary: PickerSummary
   confirm: PickerConfirm
+  /** The release years the year filter offers: those of every title the Picker can list, newest first. */
+  years: number[]
+  /** Every genre on the titles the Picker can list, by name. */
+  genres: PickerFacet[]
+  /**
+   * The tags offered: every tag that counts for a title the Picker can list, never a spoiler one, narrowed by the tag
+   * search. The chosen ones first, then the most common, then by name.
+   */
+  tags: PickerFacet[]
+  /**
+   * What "Add N without a score" adds: the unscored titles not yet picked that the status, year, genre and tag filters
+   * show. The search box is ignored (#61 story 26), so a forgotten search never makes it add fewer than it says.
+   */
+  addUnscored: number[]
+  /** "Pick all N shown": how many titles are shown (search included) and which of them aren't picked yet. */
+  pickAll: { shown: number; ids: number[] }
+  /**
+   * Null while titles show. With none shown, each single change that would bring titles back and how many it would
+   * show, in the order clear the search, every list status, all years, clear genres and tags; a change that would
+   * show none is left out. Resetting the search and every filter (`wayOut(filters, 'reset')`) is always there too.
+   */
+  nothingMatches: { change: PickerChange; count: number }[] | null
 }
+
+/** A way out of "nothing matches". */
+export type PickerChange = 'search' | 'statuses' | 'years' | 'genres-tags'
+
+/** The filters after taking a way out of "nothing matches", or after resetting them all (the sort is kept). */
+export function wayOut(filters: PickerFilters, change: PickerChange | 'reset'): PickerFilters {
+  switch (change) {
+    case 'search':
+      return { ...filters, search: '' }
+    case 'statuses':
+      return { ...filters, statuses: OFFERED_STATUSES }
+    case 'years':
+      return { ...filters, year: null }
+    case 'genres-tags':
+      return { ...filters, genres: [], tags: [] }
+    case 'reset':
+      return { ...DEFAULT_PICKER_FILTERS, sort: filters.sort }
+  }
+}
+
+const CHANGES: readonly PickerChange[] = ['search', 'statuses', 'years', 'genres-tags']
 
 /**
  * How the Picker was opened, which decides its starting picks. From Start nothing is ticked (#64); Catch-up's exit
  * offer (#65) adds its own way in here. The remembered unsettled titles (#66) come on top of any way in.
  */
-export type PickerEntry = { from: 'start' }
+export type PickerEntry = { from: 'start' } | { from: 'catch-up' }
 
 /**
  * The picks the Picker opens with: those of the way it was opened, plus the remembered unsettled titles when the user
@@ -71,10 +158,13 @@ export function startingPicks(list: readonly ListEntry[], entry: PickerEntry, re
 }
 
 /** The picks the way in ticks by itself. */
-function picksOfEntry(_list: readonly ListEntry[], entry: PickerEntry): Set<number> {
+function picksOfEntry(list: readonly ListEntry[], entry: PickerEntry): Set<number> {
   switch (entry.from) {
     case 'start':
       return new Set()
+    case 'catch-up':
+      // Every unscored Completed and Repeating title, the ones just added among them, as the offer's label counts (#65).
+      return new Set(unscoredTitles(list).map((e) => e.mediaId))
   }
 }
 
@@ -85,9 +175,56 @@ export function togglePick(picked: ReadonlySet<number>, id: number): Set<number>
   return next
 }
 
+/** The picks with these titles added ("Add N without a score", "Pick all N shown"). */
+export function addPicks(picked: ReadonlySet<number>, ids: readonly number[]): Set<number> {
+  return new Set([...picked, ...ids])
+}
+
 /** The titles the Picker can offer: every title on the list except Planning ones (ADR 0011). */
 function pickable(list: readonly ListEntry[]): ListEntry[] {
   return list.filter((e) => e.status !== 'PLANNING')
+}
+
+/** Lower case without accents, so "pokemon" finds "Pokémon". */
+function folded(text: string): string {
+  return text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().trim()
+}
+
+/** The tags that count for a title: never a spoiler one, and only from `MIN_TAG_RANK` up. */
+function tagsOf(entry: ListEntry): string[] {
+  return (entry.tags ?? []).filter((t) => !t.spoiler && t.rank >= MIN_TAG_RANK).map((t) => t.name)
+}
+
+/** How many times each name occurs. */
+function countsOf(names: readonly string[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  for (const name of names) counts.set(name, (counts.get(name) ?? 0) + 1)
+  return counts
+}
+
+/** Each title's folded name per title language, kept while the list is, since the search runs on every keystroke. */
+const foldedNames = new WeakMap<ListEntry, Map<TitleLanguage, string>>()
+function foldedName(entry: ListEntry, language: TitleLanguage): string {
+  let names = foldedNames.get(entry)
+  if (!names) foldedNames.set(entry, (names = new Map()))
+  let name = names.get(language)
+  if (name === undefined) names.set(language, (name = folded(displayTitle(entry.title, language))))
+  return name
+}
+
+/** Whether a title passes the filters and the search. */
+function matches(entry: ListEntry, filters: PickerFilters, language: TitleLanguage, picked: ReadonlySet<number>): boolean {
+  if (filters.pickedOnly && !picked.has(entry.mediaId)) return false
+  if (!filters.statuses.includes(entry.status)) return false
+  if (filters.year !== null && entry.year !== filters.year) return false
+  const genres = entry.genres ?? []
+  if (!filters.genres.every((g) => genres.includes(g))) return false
+  if (filters.tags.length > 0) {
+    const tags = tagsOf(entry)
+    if (!filters.tags.every((t) => tags.includes(t))) return false
+  }
+  const search = folded(filters.search)
+  return search === '' || foldedName(entry, language).includes(search)
 }
 
 /** The default order: titles without a score first, then Rough Sort's order (most recently completed first, then by name). */
@@ -97,9 +234,21 @@ function defaultOrder(entries: readonly ListEntry[], language: TitleLanguage): L
   return [...ordered.filter((e) => e.oldScore100 === 0), ...ordered.filter((e) => e.oldScore100 > 0)]
 }
 
+/** The rows' titles in order for a sort other than the default; ties go by title. */
+function sorted(entries: readonly ListEntry[], sort: PickerSort, language: TitleLanguage): ListEntry[] {
+  if (sort === 'default') return defaultOrder(entries, language)
+  const named = entries.map((entry) => ({ entry, name: displayTitle(entry.title, language) }))
+  // Missing scores and years sort last: 0 (no score) and -Infinity (no year) under a highest-first order.
+  const key = (e: ListEntry) => (sort === 'score' ? e.oldScore100 : sort === 'year' ? (e.year ?? -Infinity) : 0)
+  return named
+    .sort((a, b) => key(b.entry) - key(a.entry) || a.name.localeCompare(b.name))
+    .map(({ entry }) => entry)
+}
+
 export function pickerView(input: PickerInput): PickerView {
-  const { list, scoreFormat, titleLanguage, picked } = input
-  const rows = defaultOrder(pickable(list), titleLanguage).map((entry): PickerRow => {
+  const { list, scoreFormat, titleLanguage, picked, filters = DEFAULT_PICKER_FILTERS } = input
+  const shown = pickable(list).filter((e) => matches(e, filters, titleLanguage, picked))
+  const rows = sorted(shown, filters.sort, titleLanguage).map((entry): PickerRow => {
     const level = levelOfRaw(scoreFormat, entry.oldScore100)
     return {
       entry,
@@ -121,7 +270,34 @@ export function pickerView(input: PickerInput): PickerView {
     scores: left.scores,
     duels: estimateKeepMyScaleDuels(pickedEntries.length, left.scores),
   }
-  return { rows, summary, confirm: confirmOf(pickedEntries, anchors, summary, titleLanguage) }
+  const shownWith = (next: PickerFilters) => pickable(list).filter((e) => matches(e, next, titleLanguage, picked)).length
+  // Choosing one more genre or tag only narrows, so its count is how many titles shown now have it: one pass, not one
+  // per genre or tag, which keeps a list with hundreds of tags fast.
+  const genreCounts = countsOf(shown.flatMap((e) => e.genres ?? []))
+  const tagCounts = countsOf(shown.flatMap(tagsOf))
+  const facet = (name: string, chosen: readonly string[], counts: ReadonlyMap<string, number>): PickerFacet => {
+    const isChosen = chosen.includes(name)
+    return { name, chosen: isChosen, count: isChosen ? shown.length : (counts.get(name) ?? 0) }
+  }
+  const genreNames = new Set([...pickable(list).flatMap((e) => e.genres ?? []), ...filters.genres])
+  const genres = [...genreNames].sort((a, b) => a.localeCompare(b)).map((name) => facet(name, filters.genres, genreCounts))
+  const tagSearch = folded(filters.tagSearch)
+  const tagNames = new Set([...pickable(list).flatMap(tagsOf), ...filters.tags])
+  const tags = [...tagNames]
+    .filter((name) => filters.tags.includes(name) || folded(name).includes(tagSearch))
+    .map((name) => facet(name, filters.tags, tagCounts))
+    .sort((a, b) => Number(b.chosen) - Number(a.chosen) || b.count - a.count || a.name.localeCompare(b.name))
+  const unsearched = { ...filters, search: '', pickedOnly: false }
+  const addUnscored = sorted(pickable(list), 'default', titleLanguage)
+    .filter((e) => e.oldScore100 === 0 && !picked.has(e.mediaId) && matches(e, unsearched, titleLanguage, picked))
+    .map((e) => e.mediaId)
+  const pickAll = { shown: rows.length, ids: rows.filter((r) => !r.picked).map((r) => r.entry.mediaId) }
+  const nothingMatches =
+    rows.length > 0
+      ? null
+      : CHANGES.map((change) => ({ change, count: shownWith(wayOut(filters, change)) })).filter((w) => w.count > 0)
+  const years = [...new Set(pickable(list).flatMap((e) => (e.year === null ? [] : [e.year])))].sort((a, b) => b - a)
+  return { rows, summary, confirm: confirmOf(pickedEntries, anchors, summary, titleLanguage), years, genres, tags, addUnscored, pickAll, nothingMatches }
 }
 
 function confirmOf(picked: readonly ListEntry[], anchors: AnchorScore[], summary: PickerSummary, language: TitleLanguage): PickerConfirm {

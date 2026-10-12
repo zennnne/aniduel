@@ -689,9 +689,11 @@ export function App({ fake }: { fake?: AniListSession }) {
    * Opens the Picker (#64); it starts from the picks for how it was opened. When the last Keep My Scale Ranking left
    * titles unsettled that the Picker can show, the user is first asked whether to pick them again (#66).
    */
-  function openPicker(entry: PickerEntry) {
+  function openPicker(entry: PickerEntry, type: MediaType = mediaType) {
     setPickerEntry(entry)
-    if (unsettledStore && unsettledStore.titles(list ?? []).length > 0) {
+    // Catch-up's exit offer switches to anime in the same click, so the store and list are read for `type`.
+    const remembered = viewerId === null ? [] : createUnsettledStore(localStorage, { userId: viewerId, mediaType: type }).titles(lists[type] ?? [])
+    if (remembered.length > 0) {
       setDialog('pick-again')
       return
     }
@@ -791,13 +793,20 @@ export function App({ fake }: { fake?: AniListSession }) {
   }
 
   /**
-   * Leaving Catch-up through its exit offer: on to Start on anime. On a Keep My Scale offer, Keep My Scale is picked
-   * so Start's main button opens the Picker, whose Confirm asks to replace a Ranking on another Sort Goal (#64);
-   * otherwise nothing is picked so the Sort Goal follows the Pool size (#38). A saved Ranking is shown as it is.
+   * Leaving Catch-up through its exit offer, on anime. A Keep My Scale offer opens the Picker with every unscored
+   * Completed and Repeating title ticked (#65), asking first about remembered unsettled titles (#66); Keep My Scale
+   * is picked so Back leads to Start with it selected, and Confirm asks to replace a Ranking on another Sort Goal.
+   * Otherwise on to Start: nothing is picked so the Sort Goal follows the Pool size (#38); a saved Ranking shows as it is.
    */
   function takeExitOffer(offer: ExitOffer) {
     switchMediaType('ANIME')
-    if (offer.target === 'keep-my-scale' || offer.target === 'replace-with-keep-my-scale') setPickedGoal(KEEP_MY_SCALE)
+    if (offer.target === 'picker') {
+      setPickedGoal(KEEP_MY_SCALE)
+      // Start goes into the history under the Picker, so Back from the Picker lands there.
+      goTo('start')
+      openPicker({ from: 'catch-up' }, 'ANIME')
+      return
+    }
     if (offer.target === 'default-sort-goal') setPickedGoal(null)
     goTo('start')
   }

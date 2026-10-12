@@ -30,6 +30,16 @@ export type FakeOptions = {
   statuses?: Record<number, string>
   /** Romaji names by media id; a title without one is `T<id>`. */
   titles?: Record<number, string>
+  /** More about each title, by media id, for screens that show or filter on it (#65); a title without it has none. */
+  media?: Record<number, FakeMedia>
+}
+
+/** A title's release year, completion date, genres and tags; a tag's `spoiler` is AniList's isMediaSpoiler. */
+export type FakeMedia = {
+  year?: number | null
+  completedAt?: { year: number | null; month: number | null; day: number | null } | null
+  genres?: string[]
+  tags?: Array<{ name: string; rank: number; spoiler?: boolean }>
 }
 
 /** What the fake answers to `Viewer`. Change `scoreFormat` to play the user changing it on AniList. */
@@ -65,7 +75,7 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
       const { statusIn = [] } = body.variables
       listReads.push({ type: body.variables.type!, statuses: statusIn, at: clock.now() })
       const entries = [...store]
-        .map(([mediaId, score]) => listEntry(mediaId, score, statuses.get(mediaId), options.titles?.[mediaId]))
+        .map(([mediaId, score]) => listEntry(mediaId, score, statuses.get(mediaId), options.titles?.[mediaId], options.media?.[mediaId]))
         .filter((e) => statusIn.includes(e.status))
       return json(200, { data: { MediaListCollection: { hasNextChunk: false, lists: [{ entries }] } } })
     }
@@ -101,21 +111,23 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
   return { fetch: fetch as typeof globalThis.fetch, store, statuses, writes, listReads, script, viewer }
 }
 
-function listEntry(mediaId: number, score: number, status = 'COMPLETED', romaji = `T${mediaId}`) {
+function listEntry(mediaId: number, score: number, status = 'COMPLETED', romaji = `T${mediaId}`, more: FakeMedia = {}) {
   return {
     mediaId,
     status,
     score,
-    completedAt: null,
+    completedAt: more.completedAt ?? null,
     media: {
       title: { romaji, english: null, native: null },
       coverImage: null,
       bannerImage: null,
-      startDate: null,
+      startDate: more.year ? { year: more.year } : null,
       format: 'TV',
       episodes: 12,
       chapters: null,
       siteUrl: '',
+      genres: more.genres ?? [],
+      tags: (more.tags ?? []).map((t) => ({ name: t.name, rank: t.rank, isMediaSpoiler: t.spoiler ?? false, isGeneralSpoiler: false })),
     },
   }
 }
