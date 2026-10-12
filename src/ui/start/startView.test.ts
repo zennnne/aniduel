@@ -80,21 +80,22 @@ describe('the Pool of a new Ranking', () => {
 })
 
 describe('Keep My Scale picked on Start', () => {
-  it('makes the Pool the titles without a score, never an Anchor', () => {
-    const { anchors, fresh, list } = scoredList(5)
+  it('only selects it: no status chips, no Pool estimate, and the main action opens the Picker', () => {
+    const { anchors, list } = scoredList(5)
     const start = view({ list, picked: KEEP_MY_SCALE })
     expect(start.onKeepMyScale).toBe(true)
     expect(start.newGoal).toBe(KEEP_MY_SCALE)
-    expect(ids(start.pool!.titles)).toEqual(ids(fresh))
+    expect(start.form.goal).toBe(KEEP_MY_SCALE)
+    expect(start.form).toMatchObject({ statusChips: false, poolDuels: null, extraDuels: null, mainAction: 'choose-titles', replacesSaved: false })
+    expect(start).toMatchObject({ startOrder: null, scoresPlan: null })
     expect(start.anchors).toEqual(anchorsOf(anchors, 'POINT_10'))
     expect(start.form.keepMyScale).toEqual({ count: 5, enabled: true, reason: null, anchors: 24 })
   })
 
-  it('counts only the chosen statuses', () => {
+  it('counts the unscored Completed and Repeating titles, whatever statuses are chosen', () => {
     const { list } = scoredList(5)
-    const start = view({ list: [...list, entry(0, 'DROPPED')], picked: KEEP_MY_SCALE })
-    expect(start.form.keepMyScale.count).toBe(5)
-    expect(start.pool!.titles).toHaveLength(5)
+    const more = [...list, entry(0, 'REPEATING'), entry(0, 'DROPPED'), entry(0, 'CURRENT')]
+    expect(view({ list: more, statuses: ['DROPPED'], picked: KEEP_MY_SCALE }).form.keepMyScale.count).toBe(6)
   })
 
   it("stops counting when there aren't enough Anchors: the Sort Goal follows the Pool size again", () => {
@@ -102,6 +103,7 @@ describe('Keep My Scale picked on Start', () => {
     const start = view({ list, picked: KEEP_MY_SCALE })
     expect(start.onKeepMyScale).toBe(false)
     expect(start.newGoal).toBe('full-ranking')
+    expect(start.form).toMatchObject({ statusChips: true, mainAction: 'start-rough-sort' })
     expect(start.pool!.titles).toHaveLength(8)
     expect(start.form.keepMyScale).toMatchObject({ count: 3, enabled: false, reason: 'Needs at least 20 scored titles on 3 different scores. You have 5 on 2.' })
   })
@@ -109,6 +111,17 @@ describe('Keep My Scale picked on Start', () => {
   it('shows the Keep My Scale count whichever Sort Goal is picked', () => {
     const { list } = scoredList(5)
     expect(view({ list, picked: 'scores' }).form.keepMyScale).toMatchObject({ count: 5, enabled: true })
+    expect(view({ list, picked: 'scores' }).form).toMatchObject({ statusChips: true, mainAction: 'start-rough-sort' })
+  })
+
+  it('over a saved Scores or Full Ranking Ranking, still opens the Picker; that Ranking keeps its Pool until replaced', () => {
+    const { list } = scoredList(5)
+    const saved = replayed(startLog({ ...header, ids: ids(list.slice(0, 10)), scoreFormat: 'POINT_10' }))
+    const start = view({ list, saved, picked: KEEP_MY_SCALE })
+    expect(start.savedRanking).toBe('other')
+    expect(start.form).toMatchObject({ goal: KEEP_MY_SCALE, statusChips: false, mainAction: 'choose-titles', replacesSaved: true })
+    expect(start.oldScores!.size).toBe(29)
+    expect(view({ list, saved, picked: null }).form).toMatchObject({ goal: 'scores', mainAction: 'continue' })
   })
 })
 
@@ -124,21 +137,25 @@ describe('a saved Ranking', () => {
     expect(start.form.scoresPlan).toBeNull()
   })
 
-  it('on Keep My Scale keeps its picked titles once they got a score, and never takes one of its Anchors', () => {
-    const { anchors, fresh, list } = scoredList(4)
-    const log = startKeepMyScaleLog({ ...header, format: 'POINT_10', anchors: anchorsOf(anchors, 'POINT_10'), ids: ids(fresh) })
-    // Since it started: one picked title was imported with a score, one Anchor lost its score, one title was added unscored.
+  it('on Keep My Scale has the picked titles still on the list as its Pool, whatever their status or score now, and continues', () => {
+    const { anchors, fresh, list } = scoredList(2)
+    const pickedScored = anchors.slice(0, 2)
+    const rest = anchors.slice(2)
+    const log = startKeepMyScaleLog({ ...header, format: 'POINT_10', anchors: anchorsOf(rest, 'POINT_10'), ids: ids([...fresh, ...pickedScored]) })
+    // Since it started: one picked title was dropped, one picked title left the list, an unscored title was added.
     const added = entry(0)
-    const now = [...list.map((e) => (e === fresh[0] ? { ...e, oldScore100: 70 } : e === anchors[0] ? { ...e, oldScore100: 0 } : e)), added]
-    const start = view({ list: now, saved: replayed(log) })
+    const now = [...list.filter((e) => e !== fresh[1]).map((e) => (e === pickedScored[0] ? { ...e, status: 'DROPPED' as const } : e)), added]
+    const start = view({ list: now, saved: replayed(log), picked: 'scores' })
     expect(start.savedRanking).toBe('keep-my-scale')
     expect(start.onKeepMyScale).toBe(true)
-    expect(ids(start.pool!.titles)).toEqual([...ids(fresh), added.mediaId])
-    expect(start.form.keepMyScale.count).toBe(5)
-    expect(start.form.keepMyScale.anchors).toBe(24)
-    expect(start.form.goal).toBe(KEEP_MY_SCALE)
+    expect(ids(start.pool!.titles).sort()).toEqual(ids([fresh[0], ...pickedScored]).sort())
+    // Preview compares the picked titles with their old scores (ADR 0011).
+    expect(start.oldScores).toEqual(new Map([[fresh[0].mediaId, 0], [pickedScored[0].mediaId, pickedScored[0].oldScore100], [pickedScored[1].mediaId, pickedScored[1].oldScore100]]))
+    expect(start.form.keepMyScale.count).toBe(2)
+    expect(start.form.keepMyScale.anchors).toBe(22)
+    expect(start.form).toMatchObject({ goal: KEEP_MY_SCALE, statusChips: false, mainAction: 'continue', bandDuels: null, extraDuels: null })
     expect(start.form.saved).toEqual({ done: 0, total: 4 })
-    expect(start.form).toMatchObject({ bandDuels: null, extraDuels: null })
+    expect(start.form.poolDuels).toBeGreaterThan(0)
   })
 
   it("that can't be used leaves nothing to start on", () => {

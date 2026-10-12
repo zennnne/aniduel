@@ -70,38 +70,34 @@ describe('syncEvents: comparing the fetched list with the Pool in the Duel log',
   })
 })
 
-describe('syncEvents on a Keep My Scale Ranking', () => {
-  const scored = (mediaId: number, oldScore100: number): ListEntry => ({ ...entry(mediaId), oldScore100 })
+describe('syncEvents on a Keep My Scale Ranking: its Pool is fixed once it starts (ADR 0011)', () => {
+  const scored = (mediaId: number, oldScore100: number, status: ListStatus = 'COMPLETED'): ListEntry => ({ ...entry(mediaId, status), oldScore100 })
   const anchors = [
     { id: 101, level: 9 },
     { id: 102, level: 8 },
     { id: 103, level: 7 },
   ]
+  // 1 is unscored, 2 was picked with a score.
   const log = startKeepMyScaleLog({ ...header, format: 'POINT_10', anchors, ids: [1, 2] })
 
-  it('adds titles without a score only, and never an Anchor', () => {
-    const list = [scored(101, 90), entry(102), scored(103, 70), entry(1), entry(2), entry(3), scored(4, 60)]
-    const events = syncEvents(log, list, DEFAULT, 'ROMAJI')
-    expect(events).toEqual([{ type: 'titles-added', ids: [3] }])
-    expect(replay(events.reduce(appendEvent, log)).keepMyScale!.titles.map((t) => t.id)).toEqual([1, 2, 3])
+  it('adds no title, not even an unscored one in a chosen status', () => {
+    const list = [scored(101, 90), scored(102, 80), scored(103, 70), entry(1), scored(2, 60), entry(3), entry(4, 'REPEATING')]
+    expect(syncEvents(log, list, DEFAULT, 'ROMAJI')).toEqual([])
   })
 
-  it('never changes the Anchor snapshot: changed, removed or unscored Anchors and newly scored titles leave it as it was', () => {
-    // 101 rescored, 102 lost its score, 103 left the list, 4 is newly scored, 5 is newly unscored on another status.
-    const list = [scored(101, 40), entry(102), entry(1), entry(2), scored(4, 100), entry(5, 'REPEATING'), entry(6, 'PLANNING')]
-    const events = syncEvents(log, list, DEFAULT, 'ROMAJI')
-    expect(events).toEqual([{ type: 'titles-added', ids: [5] }])
+  it('removes a picked title that is no longer on the list, and the result replays', () => {
+    const events = syncEvents(log, [scored(101, 90), scored(2, 60)], DEFAULT, 'ROMAJI')
+    expect(events).toEqual([{ type: 'titles-removed', ids: [1] }])
     const synced = replay(events.reduce(appendEvent, log))
+    expect(synced.keepMyScale!.titles.map((t) => t.id)).toEqual([2])
     expect(synced.keepMyScale!.levels).toEqual(replay(log).keepMyScale!.levels)
-    expect(synced.keepMyScale!.titles.map((t) => t.id)).toEqual([1, 2, 5])
-    // Syncing again changes nothing, and taking titles out never names an Anchor.
-    expect(syncEvents(events.reduce(appendEvent, log), list, DEFAULT, 'ROMAJI')).toEqual([])
-    const removed = syncEvents(log, [scored(101, 90)], DEFAULT, 'ROMAJI')
-    expect(removed).toEqual([{ type: 'titles-removed', ids: [1, 2] }])
-    expect(replay(removed.reduce(appendEvent, log)).keepMyScale!.levels).toEqual(replay(log).keepMyScale!.levels)
   })
 
-  it('keeps a picked title that got a score since (e.g. imported)', () => {
-    expect(syncEvents(log, [scored(1, 80), entry(2)], DEFAULT, 'ROMAJI')).toEqual([])
+  it('keeps a picked title whose list status or score changed, whatever the chosen statuses', () => {
+    expect(syncEvents(log, [entry(1, 'DROPPED'), scored(2, 80, 'PAUSED')], DEFAULT, 'ROMAJI')).toEqual([])
+  })
+
+  it('never changes the Anchor snapshot: Anchors that changed or left the list are not Pool titles', () => {
+    expect(syncEvents(log, [scored(101, 40), entry(102), entry(1), scored(2, 60)], DEFAULT, 'ROMAJI')).toEqual([])
   })
 })

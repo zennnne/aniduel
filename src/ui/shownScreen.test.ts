@@ -28,6 +28,8 @@ function at(log: DuelLog | null, change: Partial<ScreenInput> = {}): ScreenInput
     rankingUi: NO_RANKING_UI,
     preview: null,
     importing: null,
+    keepMyScaleEligible: true,
+    savedBroken: false,
     ...change,
   }
 }
@@ -102,8 +104,8 @@ describe("the Ranking screen follows the engine's next prompt", () => {
 })
 
 describe('Start: no usable Ranking', () => {
-  it('shows when no Ranking is saved, whatever screen name is set', () => {
-    for (const screen of SCREENS) if (screen !== 'catchup') expect(kindAt(null, { screen })).toBe('start')
+  it('shows when no Ranking is saved, whatever screen name is set (Catch-up and the Picker need none)', () => {
+    for (const screen of SCREENS) if (screen !== 'catchup' && screen !== 'picker') expect(kindAt(null, { screen })).toBe('start')
   })
 
   it('shows when the screen name is Start, with a Ranking saved', () => {
@@ -241,6 +243,27 @@ describe('Catch-up', () => {
   })
 })
 
+describe('the Picker', () => {
+  it('shows for a logged-in user whose list is loaded and allows Keep My Scale, with no Ranking or one on another Sort Goal', () => {
+    expect(shownScreen(at(null, { screen: 'picker' }))).toEqual({ kind: 'picker', viewer })
+    expect(kindAt(sorted(), { screen: 'picker' })).toBe('picker')
+  })
+
+  it('falls back to Start while the list is not loaded, even with a notice', () => {
+    expect(kindAt(null, { screen: 'picker', listLoaded: false })).toBe('start')
+    expect(kindAt(sorted(), { screen: 'picker', listLoaded: false, notice: true })).toBe('start')
+  })
+
+  it('falls back to Start when the user is not eligible for Keep My Scale', () => {
+    expect(kindAt(null, { screen: 'picker', keepMyScaleEligible: false })).toBe('start')
+  })
+
+  it("falls back to Start over a saved Ranking that can't be replaced: a Keep My Scale one, or one that can't be used", () => {
+    expect(kindAt(keepMyScale(), { screen: 'picker' })).toBe('start')
+    expect(kindAt(null, { screen: 'picker', savedBroken: true })).toBe('start')
+  })
+})
+
 describe('the sidebar', () => {
   it('shows beside every screen of the open Ranking, Preview and Import too', () => {
     const preview = shownScreen(at(finished(), { screen: 'preview', preview: checked }))
@@ -248,8 +271,9 @@ describe('the sidebar', () => {
     for (const shown of [shownScreen(at(sorted())), preview, importing]) expect(rankingShown(shown)).toMatchObject({ viewer })
   })
 
-  it('does not show on Start, in Catch-up, or once the Ranking ended with its Import', () => {
+  it('does not show on Start, in Catch-up, in the Picker, or once the Ranking ended with its Import', () => {
     expect(rankingShown(shownScreen(at(sorted(), { screen: 'start' })))).toBeNull()
+    expect(rankingShown(shownScreen(at(sorted(), { screen: 'picker' })))).toBeNull()
     expect(rankingShown(shownScreen(at(sorted(), { screen: 'catchup' })))).toBeNull()
     expect(rankingShown(shownScreen(at(null, { screen: 'import', importing: importOn('done') })))).toBeNull()
   })

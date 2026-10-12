@@ -164,6 +164,15 @@ describe('Preview rows on Keep My Scale', () => {
     expect(rows.filter((r) => isTicked(r, everything)).map((r) => r.id)).toEqual([2, 3, 1])
   })
 
+  it('shows old and new for a picked title that had a score, and plans no write when its new score equals the old one (#64)', () => {
+    // Title 1 was picked with its score 7, title 3 with 5: both come out 7.
+    const picked = new Map([...oldScores, [1, 70]])
+    const rescored = previewRows(state, score(state, 'POINT_10', defaultSettings('POINT_10', 'whole')), picked, 'POINT_10', (id) => names.get(id)!)
+    expect(rescored.find((r) => r.id === 1)).toMatchObject({ oldLevel: 7, level: 7, changed: false })
+    expect(rescored.find((r) => r.id === 3)).toMatchObject({ oldLevel: 5, level: 7, changed: true })
+    expect(importPlan(rescored, new Map()).map((w) => w.mediaId)).toEqual([2, 3])
+  })
+
   it('opens Preview while Duels are left, since every settled title can already be imported', () => {
     expect(state.prompt.kind).toBe('anchor-duel')
     expect(previewOpen(state.prompt)).toBe(true)

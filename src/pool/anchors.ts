@@ -1,9 +1,9 @@
-// Keep My Scale (ADR 0009), the list side: which titles are Anchors, whether the user has enough of a scale to
-// compare against, and which titles a Keep My Scale Pool is built from. Pure; callable from Start and Catch-up.
+// Keep My Scale (ADR 0009, ADR 0011), the list side: which titles are Anchors, whether the user has enough of a scale
+// to compare against, and which titles a saved Keep My Scale Ranking holds. Pure; callable from Start and Catch-up.
 import type { ListEntry, ListStatus, ScoreFormat } from '../anilist/types.ts'
 import type { AnchorScore } from '../ranking/engine.ts'
 import { levelOfRaw, type SavedScoring } from '../ranking/scoring.ts'
-import { buildPool, type Pool } from './pool.ts'
+import { buildPool, DEFAULT_STATUSES, OFFERED_STATUSES, type Pool } from './pool.ts'
 
 /** Keep My Scale is offered only with at least this many Anchors… */
 export const MIN_ANCHORS = 20
@@ -12,11 +12,12 @@ export const MIN_ANCHOR_SCORES = 3
 
 /**
  * Every title in the list with a score, whatever its status, with that score as a level of the Score Format: the
- * snapshot a Keep My Scale Ranking starts from. A raw score too small to show as a level isn't one.
+ * snapshot a Keep My Scale Ranking starts from. A raw score too small to show as a level isn't one. A title picked
+ * for the Ranking is never an Anchor, even with a score (ADR 0011): `picked` leaves those out.
  */
-export function anchorsOf(list: readonly ListEntry[], format: ScoreFormat): AnchorScore[] {
+export function anchorsOf(list: readonly ListEntry[], format: ScoreFormat, picked?: ReadonlySet<number>): AnchorScore[] {
   return list
-    .filter((e) => e.oldScore100 > 0)
+    .filter((e) => e.oldScore100 > 0 && !picked?.has(e.mediaId))
     .map((e) => ({ id: e.mediaId, level: levelOfRaw(format, e.oldScore100) }))
     .filter((a) => a.level > 0)
 }
@@ -44,25 +45,25 @@ export function keepMyScaleEligibility(anchors: readonly AnchorScore[]): KeepMyS
 export type SavedKeepMyScale = { anchors: ReadonlySet<number>; pool: ReadonlySet<number> }
 
 /**
- * The list a Keep My Scale Pool is built from (the status filter comes after): titles without a score, and for a
- * saved Ranking also its picked titles that got a score since (e.g. by an Import), so they stay in it. Never an
- * Anchor of the saved Ranking, even once its score was removed on AniList: the snapshot doesn't change (ADR 0009).
+ * A saved Keep My Scale Ranking's Pool: the titles picked for it that are still on the list, whatever their status or
+ * score now (ADR 0011: the Pool is fixed once the Ranking starts). The single place that says which titles such a
+ * Ranking holds: Start, Preview's old scores and the Import read it here.
  */
-export function keepMyScaleList(list: readonly ListEntry[], saved: SavedKeepMyScale | null): ListEntry[] {
-  return list.filter((e) => !saved?.anchors.has(e.mediaId) && (e.oldScore100 === 0 || Boolean(saved?.pool.has(e.mediaId))))
+export function keepMyScalePool(list: readonly ListEntry[], saved: SavedKeepMyScale, scale?: SavedScoring): Pool {
+  return buildPool(
+    list.filter((e) => saved.pool.has(e.mediaId)),
+    OFFERED_STATUSES,
+    scale,
+  )
 }
 
 /**
- * A Keep My Scale Ranking's Pool under the chosen statuses (`saved`: null for a new Ranking). The single place
- * that says which titles such a Ranking holds: Start, its Keep My Scale count, sync and Catch-up's exit offer all ask here.
+ * The titles without a score in the default statuses (Completed and Repeating): what Score New Titles used to score,
+ * the count Start shows on Keep My Scale and Catch-up's exit offer names (#61).
  */
-export function keepMyScalePool(
-  list: readonly ListEntry[],
-  statuses: readonly ListStatus[],
-  saved: SavedKeepMyScale | null,
-  scale?: SavedScoring,
-): Pool {
-  return buildPool(keepMyScaleList(list, saved), statuses, scale)
+export function unscoredTitles(list: readonly ListEntry[]): ListEntry[] {
+  const statuses = new Set<ListStatus>(DEFAULT_STATUSES)
+  return list.filter((e) => e.oldScore100 === 0 && statuses.has(e.status))
 }
 
 /**

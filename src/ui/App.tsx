@@ -31,6 +31,7 @@ import {
   startLog,
   startKeepMyScaleLog,
   withSub,
+  type AnchorScore,
   type BandIndex,
   type LogEvent,
   type RankingState,
@@ -77,10 +78,15 @@ import { NO_RANKING_UI, leftRanking, splitSkipped, titlesAdded, type RankingUi }
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { SCREENS, rankingShown, shownScreen, splitBandOf, type RankingShown, type Screen, type Shown } from './shownScreen.ts'
+import { PickerScreen } from './picker/PickerScreen.tsx'
+import { startingPicks, type PickerEntry } from './picker/pickerView.ts'
 import { StartScreen } from './start/StartScreen.tsx'
 import { animeStanding, startView, type StartView } from './start/startView.ts'
 import { useTheme } from './theme.ts'
 import { useDuelLog } from './useDuelLog.ts'
+
+/** What the Picker's Confirm starts a Keep My Scale Ranking on (#64). */
+type KeepMyScaleStart = { order: number[]; anchors: AnchorScore[] }
 
 type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-keep-my-scale'
 
@@ -149,6 +155,10 @@ export function App({ fake }: { fake?: AniListSession }) {
   // The Sort Goal the user picked on Start for a new Ranking (#28), or null while they haven't touched it and it
   // follows the Pool size (#38). A saved Ranking's goal lives in its log. Not reset on logout: logging in again loads the page anew.
   const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
+  // How the Picker was last opened, which decides its starting picks (#64); the picks themselves live in the Picker.
+  const [pickerEntry, setPickerEntry] = useState<PickerEntry>({ from: 'start' })
+  // What the Picker's Confirm would start, held while the Replace dialog asks about the saved Ranking.
+  const [pickedStart, setPickedStart] = useState<KeepMyScaleStart | null>(null)
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: aniListFetch, token }) : null), [aniListFetch, token])
   // The write queue's requests and Catch-up's reads take turns in one limiter, so together they keep to AniList's rate limit.
@@ -411,8 +421,8 @@ export function App({ fake }: { fake?: AniListSession }) {
     const added = events.reduce((sum, e) => sum + (e.type === 'titles-added' ? e.ids.length : 0), 0)
     const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
     if (added > 0) setRankingUi(titlesAdded)
-    const joined = current.events.some((e) => e.type === 'anchors-set') ? 'added' : 'added to Rough Sort'
-    const changes = [added > 0 && `${count(added, 'title')} ${joined}`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
+    // A Keep My Scale Pool never grows (ADR 0011), so only Rough Sort ever gets titles added.
+    const changes = [added > 0 && `${count(added, 'title')} added to Rough Sort`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
     return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
   }
 
@@ -535,12 +545,9 @@ export function App({ fake }: { fake?: AniListSession }) {
   function startOrContinue(fromScores = false) {
     if (!viewer) return
     if (!duelLog.latest()) {
-      if (!start?.startOrder) return
+      // Keep My Scale starts from the Picker instead (#64), so a new Ranking here always starts with Rough Sort.
+      if (!start?.startOrder || start.newGoal === KEEP_MY_SCALE) return
       const { startOrder, newGoal, scoresPlan } = start
-      if (newGoal === KEEP_MY_SCALE) {
-        startKeepMyScale(startOrder)
-        return
-      }
       // The new log carries its own Sort Goal and default scoring settings (ADR 0007).
       const started = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder, scoreFormat: viewer.scoreFormat })
       // Full Ranking picked on Start: the same switch as from the menu, before anything is sorted.
@@ -671,30 +678,51 @@ export function App({ fake }: { fake?: AniListSession }) {
     showToast(summary ? `${restored} · ${summary}` : restored)
   }
 
-  /** Keep My Scale (ADR 0009): the Anchors are snapshotted into a new log now; Duels start straight away. */
-  function startKeepMyScale(ids: number[]) {
-    const { anchors, eligibility } = start ?? {}
-    if (!viewer || !anchors || !eligibility?.eligible) return
-    const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids })
-    if (saved(() => duelLog.save(log))) goTo('ranking')
+  /** Opens the Picker (#64); it starts from the picks for how it was opened. */
+  function openPicker(entry: PickerEntry) {
+    setPickerEntry(entry)
+    goTo('picker')
+  }
+
+  /**
+   * The Picker's Confirm (#64): starts the Keep My Scale Ranking on the picks, or first asks to replace a saved
+   * Scores / Full Ranking Ranking (#46).
+   */
+  function confirmPicks(picks: KeepMyScaleStart) {
+    if (log) {
+      setPickedStart(picks)
+      setDialog('replace-with-keep-my-scale')
+      return
+    }
+    startKeepMyScale(picks)
+  }
+
+  /**
+   * Keep My Scale (ADR 0009, ADR 0011): the Picker's Anchor snapshot (every scored title but the picks) goes into a
+   * new log now; Duels start straight away. The Picker leaves the history, so Back from the Duels goes to Start.
+   */
+  function startKeepMyScale({ order, anchors }: KeepMyScaleStart) {
+    if (!viewer) return
+    const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids: order })
+    if (!saved(() => duelLog.save(log))) return
+    window.history.replaceState({ screen: 'start' }, '')
+    goTo('ranking')
   }
 
   /**
    * Runs only after the user confirmed in the Replace dialog (#46): the saved Scores / Full Ranking Ranking is thrown
-   * away and a Keep My Scale one starts on the unscored titles of the chosen statuses.
+   * away and a Keep My Scale one starts on the titles picked in the Picker.
    */
   function replaceWithKeepMyScale() {
-    if (!rankingKey || !startInput || !start?.eligibility?.eligible) return
-    // The Rough Sort order Start would give a new Keep My Scale Ranking.
-    const ids = startView({ ...startInput, saved: null, savedBroken: false, picked: KEEP_MY_SCALE }).startOrder
-    if (!ids) return
+    if (!rankingKey || !pickedStart) return
     deleteDuelLog(localStorage, rankingKey)
     imports.discard(rankingKey)
     setDialog(null)
     setNotice(null)
     openRanking(rankingKey, false)
     setPickedGoal(KEEP_MY_SCALE)
-    startKeepMyScale(ids)
+    setPickedStart(null)
+    startKeepMyScale(pickedStart)
     showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was replaced by Keep My Scale.`)
   }
 
@@ -737,16 +765,15 @@ export function App({ fake }: { fake?: AniListSession }) {
   }
 
   /**
-   * Leaving Catch-up through its exit offer: on to Start on anime. Without a saved Ranking, Keep My Scale is picked,
-   * or nothing is so the Sort Goal follows the Pool size (#38). A saved Ranking is shown as it is, with the Replace
-   * dialog (#46) over it when the offer was Keep My Scale and the Ranking is on another Sort Goal.
+   * Leaving Catch-up through its exit offer: on to Start on anime. On a Keep My Scale offer, Keep My Scale is picked
+   * so Start's main button opens the Picker, whose Confirm asks to replace a Ranking on another Sort Goal (#64);
+   * otherwise nothing is picked so the Sort Goal follows the Pool size (#38). A saved Ranking is shown as it is.
    */
   function takeExitOffer(offer: ExitOffer) {
     switchMediaType('ANIME')
-    if (offer.target === 'keep-my-scale') setPickedGoal(KEEP_MY_SCALE)
+    if (offer.target === 'keep-my-scale' || offer.target === 'replace-with-keep-my-scale') setPickedGoal(KEEP_MY_SCALE)
     if (offer.target === 'default-sort-goal') setPickedGoal(null)
     goTo('start')
-    if (offer.target === 'replace-with-keep-my-scale') setDialog('replace-with-keep-my-scale')
   }
 
   const hasProgress = Boolean(log) || savedBroken
@@ -787,10 +814,14 @@ export function App({ fake }: { fake?: AniListSession }) {
         ...start.form,
         viewer,
         mediaType,
+        // Choosing Keep My Scale only selects it, even over a saved Ranking on another Sort Goal: the Picker's Confirm
+        // asks to replace that one (#64). Another goal over a saved Ranking switches it, as from the menu.
         onGoal: (goal: SortGoal) => {
-          if (!ranking) setPickedGoal(goal)
-          else if (goal !== KEEP_MY_SCALE) requestSortGoal(goal)
-          else if (!isKeepMyScale(ranking)) setDialog('replace-with-keep-my-scale')
+          if (!ranking || goal === KEEP_MY_SCALE) setPickedGoal(goal)
+          else {
+            setPickedGoal(null)
+            if (goal !== goalOf(ranking)) requestSortGoal(goal)
+          }
         },
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
@@ -800,6 +831,7 @@ export function App({ fake }: { fake?: AniListSession }) {
         },
         onLogout: () => setDialog('logout'),
         onStartRoughSort: savedBroken ? undefined : startOrContinue,
+        onChooseTitles: savedBroken ? undefined : () => openPicker({ from: 'start' }),
         onRestore: () => setDialog('restore'),
         catchUp: {
           sign: startSign(mediaType, catchUp.queue),
@@ -840,6 +872,8 @@ export function App({ fake }: { fake?: AniListSession }) {
     rankingUi,
     preview: imports.preview,
     importing: imports.importing,
+    keepMyScaleEligible: Boolean(start?.eligibility?.eligible),
+    savedBroken,
   })
   // The open Ranking the screen belongs to: the sidebar shows beside it.
   const inRanking = rankingShown(shown)
@@ -875,6 +909,19 @@ export function App({ fake }: { fake?: AniListSession }) {
             onLogin={loginRedirect}
             theme={theme}
             onToggleTheme={toggleTheme}
+          />
+        )
+      case 'picker':
+        return (
+          <PickerScreen
+            key={mediaType}
+            list={list ?? []} // the Picker shows only once the list is loaded
+            scoreFormat={shown.viewer.scoreFormat}
+            titleLanguage={shown.viewer.titleLanguage}
+            mediaType={mediaType}
+            initialPicks={startingPicks(list ?? [], pickerEntry)}
+            onBack={() => window.history.back()}
+            onConfirm={confirmPicks}
           />
         )
       case 'catch-up':
@@ -1186,7 +1233,10 @@ export function App({ fake }: { fake?: AniListSession }) {
           saved={ranking && log ? { goal: goalOf(ranking), duels: answeredDuels(log) } : null}
           onConfirm={replaceWithKeepMyScale}
           onSaveBackup={log ? saveBackup : undefined}
-          onCancel={() => setDialog(null)}
+          onCancel={() => {
+            setDialog(null)
+            setPickedStart(null)
+          }}
         />
       )}
       {dialog === 'start-over' && viewer && (

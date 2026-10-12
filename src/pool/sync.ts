@@ -1,7 +1,7 @@
 // Sync (issue #13, ADR 0005): brings the Pool in the Duel log up to date with the user's AniList list.
 import type { ListEntry, ListStatus, TitleLanguage } from '../anilist/types.ts'
 import type { DuelLog, LogEvent } from '../ranking/engine.ts'
-import { keepMyScalePool, type SavedKeepMyScale } from './anchors.ts'
+import type { SavedKeepMyScale } from './anchors.ts'
 import { buildPool, roughSortOrder } from './pool.ts'
 
 /** The titles in the log's Pool (Forgotten ones included), in the order they joined. Only sync events count. */
@@ -27,8 +27,8 @@ export function keepMyScaleInLog(log: DuelLog): SavedKeepMyScale | null {
 /**
  * The sync events that make the log's Pool match the fetched list under the chosen statuses: removals first
  * (in log order), then additions in Rough Sort order. Empty when nothing changed, e.g. when a title only moved
- * between two chosen statuses. Used on resume and after the status filter changes. On a Keep My Scale log only
- * titles without a score join, never an Anchor (ADR 0009).
+ * between two chosen statuses. Used on resume and after the status filter changes. A Keep My Scale Pool is fixed once
+ * its Ranking starts (ADR 0011): nothing joins, and only titles no longer on the list leave, whatever their status.
  */
 export function syncEvents(
   log: DuelLog,
@@ -36,10 +36,14 @@ export function syncEvents(
   statuses: readonly ListStatus[],
   language: TitleLanguage,
 ): LogEvent[] {
-  const saved = keepMyScaleInLog(log)
-  const wanted = (saved ? keepMyScalePool(list, statuses, saved) : buildPool(list, statuses)).titles
-  const wantedIds = new Set(wanted.map((e) => e.mediaId))
   const current = poolInLog(log)
+  if (keepMyScaleInLog(log)) {
+    const onList = new Set(list.map((e) => e.mediaId))
+    const removed = current.filter((id) => !onList.has(id))
+    return removed.length > 0 ? [{ type: 'titles-removed', ids: removed }] : []
+  }
+  const wanted = buildPool(list, statuses).titles
+  const wantedIds = new Set(wanted.map((e) => e.mediaId))
   const inLog = new Set(current)
   const removed = current.filter((id) => !wantedIds.has(id))
   const added = roughSortOrder(

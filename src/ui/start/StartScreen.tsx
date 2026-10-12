@@ -28,6 +28,8 @@ export type PoolForm = {
    * `fromScores`: start a new Ranking with Rough Sort from Scores (ADR 0008).
    */
   onStartRoughSort?: (fromScores?: boolean) => void
+  /** Opens the Picker for a new Keep My Scale Ranking (#64). Undefined while it can't (e.g. saved progress is unreadable). */
+  onChooseTitles?: () => void
   /** Rough Sort from Scores for a new Ranking (null for a saved one); no card unless `offer`. */
   scoresPlan?: ScoresPlan | null
   /** Rough Sort progress of the Ranking saved for this Media Type, if there is one. */
@@ -48,6 +50,12 @@ export type PoolForm = {
   catchUp?: StartCatchUp
   /** Keep My Scale (ADR 0009); without it there is no third Sort Goal. */
   keepMyScale?: StartKeepMyScale
+  /** The list status chips; hidden under Keep My Scale, whose Pool is picked in the Picker (ADR 0011). */
+  statusChips: boolean
+  /** What the main button does: continue the saved Ranking, start a new one with Rough Sort, or open the Picker (#64). */
+  mainAction: 'continue' | 'start-rough-sort' | 'choose-titles'
+  /** Keep My Scale chosen over a saved Ranking on another Sort Goal: the Picker's Confirm would replace it (#64). */
+  replacesSaved: boolean
 }
 
 /** What Start shows of Keep My Scale (ADR 0009). */
@@ -159,8 +167,9 @@ function PoolSetup(form: PoolForm) {
   const label = (s: (typeof OFFERED_STATUSES)[number]) => statusLabel(s, mediaType)
   const n = pool?.titles.length ?? 0
   const duels = form.bandDuels ?? form.poolDuels ?? 0
-  // Keep My Scale (ADR 0009): its Pool is the titles with no score; a saved one can't switch Sort Goal.
+  // Keep My Scale (ADR 0011): its Pool is picked in the Picker; a saved one can't switch Sort Goal.
   const onKeepMyScale = form.goal === KEEP_MY_SCALE
+  const choosing = form.mainAction === 'choose-titles'
 
   return (
     <>
@@ -185,23 +194,27 @@ function PoolSetup(form: PoolForm) {
           </button>
         ))}
       </div>
-      <div className="lab2">List statuses{onKeepMyScale ? ' · titles with no score' : ''}</div>
-      <div className="chips">
-        {OFFERED_STATUSES.map((s) => (
-          <button
-            key={s}
-            className={chosen.has(s) ? 'chip on' : 'chip'}
-            aria-pressed={chosen.has(s)}
-            onClick={() => form.onToggleStatus(s)}
-          >
-            {chosen.has(s) ? '✓ ' : ''}
-            {label(s)} <span className="cnt">{pool ? pool.countByStatus[s] : '…'}</span>
-          </button>
-        ))}
-        <span className="chip off" title={`You haven't ${mediaType === 'MANGA' ? 'read' : 'watched'} these yet`}>
-          Planning · never ranked
-        </span>
-      </div>
+      {form.statusChips && (
+        <>
+          <div className="lab2">List statuses</div>
+          <div className="chips">
+            {OFFERED_STATUSES.map((s) => (
+              <button
+                key={s}
+                className={chosen.has(s) ? 'chip on' : 'chip'}
+                aria-pressed={chosen.has(s)}
+                onClick={() => form.onToggleStatus(s)}
+              >
+                {chosen.has(s) ? '✓ ' : ''}
+                {label(s)} <span className="cnt">{pool ? pool.countByStatus[s] : '…'}</span>
+              </button>
+            ))}
+            <span className="chip off" title={`You haven't ${mediaType === 'MANGA' ? 'read' : 'watched'} these yet`}>
+              Planning · never ranked
+            </span>
+          </div>
+        </>
+      )}
       <div className="lab2">Sort Goal</div>
       <div className="goalrow">
         <SortGoalSeg goal={form.goal} onGoal={form.onGoal} keepMyScale={form.keepMyScale} locked={onKeepMyScale && Boolean(form.saved)} />
@@ -223,31 +236,39 @@ function PoolSetup(form: PoolForm) {
           )
         )}
       </span>
-      <div className="est" aria-live="polite">
-        {pool && onKeepMyScale ? (
-          <>
-            <b>{n}</b> {pluralWord(n, 'title')} to score · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
-            {form.saved ? ' left' : ''}
-            <span className="small">
-              (each against one of your {form.keepMyScale?.anchors ?? 0} Anchors, ~{estimateMinutes(duels)} min at 3 s each)
-            </span>
-          </>
-        ) : pool ? (
-          <>
-            <b>{n}</b> {pluralWord(n, 'title')} · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
-            <span className="small">
-              ({form.bandDuels != null ? 'from your Band sizes, ' : ''}~{estimateMinutes(duels)} min at 3 s each, spread over
-              as many sittings as you like)
-            </span>
-          </>
-        ) : (
-          'Loading your list…'
-        )}
-      </div>
+      {choosing ? (
+        <div className="small">
+          Next you choose the titles to score, with or without a score already. Each is compared with the scored titles
+          you don't pick (your Anchors).
+          {form.replacesSaved && ' Confirming your picks asks before your saved Ranking here is replaced.'}
+        </div>
+      ) : (
+          <div className="est" aria-live="polite">
+            {pool && onKeepMyScale ? (
+              <>
+                <b>{n}</b> {pluralWord(n, 'title')} to score · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
+                {form.saved ? ' left' : ''}
+                <span className="small">
+                  (each against one of your {form.keepMyScale?.anchors ?? 0} Anchors, ~{estimateMinutes(duels)} min at 3 s each)
+                </span>
+              </>
+            ) : pool ? (
+              <>
+                <b>{n}</b> {pluralWord(n, 'title')} · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
+                <span className="small">
+                  ({form.bandDuels != null ? 'from your Band sizes, ' : ''}~{estimateMinutes(duels)} min at 3 s each, spread over
+                  as many sittings as you like)
+                </span>
+              </>
+            ) : (
+              'Loading your list…'
+            )}
+          </div>
+      )}
       {form.saved && onKeepMyScale && (
         <div className="small">
-          You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a score. On Continue,
-          titles that now match these statuses and have no score join it. Your Anchors stay as they were when it started.
+          You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a score. Your Anchors stay as
+          they were when it started.
         </div>
       )}
       {form.saved && !onKeepMyScale && (
@@ -257,13 +278,19 @@ function PoolSetup(form: PoolForm) {
         </div>
       )}
       {plan && !form.saved && !onKeepMyScale && <ScoresOffer plan={plan} on={fromScores} onToggle={() => setFromScores((on) => !on)} />}
-      <button
-        className="go"
-        disabled={!form.onStartRoughSort || (!form.saved && (!pool || n === 0))}
-        onClick={() => form.onStartRoughSort?.(Boolean(plan) && fromScores && !onKeepMyScale)}
-      >
-        {form.saved ? 'Continue →' : onKeepMyScale ? 'Start Duels →' : 'Start Rough Sort →'}
-      </button>
+      {choosing ? (
+        <button className="go" disabled={!form.onChooseTitles} onClick={form.onChooseTitles}>
+          Choose titles →
+        </button>
+      ) : (
+        <button
+          className="go"
+          disabled={!form.onStartRoughSort || (!form.saved && (!pool || n === 0))}
+          onClick={() => form.onStartRoughSort?.(Boolean(plan) && fromScores && !onKeepMyScale)}
+        >
+          {form.mainAction === 'continue' ? 'Continue →' : 'Start Rough Sort →'}
+        </button>
+      )}
       {form.onRestore && (
         <button className="small link" style={{ alignSelf: 'flex-start' }} onClick={form.onRestore}>
           Restore from a Backup file
@@ -278,7 +305,7 @@ function PoolSetup(form: PoolForm) {
 const GOAL_CAPTION: Record<SortGoal, string> = {
   scores: 'Stops once every score is settled.',
   'full-ranking': 'Every title gets its own place.',
-  [KEEP_MY_SCALE]: 'Scores the titles with no score against the ones you already scored. Every other score stays as it is.',
+  [KEEP_MY_SCALE]: 'Scores the titles you pick against the ones you already scored. Every other score stays as it is.',
 }
 
 /**
@@ -330,8 +357,9 @@ function GoalInfo({ extraDuels, keepMyScaleOffered }: { extraDuels: number | nul
             <>
               <br />
               <br />
-              <b>Keep My Scale</b>: titles with no score are each compared with titles you already scored (your Anchors) and
-              given one of your own scores. Every other score stays as it is. Chosen when a Ranking starts, and it can't switch later.
+              <b>Keep My Scale</b>: the titles you pick, with or without a score, are each compared with the titles you
+              already scored and didn't pick (your Anchors) and given one of your own scores. Every other score stays as
+              it is. Chosen when a Ranking starts, and it can't switch later.
             </>
           )}
         </span>

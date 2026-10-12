@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
-import { anchorsOf, keepMyScaleEligibility, keepMyScaleList } from './anchors.ts'
+import { anchorsOf, keepMyScaleEligibility, keepMyScalePool, unscoredTitles } from './anchors.ts'
 
 let nextId = 1
 const entry = (oldScore100: number, status: ListStatus = 'COMPLETED'): ListEntry => ({
@@ -30,6 +30,21 @@ describe('Anchors', () => {
       { id: list[3].mediaId, level: 5 },
     ])
   })
+
+  it('leave out the titles picked for the Ranking, even those with a score (ADR 0011)', () => {
+    const list = [entry(90), entry(80), entry(0), entry(70)]
+    const picked = new Set([list[1].mediaId, list[2].mediaId])
+    expect(anchorsOf(list, 'POINT_10', picked)).toEqual([
+      { id: list[0].mediaId, level: 9 },
+      { id: list[3].mediaId, level: 7 },
+    ])
+  })
+
+  it('left after picking every title of one score can lose that score, and with it eligibility', () => {
+    const list = scored(30, [90, 80, 70])
+    const sevens = new Set(list.filter((e) => e.oldScore100 === 70).map((e) => e.mediaId))
+    expect(keepMyScaleEligibility(anchorsOf(list, 'POINT_10', sevens))).toMatchObject({ eligible: false, anchors: 20, scores: 2 })
+  })
 })
 
 describe('Keep My Scale eligibility', () => {
@@ -56,22 +71,21 @@ describe('Keep My Scale eligibility', () => {
   })
 })
 
-describe('the list a Keep My Scale Pool is built from', () => {
-  it('holds the titles without a score, plus the picked titles already in the Ranking even once scored', () => {
+describe("a saved Keep My Scale Ranking's Pool", () => {
+  it('holds the picked titles still on the list, whatever their status or score now', () => {
     const anchor = entry(80)
-    const unscored = entry(0)
-    const imported = entry(70)
-    const list = [anchor, unscored, imported]
-    expect(keepMyScaleList(list, null).map((e) => e.mediaId)).toEqual([unscored.mediaId])
-    const inRanking = new Set([imported.mediaId])
-    expect(keepMyScaleList(list, { anchors: new Set([anchor.mediaId]), pool: inRanking }).map((e) => e.mediaId)).toEqual([
-      unscored.mediaId,
-      imported.mediaId,
-    ])
+    const unscored = entry(0, 'DROPPED')
+    const rescored = entry(70, 'PAUSED')
+    const other = entry(0)
+    const list = [anchor, unscored, rescored, other]
+    const saved = { anchors: new Set([anchor.mediaId]), pool: new Set([unscored.mediaId, rescored.mediaId, 999]) }
+    expect(keepMyScalePool(list, saved).titles.map((e) => e.mediaId)).toEqual([unscored.mediaId, rescored.mediaId])
   })
+})
 
-  it('never holds an Anchor, even once its score is removed on AniList', () => {
-    const anchor = entry(0)
-    expect(keepMyScaleList([anchor], { anchors: new Set([anchor.mediaId]), pool: new Set() })).toEqual([])
+describe('the titles without a score Start counts for Keep My Scale', () => {
+  it('are the unscored Completed and Repeating titles', () => {
+    const list = [entry(0), entry(0, 'REPEATING'), entry(0, 'DROPPED'), entry(0, 'CURRENT'), entry(80)]
+    expect(unscoredTitles(list)).toEqual([list[0], list[1]])
   })
 })

@@ -46,7 +46,8 @@ describe('the fake session', () => {
     })
     expect(start.eligibility).toMatchObject({ eligible: true })
     expect(start.newGoal).toBe(KEEP_MY_SCALE)
-    expect(start.startOrder!.length).toBeGreaterThan(0)
+    expect(start.form.mainAction).toBe('choose-titles')
+    expect(start.form.keepMyScale.count).toBeGreaterThan(0)
   })
 
   it('throws away what an earlier fake session saved in this browser, and nothing of another user', async () => {
