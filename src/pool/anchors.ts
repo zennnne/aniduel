@@ -3,7 +3,7 @@
 import type { ListEntry, ListStatus, ScoreFormat } from '../anilist/types.ts'
 import type { AnchorScore } from '../ranking/engine.ts'
 import { levelOfRaw, type SavedScoring } from '../ranking/scoring.ts'
-import { buildPool, DEFAULT_STATUSES, OFFERED_STATUSES, type Pool } from './pool.ts'
+import { buildPool, DEFAULT_STATUSES, LIST_STATUSES, type Pool } from './pool.ts'
 
 /** Keep My Scale is offered only with at least this many Anchors… */
 export const MIN_ANCHORS = 20
@@ -11,15 +11,22 @@ export const MIN_ANCHORS = 20
 export const MIN_ANCHOR_SCORES = 3
 
 /**
- * Every title in the list with a score, whatever its status, with that score as a level of the Score Format: the
- * snapshot a Keep My Scale Ranking starts from. A raw score too small to show as a level isn't one. A title picked
- * for the Ranking is never an Anchor, even with a score (ADR 0011): `picked` leaves those out.
+ * Whether a title has a score: one that shows as a level of the Score Format. A raw score too small for that (5 of
+ * 100 on 10 points) is no score, as AniList shows it: such a title is no Anchor, and counts as without a score.
+ */
+export function hasScore(entry: ListEntry, format: ScoreFormat): boolean {
+  return levelOfRaw(format, entry.oldScore100) > 0
+}
+
+/**
+ * Every title in the list with a score (`hasScore`), whatever its status, Planning included, with that score as a
+ * level of the Score Format: the snapshot a Keep My Scale Ranking starts from. A title picked for the Ranking is
+ * never an Anchor, even with a score (ADR 0011): `picked` leaves those out.
  */
 export function anchorsOf(list: readonly ListEntry[], format: ScoreFormat, picked?: ReadonlySet<number>): AnchorScore[] {
   return list
-    .filter((e) => e.oldScore100 > 0 && !picked?.has(e.mediaId))
+    .filter((e) => hasScore(e, format) && !picked?.has(e.mediaId))
     .map((e) => ({ id: e.mediaId, level: levelOfRaw(format, e.oldScore100) }))
-    .filter((a) => a.level > 0)
 }
 
 export type KeepMyScaleEligibility = {
@@ -45,25 +52,25 @@ export function keepMyScaleEligibility(anchors: readonly AnchorScore[]): KeepMyS
 export type SavedKeepMyScale = { anchors: ReadonlySet<number>; pool: ReadonlySet<number> }
 
 /**
- * A saved Keep My Scale Ranking's Pool: the titles picked for it that are still on the list, whatever their status or
- * score now (ADR 0011: the Pool is fixed once the Ranking starts). The single place that says which titles such a
- * Ranking holds: Start, Preview's old scores and the Import read it here.
+ * A saved Keep My Scale Ranking's Pool: the titles picked for it that are still on the list, whatever their status
+ * (Planning too) or score now (ADR 0011: the Pool is fixed once the Ranking starts). The single place that says which
+ * titles such a Ranking holds: Start, Preview's old scores and the Import read it here.
  */
 export function keepMyScalePool(list: readonly ListEntry[], saved: SavedKeepMyScale, scale?: SavedScoring): Pool {
   return buildPool(
     list.filter((e) => saved.pool.has(e.mediaId)),
-    OFFERED_STATUSES,
+    LIST_STATUSES,
     scale,
   )
 }
 
 /**
- * The titles without a score in the default statuses (Completed and Repeating): what Score New Titles used to score,
- * the count Start shows on Keep My Scale and Catch-up's exit offer names (#61).
+ * The titles without a score (`hasScore`) in the default statuses (Completed and Repeating): the count Start shows on
+ * Keep My Scale and Catch-up's exit offer names, and the titles the Picker opens with ticked from that offer (#61, #65).
  */
-export function unscoredTitles(list: readonly ListEntry[]): ListEntry[] {
+export function unscoredTitles(list: readonly ListEntry[], format: ScoreFormat): ListEntry[] {
   const statuses = new Set<ListStatus>(DEFAULT_STATUSES)
-  return list.filter((e) => e.oldScore100 === 0 && statuses.has(e.status))
+  return list.filter((e) => !hasScore(e, format) && statuses.has(e.status))
 }
 
 /**

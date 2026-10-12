@@ -4,14 +4,15 @@ import { count } from '../meta.ts'
 /**
  * Asked before the Picker opens (#66, ADR 0011) when the last Keep My Scale Ranking ended with titles left unsettled,
  * from Start and from Catch-up's exit offer alike. A plain dialog with the count and two answers (#63). Either answer
- * opens the Picker: Yes ticks them, No opens it as it otherwise would and keeps them for next time.
+ * opens the Picker: Yes ticks them, No opens it as it otherwise would and keeps them for next time. Dismissing the
+ * dialog (scrim, Escape) is No.
  */
-export function PickAgainDialog(props: { left: number; onPickAgain: () => void; onSkip: () => void; onCancel: () => void }) {
+export function PickAgainDialog(props: { left: number; onPickAgain: () => void; onSkip: () => void }) {
   return (
     <Dialog
       title="Pick them again?"
-      onCancel={props.onCancel}
-      noCancelLink
+      onCancel={props.onSkip}
+      cancelLink={false}
       actions={
         <>
           <button className="go quiet" onClick={props.onSkip}>

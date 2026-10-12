@@ -8,6 +8,14 @@ export const OFFERED_STATUSES = ['COMPLETED', 'REPEATING', 'CURRENT', 'PAUSED', 
 
 export type OfferedStatus = (typeof OFFERED_STATUSES)[number]
 
+/**
+ * The statuses the app reads a list in: those Start offers, and Planning. Planning titles are read only for Keep My
+ * Scale: a scored one is an Anchor (ADR 0009), and a picked title moved to Planning stays in its Pool (ADR 0011).
+ * Nothing that shows or offers titles lists them: the Pool's statuses, the Picker and Catch-up's watched titles all
+ * leave Planning out.
+ */
+export const LIST_STATUSES: readonly ListStatus[] = [...OFFERED_STATUSES, 'PLANNING']
+
 export const DEFAULT_STATUSES: readonly OfferedStatus[] = ['COMPLETED', 'REPEATING']
 
 /** A title's name in the user's title language, falling back to romaji. */
@@ -62,7 +70,7 @@ export type Pool = {
 }
 
 /**
- * Builds the Pool from the user's list (fetched for every offered status) and the chosen statuses. `scale`: the
+ * Builds the Pool from the user's list (fetched in `LIST_STATUSES`) and the chosen statuses. `scale`: the
  * estimate is for Scores with those settings (a new Ranking starts on Scores), else for Full Ranking.
  */
 export function buildPool(list: readonly ListEntry[], statuses: readonly ListStatus[], scale?: SavedScoring): Pool {

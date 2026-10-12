@@ -183,3 +183,23 @@ describe('where the anime stands for the exit offer', () => {
     expect(animeStanding(view({ list: scoredList(3).list, savedBroken: true }))).toBeNull()
   })
 })
+
+describe('Planning titles, read with the list for Keep My Scale only', () => {
+  it('count as Anchors when scored, but never join a new Pool nor the Keep My Scale count', () => {
+    // 19 scored titles alone are too few; a scored Planning title makes 20.
+    const list = [...many(19, [90, 80, 70]), entry(60, 'PLANNING'), entry(0, 'PLANNING'), entry(0)]
+    const start = view({ list, statuses: ['COMPLETED', 'REPEATING', 'CURRENT', 'PAUSED', 'DROPPED'] })
+    expect(start.eligibility).toMatchObject({ eligible: true, anchors: 20, scores: 4 })
+    expect(start.pool!.titles.some((e) => e.status === 'PLANNING')).toBe(false)
+    expect(start.form.keepMyScale.count).toBe(1)
+  })
+
+  it("stay in a saved Keep My Scale Ranking's Pool when a picked title moved to Planning, with its old score", () => {
+    const { anchors, fresh, list } = scoredList(1)
+    const picked = anchors[0]
+    const log = startKeepMyScaleLog({ ...header, format: 'POINT_10', anchors: anchorsOf(anchors.slice(1), 'POINT_10'), ids: ids([fresh[0], picked]) })
+    const now = list.map((e) => (e === picked ? { ...e, status: 'PLANNING' as const } : e))
+    const start = view({ list: now, saved: replayed(log) })
+    expect(start.oldScores).toEqual(new Map([[fresh[0].mediaId, 0], [picked.mediaId, picked.oldScore100]]))
+  })
+})

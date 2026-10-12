@@ -9,8 +9,11 @@ export function Dialog(props: {
   onCancel: () => void
   actions: ReactNode
   children: ReactNode
-  /** Leave out the Cancel link, for a dialog whose actions already include a way to say no (the scrim and Escape still cancel). */
-  noCancelLink?: boolean
+  /**
+   * Whether the Cancel link shows (the default). False for a dialog whose actions already include a way to say no; the
+   * scrim and Escape still cancel.
+   */
+  cancelLink?: boolean
 }) {
   const box = useRef<HTMLDivElement>(null)
   useEffect(() => box.current?.focus(), [])
@@ -32,7 +35,7 @@ export function Dialog(props: {
         <div className="h2">{props.title}</div>
         {props.children}
         <div className="row" style={{ justifyContent: 'flex-end', gap: 10, marginTop: 6 }}>
-          {!props.noCancelLink && (
+          {props.cancelLink !== false && (
             <button className="link" onClick={props.onCancel}>
               Cancel
             </button>

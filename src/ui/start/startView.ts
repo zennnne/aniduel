@@ -9,6 +9,7 @@ import {
   keepMyScalePool,
   unscoredTitles,
   type KeepMyScaleEligibility,
+  type SavedKeepMyScale,
 } from '../../pool/anchors.ts'
 import { buildPool, estimateDuels, roughSortOrder, type Pool } from '../../pool/pool.ts'
 import { keepMyScaleInLog } from '../../pool/sync.ts'
@@ -63,6 +64,9 @@ export type StartView = {
   form: StartFormData
 }
 
+/** Keep My Scale on Start: a saved Ranking on it, or chosen for a new one, or (null) neither. */
+type KeepMyScaleOnStart = { kind: 'saved'; saved: SavedKeepMyScale } | { kind: 'choosing-titles' } | null
+
 export function startView(input: StartInput): StartView {
   const { list, statuses, scoreFormat, titleLanguage, saved, savedBroken, picked } = input
   const ranking = saved?.ranking ?? null
@@ -71,10 +75,16 @@ export function startView(input: StartInput): StartView {
   // A Keep My Scale pick on Start stops counting once it isn't eligible (e.g. on another Media Type).
   const keepMyScalePicked = picked === KEEP_MY_SCALE && eligibility?.eligible !== false
   const savedKeepMyScale = saved ? keepMyScaleInLog(saved.log) : null
-  // Choosing Keep My Scale only selects it (#64): even over a saved Scores or Full Ranking Ranking, which the Picker's
-  // Confirm offers to replace. A saved Keep My Scale Ranking can't switch Sort Goal.
-  const onKeepMyScale = savedKeepMyScale ? true : keepMyScalePicked
-  const choosingTitles = onKeepMyScale && !savedKeepMyScale
+  // Where Start stands on Keep My Scale: a saved Ranking on it (which can't switch Sort Goal), or chosen for a new one
+  // whose titles the Picker picks, or neither. Choosing it only selects it (#64), even over a saved Scores or Full
+  // Ranking Ranking, which the Picker's Confirm offers to replace.
+  const keepMyScale: KeepMyScaleOnStart = savedKeepMyScale
+    ? { kind: 'saved', saved: savedKeepMyScale }
+    : keepMyScalePicked
+      ? { kind: 'choosing-titles' }
+      : null
+  const onKeepMyScale = keepMyScale !== null
+  const choosingTitles = keepMyScale?.kind === 'choosing-titles'
   // The Pool's estimate is for Scores with the Score Format's defaults (ADR 0007); Full Ranking's is worked out below.
   const scale = { format: scoreFormat, settings: defaultSettings(scoreFormat, 'whole') }
   // A saved Keep My Scale Ranking's Pool is the titles picked for it (ADR 0011), so Preview has every old score.
@@ -82,8 +92,8 @@ export function startView(input: StartInput): StartView {
   // has none until the Picker.
   const pool = !list
     ? null
-    : savedKeepMyScale
-      ? keepMyScalePool(list, savedKeepMyScale, scale)
+    : keepMyScale?.kind === 'saved'
+      ? keepMyScalePool(list, keepMyScale.saved, scale)
       : choosingTitles && !ranking
         ? null
         : buildPool(list, statuses, scale)
@@ -92,7 +102,7 @@ export function startView(input: StartInput): StartView {
   const startOrder = pool && !saved && !savedBroken && !onKeepMyScale ? roughSortOrder(pool.titles, titleLanguage) : null
   const scoresPlan = startOrder && planFromScores(startOrder.map((id) => ({ id, score100: oldScores?.get(id) ?? 0 })))
 
-  const goal = savedKeepMyScale || keepMyScalePicked ? KEEP_MY_SCALE : ranking ? goalOf(ranking) : newGoal
+  const goal = onKeepMyScale ? KEEP_MY_SCALE : ranking ? goalOf(ranking) : newGoal
   const fullPoolDuels = pool ? estimateDuels(pool.titles.length) : null
   // Keep My Scale: one search per picked title over the Anchor scores (a saved Ranking: its unsettled titles only).
   // Before the Picker there is no estimate: the Picker shows one for the picks.
@@ -113,7 +123,7 @@ export function startView(input: StartInput): StartView {
     newGoal,
     startOrder,
     scoresPlan,
-    savedRanking: savedBroken ? 'broken' : !saved ? 'none' : savedKeepMyScale ? 'keep-my-scale' : 'other',
+    savedRanking: savedBroken ? 'broken' : !saved ? 'none' : keepMyScale?.kind === 'saved' ? 'keep-my-scale' : 'other',
     form: {
       statuses,
       pool,
@@ -132,8 +142,8 @@ export function startView(input: StartInput): StartView {
               ? fullPoolDuels - pool.expectedDuels
               : null,
       keepMyScale: {
-        // What Score New Titles used to score: the unscored Completed and Repeating titles (#61).
-        count: list ? unscoredTitles(list).length : null,
+        // The unscored Completed and Repeating titles, whatever the status chips (#61).
+        count: list ? unscoredTitles(list, scoreFormat).length : null,
         enabled: keepMyScaleReason === null && Boolean(eligibility),
         reason: onKeepMyScale ? null : keepMyScaleReason,
         anchors: ranking?.keepMyScale?.anchorCount ?? eligibility?.anchors ?? 0,

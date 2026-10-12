@@ -243,27 +243,27 @@ function PoolSetup(form: PoolForm) {
           {form.replacesSaved && ' Confirming your picks asks before your saved Ranking here is replaced.'}
         </div>
       ) : (
-          <div className="est" aria-live="polite">
-            {pool && onKeepMyScale ? (
-              <>
-                <b>{n}</b> {pluralWord(n, 'title')} to score · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
-                {form.saved ? ' left' : ''}
-                <span className="small">
-                  (each against one of your {form.keepMyScale?.anchors ?? 0} Anchors, ~{estimateMinutes(duels)} min at 3 s each)
-                </span>
-              </>
-            ) : pool ? (
-              <>
-                <b>{n}</b> {pluralWord(n, 'title')} · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
-                <span className="small">
-                  ({form.bandDuels != null ? 'from your Band sizes, ' : ''}~{estimateMinutes(duels)} min at 3 s each, spread over
-                  as many sittings as you like)
-                </span>
-              </>
-            ) : (
-              'Loading your list…'
-            )}
-          </div>
+        <div className="est" aria-live="polite">
+          {pool && onKeepMyScale ? (
+            <>
+              <b>{n}</b> {pluralWord(n, 'title')} to score · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
+              {form.saved ? ' left' : ''}
+              <span className="small">
+                (each against one of your {form.keepMyScale?.anchors ?? 0} Anchors, ~{estimateMinutes(duels)} min at 3 s each)
+              </span>
+            </>
+          ) : pool ? (
+            <>
+              <b>{n}</b> {pluralWord(n, 'title')} · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
+              <span className="small">
+                ({form.bandDuels != null ? 'from your Band sizes, ' : ''}~{estimateMinutes(duels)} min at 3 s each, spread over
+                as many sittings as you like)
+              </span>
+            </>
+          ) : (
+            'Loading your list…'
+          )}
+        </div>
       )}
       {form.saved && onKeepMyScale && (
         <div className="small">

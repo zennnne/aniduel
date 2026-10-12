@@ -4,7 +4,8 @@ import { createAniListGateway } from '../anilist/gateway.ts'
 import { fakeClock } from '../anilist/fakeAniList.ts'
 import { memoryStorage } from '../persistence/memoryStorage.ts'
 import { loadLastMediaType, saveLastMediaType } from '../persistence/progress.ts'
-import { DEFAULT_STATUSES, OFFERED_STATUSES } from '../pool/pool.ts'
+import { anchorsOf } from '../pool/anchors.ts'
+import { DEFAULT_STATUSES, LIST_STATUSES, OFFERED_STATUSES } from '../pool/pool.ts'
 import { KEEP_MY_SCALE } from '../ranking/engine.ts'
 import { startView } from '../ui/start/startView.ts'
 import { fakeSession } from './fakeSession.ts'
@@ -60,6 +61,15 @@ describe('the fake session', () => {
     expect(start.newGoal).toBe(KEEP_MY_SCALE)
     expect(start.form.mainAction).toBe('choose-titles')
     expect(start.form.keepMyScale.count).toBeGreaterThan(0)
+  })
+
+  it('has Planning titles as the app reads them, one with a score: an Anchor that nothing lists', async () => {
+    const { gateway, viewer } = await signedIn()
+    const list = await gateway.mediaList({ userId: viewer.id, type: 'ANIME', statuses: LIST_STATUSES })
+    const planning = list.filter((e) => e.status === 'PLANNING')
+    expect(planning.map((e) => e.oldScore100 > 0).sort()).toEqual([false, true])
+    const anchors = anchorsOf(list, viewer.scoreFormat).map((a) => a.id)
+    expect(anchors).toContain(planning.find((e) => e.oldScore100 > 0)!.mediaId)
   })
 
   it('throws away what an earlier fake session saved in this browser, and nothing of another user', async () => {

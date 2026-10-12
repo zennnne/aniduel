@@ -4,14 +4,23 @@
 // A pipeline: `pickable` (every title but Planning ones) → the rows the filters and the search let through, in the
 // chosen sort (#65) → summary and Confirm over the picks, which never depend on what the rows show.
 import type { ListEntry, ListStatus, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import { anchorsOf, estimateKeepMyScaleDuels, keepMyScaleEligibility, MIN_ANCHOR_SCORES, MIN_ANCHORS, unscoredTitles } from '../../pool/anchors.ts'
+import {
+  anchorsOf,
+  estimateKeepMyScaleDuels,
+  hasScore,
+  keepMyScaleEligibility,
+  MIN_ANCHOR_SCORES,
+  MIN_ANCHORS,
+  unscoredTitles,
+  type KeepMyScaleEligibility,
+} from '../../pool/anchors.ts'
 import { DEFAULT_STATUSES, displayTitle, OFFERED_STATUSES, roughSortOrder } from '../../pool/pool.ts'
 import type { AnchorScore } from '../../ranking/engine.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
 import { count } from '../meta.ts'
 
 export type PickerInput = {
-  /** The Media Type's list, fetched for every offered status. */
+  /** The Media Type's list, as read in `LIST_STATUSES`: its Planning titles are Anchors, never rows. */
   list: readonly ListEntry[]
   scoreFormat: ScoreFormat
   titleLanguage: TitleLanguage
@@ -88,10 +97,13 @@ export type PickerSummary = {
 }
 
 /**
- * Whether Confirm may start a Keep My Scale Ranking, and on what: the picked titles in Rough Sort order and the
- * Anchor snapshot, which never holds a picked title. When it may not, the reason as the Picker shows it.
+ * What Confirm starts a Keep My Scale Ranking on: the picked titles in the order its Duels meet them (most recently
+ * completed first, then by title) and the Anchor snapshot, which never holds a picked title.
  */
-export type PickerConfirm = { allowed: true; order: number[]; anchors: AnchorScore[] } | { allowed: false; reason: string }
+export type PickerStart = { order: number[]; anchors: AnchorScore[] }
+
+/** Whether Confirm may start a Keep My Scale Ranking, and on what. When it may not, the reason as the Picker shows it. */
+export type PickerConfirm = ({ allowed: true } & PickerStart) | { allowed: false; reason: string }
 
 export type PickerView = {
   /** The rows shown, in order. */
@@ -120,8 +132,9 @@ export type PickerView = {
   pickAll: { shown: number; ids: number[] }
   /**
    * Null while titles show. With none shown, each single change that would bring titles back and how many it would
-   * show, in the order clear the search, every list status, all years, clear genres and tags; a change that would
-   * show none is left out. Resetting the search and every filter (`wayOut(filters, 'reset')`) is always there too.
+   * show, in the order clear the search, every list status, all years, clear genres and tags, turn "Picked only" off;
+   * a change that would show none is left out. Resetting the search and every filter (`wayOut(filters, 'reset')`) is
+   * always there too.
    */
   nothingMatches: { change: PickerChange; count: number }[] | null
   /**
@@ -140,8 +153,8 @@ export type PickerDock = {
   /** The covers stacked in the dock: the last titles picked, the latest first, at most `DOCK_COVERS`. */
   covers: ListEntry[]
   /**
-   * Null while Confirm is allowed. Otherwise the line the dock shows in place of the Anchors left: plain with nothing
-   * picked, a warning when the picks leave too few Anchors or scores. `confirm.reason` says the same at more length.
+   * Null while Confirm is allowed. Otherwise the line the dock shows in place of the Anchors left, `confirm.reason`:
+   * plain with nothing picked, a warning when the picks leave too few Anchors or scores.
    */
   blocked: { text: string; warn: boolean } | null
 }
@@ -150,7 +163,7 @@ export type PickerDock = {
 export const DOCK_COVERS = 6
 
 /** A way out of "nothing matches". */
-export type PickerChange = 'search' | 'statuses' | 'years' | 'genres-tags'
+export type PickerChange = 'search' | 'statuses' | 'years' | 'genres-tags' | 'picked-only'
 
 /** The filters after taking a way out of "nothing matches", or after resetting them all (the sort is kept). */
 export function wayOut(filters: PickerFilters, change: PickerChange | 'reset'): PickerFilters {
@@ -163,36 +176,55 @@ export function wayOut(filters: PickerFilters, change: PickerChange | 'reset'): 
       return { ...filters, year: null }
     case 'genres-tags':
       return { ...filters, genres: [], tags: [] }
+    case 'picked-only':
+      return { ...filters, pickedOnly: false }
     case 'reset':
       return { ...DEFAULT_PICKER_FILTERS, sort: filters.sort }
   }
 }
 
-const CHANGES: readonly PickerChange[] = ['search', 'statuses', 'years', 'genres-tags']
+const CHANGES: readonly PickerChange[] = ['search', 'statuses', 'years', 'genres-tags', 'picked-only']
+
+/** The filters with a genre or tag chosen, or taken out if it was chosen. */
+export function toggleFacet(filters: PickerFilters, key: 'genres' | 'tags', name: string): PickerFilters {
+  const chosen = filters[key]
+  return { ...filters, [key]: chosen.includes(name) ? chosen.filter((n) => n !== name) : [...chosen, name] }
+}
+
+/** The filters with a list status shown, or hidden if it was shown; kept in the order Start offers them. */
+export function toggleStatus(filters: PickerFilters, status: ListStatus): PickerFilters {
+  const on = filters.statuses.includes(status)
+  return { ...filters, statuses: OFFERED_STATUSES.filter((s) => (s === status ? !on : filters.statuses.includes(s))) }
+}
 
 /**
  * How the Picker was opened, which decides its starting picks. From Start nothing is ticked (#64); Catch-up's exit
  * offer (#65) adds its own way in here. The remembered unsettled titles (#66) come on top of any way in.
  */
-export type PickerEntry = { from: 'start' } | { from: 'catch-up' }
+export type PickerWayIn = { from: 'start' } | { from: 'catch-up' }
 
 /**
  * The picks the Picker opens with: those of the way it was opened, plus the remembered unsettled titles when the user
  * chose to pick them again (#66), leaving out any the Picker can't show.
  */
-export function startingPicks(list: readonly ListEntry[], entry: PickerEntry, remembered: readonly number[] = []): Set<number> {
+export function startingPicks(
+  list: readonly ListEntry[],
+  format: ScoreFormat,
+  wayIn: PickerWayIn,
+  remembered: readonly number[] = [],
+): Set<number> {
   const shown = new Set(pickable(list).map((e) => e.mediaId))
-  return new Set([...picksOfEntry(list, entry), ...remembered.filter((id) => shown.has(id))])
+  return new Set([...picksOfWayIn(list, format, wayIn), ...remembered.filter((id) => shown.has(id))])
 }
 
 /** The picks the way in ticks by itself. */
-function picksOfEntry(list: readonly ListEntry[], entry: PickerEntry): Set<number> {
-  switch (entry.from) {
+function picksOfWayIn(list: readonly ListEntry[], format: ScoreFormat, wayIn: PickerWayIn): Set<number> {
+  switch (wayIn.from) {
     case 'start':
       return new Set()
     case 'catch-up':
       // Every unscored Completed and Repeating title, the ones just added among them, as the offer's label counts (#65).
-      return new Set(unscoredTitles(list).map((e) => e.mediaId))
+      return new Set(unscoredTitles(list, format).map((e) => e.mediaId))
   }
 }
 
@@ -255,16 +287,22 @@ function matches(entry: ListEntry, filters: PickerFilters, language: TitleLangua
   return search === '' || foldedName(entry, language).includes(search)
 }
 
-/** The default order: titles without a score first, then Rough Sort's order (most recently completed first, then by name). */
-function defaultOrder(entries: readonly ListEntry[], language: TitleLanguage): ListEntry[] {
+/**
+ * Most recently completed first, undated last, then by title. The order Rough Sort shows titles in (issue #4),
+ * borrowed for the order alone: a Keep My Scale Ranking has no Rough Sort.
+ */
+const newestCompletedFirst = roughSortOrder
+
+/** The default order: titles without a score first, then the most recently completed first, then by title. */
+function defaultOrder(entries: readonly ListEntry[], format: ScoreFormat, language: TitleLanguage): ListEntry[] {
   const byId = new Map(entries.map((e) => [e.mediaId, e]))
-  const ordered = roughSortOrder(entries, language).map((id) => byId.get(id)!)
-  return [...ordered.filter((e) => e.oldScore100 === 0), ...ordered.filter((e) => e.oldScore100 > 0)]
+  const ordered = newestCompletedFirst(entries, language).map((id) => byId.get(id)!)
+  return [...ordered.filter((e) => !hasScore(e, format)), ...ordered.filter((e) => hasScore(e, format))]
 }
 
-/** The rows' titles in order for a sort other than the default; ties go by title. */
-function sorted(entries: readonly ListEntry[], sort: PickerSort, language: TitleLanguage): ListEntry[] {
-  if (sort === 'default') return defaultOrder(entries, language)
+/** The rows' titles in order for a sort; ties go by title. */
+function sorted(entries: readonly ListEntry[], sort: PickerSort, format: ScoreFormat, language: TitleLanguage): ListEntry[] {
+  if (sort === 'default') return defaultOrder(entries, format, language)
   const named = entries.map((entry) => ({ entry, name: displayTitle(entry.title, language) }))
   // Missing scores and years sort last: 0 (no score) and -Infinity (no year) under a highest-first order.
   const key = (e: ListEntry) => (sort === 'score' ? e.oldScore100 : sort === 'year' ? (e.year ?? -Infinity) : 0)
@@ -276,12 +314,11 @@ function sorted(entries: readonly ListEntry[], sort: PickerSort, language: Title
 export function pickerView(input: PickerInput): PickerView {
   const { list, scoreFormat, titleLanguage, picked, filters = DEFAULT_PICKER_FILTERS } = input
   const shown = pickable(list).filter((e) => matches(e, filters, titleLanguage, picked))
-  const rows = sorted(shown, filters.sort, titleLanguage).map((entry): PickerRow => {
-    const level = levelOfRaw(scoreFormat, entry.oldScore100)
+  const rows = sorted(shown, filters.sort, scoreFormat, titleLanguage).map((entry): PickerRow => {
     return {
       entry,
       title: displayTitle(entry.title, titleLanguage),
-      score: level > 0 ? formatLevel(scoreFormat, level) : null,
+      score: hasScore(entry, scoreFormat) ? formatLevel(scoreFormat, levelOfRaw(scoreFormat, entry.oldScore100)) : null,
       year: entry.year,
       status: entry.status,
       picked: picked.has(entry.mediaId),
@@ -289,7 +326,7 @@ export function pickerView(input: PickerInput): PickerView {
   })
   const pickedEntries = pickable(list).filter((e) => picked.has(e.mediaId))
   const pickedIds = new Set(pickedEntries.map((e) => e.mediaId))
-  // Every scored title is an Anchor, Planning ones included (ADR 0009), except the picks.
+  // Every scored title is an Anchor, Planning ones included (ADR 0009), except the picks: `list` is read with them.
   const anchors = anchorsOf(list, scoreFormat, pickedIds)
   const left = keepMyScaleEligibility(anchors)
   const summary: PickerSummary = {
@@ -316,8 +353,8 @@ export function pickerView(input: PickerInput): PickerView {
     .map((name) => facet(name, filters.tags, tagCounts))
     .sort((a, b) => Number(b.chosen) - Number(a.chosen) || b.count - a.count || a.name.localeCompare(b.name))
   const unsearched = { ...filters, search: '', pickedOnly: false }
-  const addUnscored = sorted(pickable(list), 'default', titleLanguage)
-    .filter((e) => e.oldScore100 === 0 && !picked.has(e.mediaId) && matches(e, unsearched, titleLanguage, picked))
+  const addUnscored = sorted(pickable(list), 'default', scoreFormat, titleLanguage)
+    .filter((e) => !hasScore(e, scoreFormat) && !picked.has(e.mediaId) && matches(e, unsearched, titleLanguage, picked))
     .map((e) => e.mediaId)
   const pickAll = { shown: rows.length, ids: rows.filter((r) => !r.picked).map((r) => r.entry.mediaId) }
   const nothingMatches =
@@ -330,15 +367,16 @@ export function pickerView(input: PickerInput): PickerView {
   const latest = [...picked].flatMap((id) => byId.get(id) ?? []).reverse()
   const statusCounts = Object.fromEntries(OFFERED_STATUSES.map((status) => [status, 0]))
   for (const e of pickable(list)) if (e.status in statusCounts) statusCounts[e.status]++
+  const confirm = confirmOf(pickedEntries, anchors, left, titleLanguage)
   const dock: PickerDock = {
-    replacing: pickedEntries.filter((e) => levelOfRaw(scoreFormat, e.oldScore100) > 0).length,
+    replacing: pickedEntries.filter((e) => hasScore(e, scoreFormat)).length,
     covers: latest.slice(0, DOCK_COVERS),
-    blocked: blockedOf(summary),
+    blocked: confirm.allowed ? null : { text: confirm.reason, warn: pickedEntries.length > 0 },
   }
   return {
     rows,
     summary,
-    confirm: confirmOf(pickedEntries, anchors, summary, titleLanguage),
+    confirm,
     years,
     genres,
     tags,
@@ -352,33 +390,15 @@ export function pickerView(input: PickerInput): PickerView {
   }
 }
 
-/** The dock's line when Confirm is not allowed, in the order `confirmOf` checks. */
-function blockedOf(summary: PickerSummary): PickerDock['blocked'] {
-  const untick = 'Untick some titles that have a score.'
-  if (summary.picked === 0) return { text: 'Nothing picked yet.', warn: false }
-  if (summary.anchors < MIN_ANCHORS)
-    return {
-      text: `Only ${count(summary.anchors, 'Anchor')} left, ${MIN_ANCHORS} needed. ${untick}`,
-      warn: true,
-    }
-  if (summary.scores < MIN_ANCHOR_SCORES) {
-    return {
-      text: `Anchors left on only ${count(summary.scores, 'score')}, ${MIN_ANCHOR_SCORES} needed. ${untick}`,
-      warn: true,
-    }
-  }
-  return null
-}
-
-function confirmOf(picked: readonly ListEntry[], anchors: AnchorScore[], summary: PickerSummary, language: TitleLanguage): PickerConfirm {
+function confirmOf(picked: readonly ListEntry[], anchors: AnchorScore[], left: KeepMyScaleEligibility, language: TitleLanguage): PickerConfirm {
   if (picked.length === 0) return { allowed: false, reason: 'Pick at least one title.' }
-  if (summary.anchors < MIN_ANCHORS || summary.scores < MIN_ANCHOR_SCORES) {
+  if (!left.eligible) {
     return {
       allowed: false,
       reason:
-        `Your picks leave ${summary.anchors} scored titles on ${summary.scores} different scores; ` +
-        `at least ${MIN_ANCHORS} on ${MIN_ANCHOR_SCORES} are needed. Untick some scored titles.`,
+        `Your picks leave ${count(left.anchors, 'Anchor')} on ${count(left.scores, 'score')}; ` +
+        `at least ${MIN_ANCHORS} on ${MIN_ANCHOR_SCORES} are needed. Untick some titles that have a score.`,
     }
   }
-  return { allowed: true, order: roughSortOrder(picked, language), anchors }
+  return { allowed: true, order: newestCompletedFirst(picked, language), anchors }
 }

@@ -1,7 +1,18 @@
 // The Picker's view (#64, ADR 0011): the rows it lists, what the picks cost in Anchors, and what Confirm starts.
 import { describe, expect, it } from 'vitest'
 import type { ListEntry, ListStatus } from '../../anilist/types.ts'
-import { addPicks, DEFAULT_PICKER_FILTERS, pickerView, wayOut, startingPicks, togglePick, type PickerFilters, type PickerInput } from './pickerView.ts'
+import {
+  addPicks,
+  DEFAULT_PICKER_FILTERS,
+  pickerView,
+  startingPicks,
+  toggleFacet,
+  togglePick,
+  toggleStatus,
+  wayOut,
+  type PickerFilters,
+  type PickerInput,
+} from './pickerView.ts'
 
 let nextId = 1
 type EntryOptions = {
@@ -52,6 +63,17 @@ describe("the Picker's rows", () => {
     expect(rows).toHaveLength(2)
     expect(rows.find((r) => r.entry === scored)).toMatchObject({ score: '8', year: 2019, status: 'DROPPED', picked: false })
     expect(rows.find((r) => r.entry === unscored)).toMatchObject({ score: null, year: null, status: 'CURRENT', picked: false })
+  })
+
+  it('show no score for a score too small to show in the Score Format, and list it with the titles without one', () => {
+    // 5 of 100 is 0 on 10 points.
+    const tiny = entry(5, { completed: 2020 })
+    const scored = entry(80, { completed: 2024 })
+    const v = view({ list: [scored, tiny] })
+    expect(v.rows.map((r) => [r.entry.mediaId, r.score])).toEqual([
+      [tiny.mediaId, null],
+      [scored.mediaId, '8'],
+    ])
   })
 
   it("show each title's name in the user's title language", () => {
@@ -251,6 +273,14 @@ describe('"Add N without a score"', () => {
     expect(view({ list, filters: filters({ search: 'alpha' }) }).addUnscored).toEqual(ids(list.slice(0, 2)))
   })
 
+  it('adds a title whose card says "no score" because its score is too small to show in the Score Format', () => {
+    const tiny = entry(5)
+    const list = [tiny, entry(80)]
+    expect(view({ list }).rows.find((r) => r.entry === tiny)?.score).toBeNull()
+    expect(view({ list }).addUnscored).toEqual([tiny.mediaId])
+    expect(view({ list, scoreFormat: 'POINT_100' }).addUnscored).toEqual([])
+  })
+
   it('adds nothing once every such title is picked', () => {
     const list = [entry(0), entry(80)]
     expect(view({ list, picked: new Set([list[0].mediaId]) }).addUnscored).toEqual([])
@@ -326,12 +356,23 @@ describe('when nothing matches', () => {
     expect(tagged.nothingMatches).toEqual([{ change: 'genres-tags', count: 3 }])
   })
 
+  it('offers turning "Picked only" off when no pick shows, with how many titles that shows', () => {
+    const v = view({ list, picked: new Set([list[0].mediaId]), filters: filters({ pickedOnly: true }) })
+    expect(v.rows).toEqual([])
+    expect(v.nothingMatches).toEqual([
+      { change: 'statuses', count: 1 },
+      { change: 'picked-only', count: 3 },
+    ])
+    expect(view({ list, filters: filters({ pickedOnly: true }) }).nothingMatches).toEqual([{ change: 'picked-only', count: 3 }])
+  })
+
   it('applies a way out to the filters, and resetting clears the search and every filter but keeps the sort', () => {
     const f = filters({ search: 'x', statuses: ['DROPPED'], year: 2020, genres: ['Drama'], tags: ['Iyashikei'], pickedOnly: true, sort: 'title' })
     expect(wayOut(f, 'search')).toEqual({ ...f, search: '' })
     expect(wayOut(f, 'statuses')).toEqual({ ...f, statuses: ALL_STATUSES })
     expect(wayOut(f, 'years')).toEqual({ ...f, year: null })
     expect(wayOut(f, 'genres-tags')).toEqual({ ...f, genres: [], tags: [] })
+    expect(wayOut(f, 'picked-only')).toEqual({ ...f, pickedOnly: false })
     expect(wayOut(f, 'reset')).toEqual({ ...DEFAULT_PICKER_FILTERS, sort: 'title' })
   })
 })
@@ -345,6 +386,14 @@ describe("the Picker's summary", () => {
     // A picked scored title is no longer an Anchor.
     expect(view({ list, picked: new Set([fresh[0].mediaId, anchors[0].mediaId]) }).summary).toMatchObject({ picked: 2, anchors: 23, scores: 4 })
   })
+
+  it('counts a scored Planning title as an Anchor, though the Picker never lists it (ADR 0009)', () => {
+    const { list } = scaleList(1)
+    const planned = entry(50, { status: 'PLANNING' })
+    const v = view({ list: [...list, planned], filters: filters({ statuses: ALL_STATUSES }) })
+    expect(v.summary).toMatchObject({ anchors: 25, scores: 5 })
+    expect(shown(v)).not.toContain(planned.mediaId)
+  })
 })
 
 describe("the Picker's Confirm", () => {
@@ -357,7 +406,7 @@ describe("the Picker's Confirm", () => {
     expect(view({ list, picked: new Set(ids(anchors.slice(0, 4))) }).confirm).toMatchObject({ allowed: true })
     expect(view({ list, picked: new Set(ids(anchors.slice(0, 5))) }).confirm).toEqual({
       allowed: false,
-      reason: 'Your picks leave 19 scored titles on 4 different scores; at least 20 on 3 are needed. Untick some scored titles.',
+      reason: 'Your picks leave 19 Anchors on 4 scores; at least 20 on 3 are needed. Untick some titles that have a score.',
     })
   })
 
@@ -366,7 +415,7 @@ describe("the Picker's Confirm", () => {
     const sevens = new Set(ids(list.filter((e) => e.oldScore100 === 70)))
     expect(view({ list, picked: sevens }).confirm).toEqual({
       allowed: false,
-      reason: 'Your picks leave 20 scored titles on 2 different scores; at least 20 on 3 are needed. Untick some scored titles.',
+      reason: 'Your picks leave 20 Anchors on 2 scores; at least 20 on 3 are needed. Untick some titles that have a score.',
     })
   })
 
@@ -392,7 +441,7 @@ describe("the Picker's Confirm", () => {
 
 describe('the starting picks', () => {
   it('are nothing when the Picker is opened from Start', () => {
-    expect(startingPicks(scaleList(3).list, { from: 'start' })).toEqual(new Set())
+    expect(startingPicks(scaleList(3).list, 'POINT_10', { from: 'start' })).toEqual(new Set())
   })
 
   it("are every unscored Completed and Repeating title when the Picker is opened from Catch-up's exit offer", () => {
@@ -400,26 +449,26 @@ describe('the starting picks', () => {
     const completed = entry(0)
     const repeating = entry(0, { status: 'REPEATING' })
     const others = (['CURRENT', 'PAUSED', 'DROPPED', 'PLANNING'] as const).map((status) => entry(0, { status }))
-    expect(startingPicks([...list, completed, repeating, ...others], { from: 'catch-up' })).toEqual(new Set([completed.mediaId, repeating.mediaId]))
+    expect(startingPicks([...list, completed, repeating, ...others], 'POINT_10', { from: 'catch-up' })).toEqual(new Set([completed.mediaId, repeating.mediaId]))
   })
 
   it('add the remembered unsettled titles to those of Catch-up (#66)', () => {
     const { list } = scaleList(0)
     const completed = entry(0)
     const dropped = entry(0, { status: 'DROPPED' })
-    expect(startingPicks([...list, completed, dropped], { from: 'catch-up' }, [dropped.mediaId])).toEqual(new Set([completed.mediaId, dropped.mediaId]))
+    expect(startingPicks([...list, completed, dropped], 'POINT_10', { from: 'catch-up' }, [dropped.mediaId])).toEqual(new Set([completed.mediaId, dropped.mediaId]))
   })
 
   it('add the remembered unsettled titles when the user says to pick them again (#66)', () => {
     const { fresh, list } = scaleList(3)
     const remembered = [fresh[0].mediaId, fresh[2].mediaId]
-    expect(startingPicks(list, { from: 'start' }, remembered)).toEqual(new Set(remembered))
+    expect(startingPicks(list, 'POINT_10', { from: 'start' }, remembered)).toEqual(new Set(remembered))
   })
 
   it('never tick a remembered title the Picker cannot show (#66)', () => {
     const { fresh, list } = scaleList(1)
     const planning = entry(0, { status: 'PLANNING' })
-    expect(startingPicks([...list, planning], { from: 'start' }, [fresh[0].mediaId, planning.mediaId, 99999])).toEqual(
+    expect(startingPicks([...list, planning], 'POINT_10', { from: 'start' }, [fresh[0].mediaId, planning.mediaId, 99999])).toEqual(
       new Set([fresh[0].mediaId]),
     )
   })
@@ -448,20 +497,16 @@ describe("the Picker's dock", () => {
     expect(view({ list }).dock.covers).toEqual([])
   })
 
-  it('says why Confirm is not allowed, in orange when the picks leave too few Anchors or scores', () => {
+  it("says why Confirm is not allowed, as Confirm's reason does, in orange when the picks leave too few Anchors or scores", () => {
     const { anchors, fresh, list } = scaleList(1)
-    expect(view({ list }).dock.blocked).toEqual({ text: 'Nothing picked yet.', warn: false })
+    expect(view({ list }).dock.blocked).toEqual({ text: 'Pick at least one title.', warn: false })
     expect(view({ list, picked: new Set(ids(fresh)) }).dock.blocked).toBeNull()
-    expect(view({ list, picked: new Set(ids(anchors.slice(0, 6))) }).dock.blocked).toEqual({
-      text: 'Only 18 Anchors left, 20 needed. Untick some titles that have a score.',
+    const tooFew = view({ list, picked: new Set(ids(anchors.slice(0, 6))) })
+    expect(tooFew.dock.blocked).toEqual({
+      text: 'Your picks leave 18 Anchors on 4 scores; at least 20 on 3 are needed. Untick some titles that have a score.',
       warn: true,
     })
-    const three = Array.from({ length: 30 }, (_, i) => entry([90, 80, 70][i % 3]))
-    const sevens = new Set(ids(three.filter((e) => e.oldScore100 === 70)))
-    expect(view({ list: three, picked: sevens }).dock.blocked).toEqual({
-      text: 'Anchors left on only 2 scores, 3 needed. Untick some titles that have a score.',
-      warn: true,
-    })
+    expect(tooFew.confirm).toEqual({ allowed: false, reason: tooFew.dock.blocked?.text })
   })
 })
 
@@ -470,5 +515,19 @@ describe('ticking a title', () => {
     const once = togglePick(new Set([1]), 2)
     expect(once).toEqual(new Set([1, 2]))
     expect(togglePick(once, 2)).toEqual(new Set([1]))
+  })
+})
+
+describe('choosing a genre, a tag or a list status', () => {
+  it('adds it to the filters, and choosing it again takes it out, leaving the others', () => {
+    const f = filters({ genres: ['Drama'], tags: ['Space'] })
+    expect(toggleFacet(f, 'genres', 'Action')).toEqual({ ...f, genres: ['Drama', 'Action'] })
+    expect(toggleFacet(f, 'genres', 'Drama')).toEqual({ ...f, genres: [] })
+    expect(toggleFacet(f, 'tags', 'Iyashikei')).toEqual({ ...f, tags: ['Space', 'Iyashikei'] })
+  })
+
+  it('keeps the list statuses in the order Start offers them', () => {
+    expect(toggleStatus(filters({ statuses: ['REPEATING'] }), 'COMPLETED').statuses).toEqual(['COMPLETED', 'REPEATING'])
+    expect(toggleStatus(filters(), 'COMPLETED').statuses).toEqual(['REPEATING'])
   })
 })

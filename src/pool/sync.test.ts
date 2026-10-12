@@ -97,6 +97,10 @@ describe('syncEvents on a Keep My Scale Ranking: its Pool is fixed once it start
     expect(syncEvents(log, [entry(1, 'DROPPED'), scored(2, 80, 'PAUSED')], DEFAULT, 'ROMAJI')).toEqual([])
   })
 
+  it('keeps a picked title moved to Planning: it is still on the list', () => {
+    expect(syncEvents(log, [entry(1, 'PLANNING'), scored(2, 60, 'PLANNING')], DEFAULT, 'ROMAJI')).toEqual([])
+  })
+
   it('never changes the Anchor snapshot: Anchors that changed or left the list are not Pool titles', () => {
     expect(syncEvents(log, [scored(101, 40), entry(102), entry(1), scored(2, 60)], DEFAULT, 'ROMAJI')).toEqual([])
   })

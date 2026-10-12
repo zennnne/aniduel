@@ -21,7 +21,7 @@ import {
   savePoolSettings,
   type RankingKey,
 } from '../persistence/progress.ts'
-import { DEFAULT_STATUSES, OFFERED_STATUSES } from '../pool/pool.ts'
+import { DEFAULT_STATUSES, LIST_STATUSES } from '../pool/pool.ts'
 import { syncEvents } from '../pool/sync.ts'
 import {
   KEEP_MY_SCALE,
@@ -32,7 +32,6 @@ import {
   startLog,
   startKeepMyScaleLog,
   withSub,
-  type AnchorScore,
   type BandIndex,
   type LogEvent,
   type RankingState,
@@ -50,6 +49,7 @@ import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
 import { createPassedStore } from '../catchup/passed.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
+import { isWatched } from '../catchup/watched.ts'
 import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
 import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
 import { StartingEraChip, StartingEraQuestion } from './catchup/StartingEraQuestion.tsx'
@@ -81,14 +81,11 @@ import { Shell, type Notice } from './Shell.tsx'
 import { SCREENS, rankingShown, shownScreen, splitBandOf, type RankingShown, type Screen, type Shown } from './shownScreen.ts'
 import { PickAgainDialog } from './picker/PickAgainDialog.tsx'
 import { PickerScreen } from './picker/PickerScreen.tsx'
-import { startingPicks, type PickerEntry } from './picker/pickerView.ts'
+import { startingPicks, type PickerStart, type PickerWayIn } from './picker/pickerView.ts'
 import { StartScreen } from './start/StartScreen.tsx'
 import { animeStanding, startView, type StartView } from './start/startView.ts'
 import { useTheme } from './theme.ts'
 import { useDuelLog } from './useDuelLog.ts'
-
-/** What the Picker's Confirm starts a Keep My Scale Ranking on (#64). */
-type KeepMyScaleStart = { order: number[]; anchors: AnchorScore[] }
 
 type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-keep-my-scale' | 'pick-again'
 
@@ -158,11 +155,11 @@ export function App({ fake }: { fake?: AniListSession }) {
   // follows the Pool size (#38). A saved Ranking's goal lives in its log. Not reset on logout: logging in again loads the page anew.
   const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
   // How the Picker was last opened, which decides its starting picks (#64); the picks themselves live in the Picker.
-  const [pickerEntry, setPickerEntry] = useState<PickerEntry>({ from: 'start' })
+  const [pickerWayIn, setPickerWayIn] = useState<PickerWayIn>({ from: 'start' })
   // The remembered unsettled titles the user chose to pick again on the way in (#66); empty when they said no.
   const [pickAgain, setPickAgain] = useState<readonly number[]>([])
   // What the Picker's Confirm would start, held while the Replace dialog asks about the saved Ranking.
-  const [pickedStart, setPickedStart] = useState<KeepMyScaleStart | null>(null)
+  const [pickedStart, setPickedStart] = useState<PickerStart | null>(null)
 
   const gateway = useMemo(() => (token ? createAniListGateway({ fetch: aniListFetch, token }) : null), [aniListFetch, token])
   // The write queue's requests and Catch-up's reads take turns in one limiter, so together they keep to AniList's rate limit.
@@ -192,6 +189,8 @@ export function App({ fake }: { fake?: AniListSession }) {
   const pool = start?.pool ?? null
   const oldScores = start?.oldScores ?? null
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
+  // The anime list without its Planning titles, as Catch-up reads it (it reads Planning itself, fresh).
+  const watchedAnime = useMemo(() => lists.ANIME?.filter(isWatched) ?? null, [lists.ANIME])
 
   const imports = usePreviewImport({
     storage: localStorage,
@@ -222,7 +221,7 @@ export function App({ fake }: { fake?: AniListSession }) {
     storage: localStorage,
     passedStore,
     gateway,
-    animeList: lists.ANIME ?? null,
+    animeList: watchedAnime,
     queue: writes.queue,
     source: candidateSource,
     viewer,
@@ -361,7 +360,7 @@ export function App({ fake }: { fake?: AniListSession }) {
    */
   function refreshList(type: MediaType): Promise<void> {
     if (!gateway || !viewer) return Promise.resolve()
-    return gateway.mediaList({ userId: viewer.id, type, statuses: OFFERED_STATUSES }).then(
+    return gateway.mediaList({ userId: viewer.id, type, statuses: LIST_STATUSES }).then(
       (fetched) => {
         setLists((prev) => ({ ...prev, [type]: fetched }))
         const summary = syncPool(type, fetched, statuses)
@@ -376,8 +375,9 @@ export function App({ fake }: { fake?: AniListSession }) {
   useEffect(() => {
     if (!gateway || !viewer || !listToFetch) return
     let cancelled = false
-    // Fetch every offered status once, so each chip can show its count and toggling needs no refetch.
-    gateway.mediaList({ userId: viewer.id, type: listToFetch, statuses: OFFERED_STATUSES }).then(
+    // Fetch every status once, so each chip can show its count and toggling needs no refetch. Planning comes too,
+    // for Keep My Scale's Anchors and Pool (LIST_STATUSES); nothing shows or offers those titles.
+    gateway.mediaList({ userId: viewer.id, type: listToFetch, statuses: LIST_STATUSES }).then(
       (list) => !cancelled && onListFetched(listToFetch, list),
       (e: unknown) => !cancelled && onGatewayError(e),
     )
@@ -689,8 +689,8 @@ export function App({ fake }: { fake?: AniListSession }) {
    * Opens the Picker (#64); it starts from the picks for how it was opened. When the last Keep My Scale Ranking left
    * titles unsettled that the Picker can show, the user is first asked whether to pick them again (#66).
    */
-  function openPicker(entry: PickerEntry, type: MediaType = mediaType) {
-    setPickerEntry(entry)
+  function openPicker(wayIn: PickerWayIn, type: MediaType = mediaType) {
+    setPickerWayIn(wayIn)
     // Catch-up's exit offer switches to anime in the same click, so the store and list are read for `type`.
     const remembered = viewerId === null ? [] : createUnsettledStore(localStorage, { userId: viewerId, mediaType: type }).titles(lists[type] ?? [])
     if (remembered.length > 0) {
@@ -711,7 +711,7 @@ export function App({ fake }: { fake?: AniListSession }) {
    * The Picker's Confirm (#64): starts the Keep My Scale Ranking on the picks, or first asks to replace a saved
    * Scores / Full Ranking Ranking (#46).
    */
-  function confirmPicks(picks: KeepMyScaleStart) {
+  function confirmPicks(picks: PickerStart) {
     if (log) {
       setPickedStart(picks)
       setDialog('replace-with-keep-my-scale')
@@ -724,12 +724,12 @@ export function App({ fake }: { fake?: AniListSession }) {
    * Keep My Scale (ADR 0009, ADR 0011): the Picker's Anchor snapshot (every scored title but the picks) goes into a
    * new log now; Duels start straight away. The Picker leaves the history, so Back from the Duels goes to Start.
    */
-  function startKeepMyScale({ order, anchors }: KeepMyScaleStart) {
+  function startKeepMyScale({ order, anchors }: PickerStart) {
     if (!viewer) return
     const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids: order })
     if (!saved(() => duelLog.save(log))) return
     // The titles left unsettled last time are offered no more, whether or not they were picked again (#66).
-    createUnsettledStore(localStorage, { userId: viewer.id, mediaType }).clear()
+    unsettledStore?.clear()
     window.history.replaceState({ screen: 'start' }, '')
     goTo('ranking')
   }
@@ -939,7 +939,7 @@ export function App({ fake }: { fake?: AniListSession }) {
         return (
           <StartScreen
             form={form}
-            covers={pool?.titles ?? list ?? trending}
+            covers={pool?.titles ?? list?.filter(isWatched) ?? trending}
             loggingIn={Boolean(token) && !viewer && !notice}
             onLogin={loginRedirect}
             theme={theme}
@@ -954,7 +954,7 @@ export function App({ fake }: { fake?: AniListSession }) {
             scoreFormat={shown.viewer.scoreFormat}
             titleLanguage={shown.viewer.titleLanguage}
             mediaType={mediaType}
-            initialPicks={startingPicks(list ?? [], pickerEntry, pickAgain)}
+            initialPicks={startingPicks(list ?? [], shown.viewer.scoreFormat, pickerWayIn, pickAgain)}
             onBack={() => window.history.back()}
             onConfirm={confirmPicks}
           />
@@ -1279,7 +1279,6 @@ export function App({ fake }: { fake?: AniListSession }) {
           left={unsettledStore.titles(list ?? []).length}
           onPickAgain={() => enterPicker(unsettledStore.titles(list ?? []))}
           onSkip={() => enterPicker([])}
-          onCancel={() => setDialog(null)}
         />
       )}
       {dialog === 'start-over' && viewer && (

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
-import { anchorsOf, keepMyScaleEligibility, keepMyScalePool, unscoredTitles } from './anchors.ts'
+import { anchorsOf, hasScore, keepMyScaleEligibility, keepMyScalePool, unscoredTitles } from './anchors.ts'
 
 let nextId = 1
 const entry = (oldScore100: number, status: ListStatus = 'COMPLETED'): ListEntry => ({
@@ -23,11 +23,12 @@ const scored = (count: number, scores: number[]) => Array.from({ length: count }
 
 describe('Anchors', () => {
   it('are every title with a score, whatever its status, at its level of the Score Format', () => {
-    const list = [entry(90), entry(0), entry(70, 'DROPPED'), entry(55, 'PAUSED'), entry(0, 'CURRENT')]
+    const list = [entry(90), entry(0), entry(70, 'DROPPED'), entry(55, 'PAUSED'), entry(0, 'CURRENT'), entry(60, 'PLANNING')]
     expect(anchorsOf(list, 'POINT_10')).toEqual([
       { id: list[0].mediaId, level: 9 },
       { id: list[2].mediaId, level: 7 },
       { id: list[3].mediaId, level: 5 },
+      { id: list[5].mediaId, level: 6 },
     ])
   })
 
@@ -76,16 +77,34 @@ describe("a saved Keep My Scale Ranking's Pool", () => {
     const anchor = entry(80)
     const unscored = entry(0, 'DROPPED')
     const rescored = entry(70, 'PAUSED')
+    const planned = entry(60, 'PLANNING')
     const other = entry(0)
-    const list = [anchor, unscored, rescored, other]
-    const saved = { anchors: new Set([anchor.mediaId]), pool: new Set([unscored.mediaId, rescored.mediaId, 999]) }
-    expect(keepMyScalePool(list, saved).titles.map((e) => e.mediaId)).toEqual([unscored.mediaId, rescored.mediaId])
+    const list = [anchor, unscored, rescored, planned, other]
+    const saved = { anchors: new Set([anchor.mediaId]), pool: new Set([unscored.mediaId, rescored.mediaId, planned.mediaId, 999]) }
+    expect(keepMyScalePool(list, saved).titles.map((e) => e.mediaId)).toEqual([unscored.mediaId, rescored.mediaId, planned.mediaId])
   })
 })
 
 describe('the titles without a score Start counts for Keep My Scale', () => {
   it('are the unscored Completed and Repeating titles', () => {
-    const list = [entry(0), entry(0, 'REPEATING'), entry(0, 'DROPPED'), entry(0, 'CURRENT'), entry(80)]
-    expect(unscoredTitles(list)).toEqual([list[0], list[1]])
+    const list = [entry(0), entry(0, 'REPEATING'), entry(0, 'DROPPED'), entry(0, 'CURRENT'), entry(0, 'PLANNING'), entry(80)]
+    expect(unscoredTitles(list, 'POINT_10')).toEqual([list[0], list[1]])
+  })
+
+  it('include a title whose score is too small to show in the Score Format, as it is no Anchor either', () => {
+    // 5 of 100 is 0 on 10 points, which AniList shows as no score.
+    const list = [entry(5), entry(10)]
+    expect(unscoredTitles(list, 'POINT_10')).toEqual([list[0]])
+    expect(unscoredTitles(list, 'POINT_100')).toEqual([])
+    expect(anchorsOf(list, 'POINT_10').map((a) => a.id)).toEqual([list[1].mediaId])
+  })
+})
+
+describe('whether a title has a score', () => {
+  it('is whether its score shows as a level of the Score Format', () => {
+    expect(hasScore(entry(0), 'POINT_100')).toBe(false)
+    expect(hasScore(entry(5), 'POINT_10')).toBe(false)
+    expect(hasScore(entry(5), 'POINT_100')).toBe(true)
+    expect(hasScore(entry(10), 'POINT_10')).toBe(true)
   })
 })

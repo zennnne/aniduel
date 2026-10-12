@@ -325,6 +325,8 @@ export function PreviewScreen(props: {
       {suspects.length > 0 && (
         <div className="forg">
           <b className="strong">Suspect Anchors ({suspects.length}) — no longer used as a reference, score kept</b>
+          {/* ADR 0011: a picked title is scored again, so this is how a Suspect Anchor gets fixed. */}
+          <span className="small">To fix one, pick it in your next Keep My Scale Ranking.</span>
           {suspects.map(({ id, level, contradicted }) => {
             const entry = entries.get(id)
             return (

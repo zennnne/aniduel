@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ListEntry, ListStatus, MediaType, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import type { AnchorScore } from '../../ranking/engine.ts'
 import { OFFERED_STATUSES } from '../../pool/pool.ts'
 import { count } from '../meta.ts'
 import { statusLabel } from '../start/statusLabel.ts'
@@ -10,12 +9,15 @@ import {
   addPicks,
   DEFAULT_PICKER_FILTERS,
   pickerView,
+  toggleFacet,
   togglePick,
+  toggleStatus,
   wayOut,
   type PickerChange,
   type PickerFacet,
   type PickerFilters,
   type PickerSort,
+  type PickerStart,
   type PickerView,
 } from './pickerView.ts'
 
@@ -37,6 +39,8 @@ function changeLabel(change: PickerChange, filters: PickerFilters): string {
       return `Look in all years, not only ${filters.year}`
     case 'genres-tags':
       return 'Clear genres and tags'
+    case 'picked-only':
+      return 'Show titles not picked too'
   }
 }
 
@@ -54,9 +58,6 @@ const PHONE_COLUMNS = 3
 const CARD_TEXT = 58
 const OVERSCAN_ROWS = 2
 
-/** The chosen names with `name` added, or taken out if it was chosen. */
-const toggled = (chosen: readonly string[], name: string) => (chosen.includes(name) ? chosen.filter((n) => n !== name) : [...chosen, name])
-
 /**
  * The Picker (#64, ADR 0011): the user ticks the titles a Keep My Scale Ranking will score, finding them with the
  * search, filters and sorts (#65). The layout is the one chosen in #63: a wall of covers, the filters in a rail that
@@ -73,7 +74,7 @@ export function PickerScreen(props: {
   initialPicks: ReadonlySet<number>
   onBack: () => void
   /** Confirm: start the Ranking on these titles, in this order, against this Anchor snapshot. */
-  onConfirm: (start: { order: number[]; anchors: AnchorScore[] }) => void
+  onConfirm: (start: PickerStart) => void
 }) {
   const { list, scoreFormat, titleLanguage, mediaType } = props
   const [picked, setPicked] = useState<ReadonlySet<number>>(props.initialPicks)
@@ -90,11 +91,7 @@ export function PickerScreen(props: {
   const { summary, confirm, dock } = view
   const patch = (more: Partial<PickerFilters>) => setFilters((current) => ({ ...current, ...more }))
   const toggle = useCallback((id: number) => setPicked((current) => togglePick(current, id)), [])
-  const toggleStatus = (status: ListStatus) =>
-    setFilters((current) => {
-      const on = current.statuses.includes(status)
-      return { ...current, statuses: OFFERED_STATUSES.filter((s) => (s === status ? !on : current.statuses.includes(s))) }
-    })
+  const onStatus = (status: ListStatus) => setFilters((current) => toggleStatus(current, status))
   const openGenres = () => {
     patch({ tagSearch: '' })
     setGenresOpen(true)
@@ -119,7 +116,7 @@ export function PickerScreen(props: {
         {OFFERED_STATUSES.map((status) => {
           const on = filters.statuses.includes(status)
           return (
-            <button key={status} className="pk-ck" role="checkbox" aria-checked={on} onClick={() => toggleStatus(status)}>
+            <button key={status} className="pk-ck" role="checkbox" aria-checked={on} onClick={() => onStatus(status)}>
               <span className={on ? 'pk-box on' : 'pk-box'} aria-hidden="true">
                 ✓
               </span>
@@ -179,7 +176,7 @@ export function PickerScreen(props: {
         {filters.statuses.map((status) => (
           <span key={status} className="pk-tok">
             {statusLabel(status, mediaType)}
-            <button aria-label={`Hide ${statusLabel(status, mediaType)}`} onClick={() => toggleStatus(status)}>
+            <button aria-label={`Hide ${statusLabel(status, mediaType)}`} onClick={() => onStatus(status)}>
               ✕
             </button>
           </span>
@@ -302,7 +299,7 @@ export function PickerScreen(props: {
           view={view}
           tagSearch={filters.tagSearch}
           onTagSearch={(tagSearch) => patch({ tagSearch })}
-          onFacet={(key, name) => setFilters((current) => ({ ...current, [key]: toggled(current[key], name) }))}
+          onFacet={(key, name) => setFilters((current) => toggleFacet(current, key, name))}
           onClear={() => patch({ genres: [], tags: [], tagSearch: '' })}
           onClose={() => setGenresOpen(false)}
         />
