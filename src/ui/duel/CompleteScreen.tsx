@@ -5,11 +5,11 @@ import { UNDO_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import './duel.css'
 import { titleName } from '../meta.ts'
-import { newTitlesLines, rankingLines } from '../rankingLines.ts'
+import { keepMyScaleLines, rankingLines } from '../rankingLines.ts'
 
 /**
- * Shown once every Band is ranked: the whole Ranking, Bands → Tiers → titles, and the way on to Preview. Under Score
- * New Titles (ADR 0009): every new title by score, sorted by name.
+ * Shown once every Band is ranked: the whole Ranking, Bands → Tiers → titles, and the way on to Preview. Under Keep
+ * My Scale (ADR 0009): every picked title by score, sorted by name.
  */
 export function CompleteScreen(props: {
   state: RankingState
@@ -21,7 +21,7 @@ export function CompleteScreen(props: {
 }) {
   const { state, entries, titleLanguage, onUndo, onScore } = props
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
-  if (state.newTitles) return <NewTitlesComplete {...props} name={name} />
+  if (state.keepMyScale) return <KeepMyScaleComplete {...props} name={name} />
   const bands = BANDS.map((band) => ({ band, lines: rankingLines(state, band, name) })).filter(({ lines }) => lines.length > 0)
   // Scores (#25): each line is a score level, its titles sorted by name and joined by " · ", since they have no order.
   const scores = isScores(state)
@@ -60,19 +60,19 @@ export function CompleteScreen(props: {
 }
 
 /**
- * Score New Titles (ADR 0009): "Every new title has a score", the scores with their new titles, and on to Preview.
+ * Keep My Scale (ADR 0009): "Every title has a score", the scores with their picked titles, and on to Preview.
  * Titles left with no Anchor to compare (every one Forgotten or Suspect) are never given a score: counted here,
  * listed on Preview's unsettled card.
  */
-function NewTitlesComplete(props: { state: RankingState; name: (id: number) => string; onUndo: () => void; onScore?: () => void }) {
+function KeepMyScaleComplete(props: { state: RankingState; name: (id: number) => string; onUndo: () => void; onScore?: () => void }) {
   const { state, name, onUndo, onScore } = props
-  const lines = newTitlesLines(state, name).filter((line) => line.ids.length > 0)
+  const lines = keepMyScaleLines(state, name).filter((line) => line.ids.length > 0)
   const { done, total } = state.progress.ranked
   return (
     <div className="ranked">
-      <div className="h1">{done === total ? 'Every new title has a score' : 'No more Duels to ask'}</div>
+      <div className="h1">{done === total ? 'Every title has a score' : 'No more Duels to ask'}</div>
       <div className="sub">
-        {done} new titles scored
+        {done} titles scored
         {done < total && ` · ${total - done} not settled: no Anchor left to compare`}
         {state.forgotten.length > 0 && ` · ${state.forgotten.length} Forgotten`} · titles on the same score have no order
         among themselves

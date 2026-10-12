@@ -1,5 +1,5 @@
-// Score New Titles (ADR 0009) inside the Ranking Engine: where each new title stands against the Anchor score
-// levels, which Anchor it meets next, and what an answer tells. Pure; the engine owns one `NewTitles` per replay
+// Keep My Scale (ADR 0009) inside the Ranking Engine: where each picked title stands against the Anchor score
+// levels, which Anchor it meets next, and what an answer tells. Pure; the engine owns one `KeepMyScale` per replay
 // and calls in here for every event under this Sort Goal.
 //
 // A title's place is searched over 2k+1 positions for k Anchor levels (best first): position 2m+1 is level m itself
@@ -21,31 +21,31 @@ export type AnchorScore = { id: number; level: number }
 /** An Anchor score level and the Anchors on it, by id ascending. */
 export type AnchorLevel = { level: number; anchors: readonly number[] }
 
-/** A new title's standing: the levels it can still get, best first. Settled = exactly one level is left. */
-export type NewTitle = { id: number; settled: boolean; levels: readonly number[] }
+/** A picked title's standing: the levels it can still get, best first. Settled = exactly one level is left. */
+export type PickedTitle = { id: number; settled: boolean; levels: readonly number[] }
 
 /** An Anchor no longer used as a reference: its old score (a level), and how many settled titles contradicted it. */
 export type SuspectAnchor = { id: number; level: number; contradicted: number }
 
-/** What replay shows of a Score New Titles Ranking. */
-export type NewTitlesState = {
+/** What replay shows of a Keep My Scale Ranking. */
+export type KeepMyScaleState = {
   /** The Score Format the Anchor snapshot was taken in: every level here is one of its levels. */
   format: ScoreFormat
   /** The Anchor score levels, best first. */
   levels: readonly AnchorLevel[]
   /** How many Anchors the snapshot has, on every level (Forgotten and Suspect ones too). */
   anchorCount: number
-  /** Every new title in the Ranking (Forgotten ones are not), in the order Duels work on them. */
-  titles: readonly NewTitle[]
+  /** Every picked title in the Ranking (Forgotten ones are not), in the order Duels work on them. */
+  titles: readonly PickedTitle[]
   /** Suspect Anchors (not Forgotten ones), best score first, then by id. Their scores are never changed. */
   suspect: readonly SuspectAnchor[]
 }
 
-/** One answered Duel of a new title: the Anchor, its level index, and how the title did against it. */
+/** One answered Duel of a picked title: the Anchor, its level index, and how the title did against it. */
 type AnchorAnswer = { anchor: number; level: number; result: 'win' | 'tie' | 'loss' }
 
 /**
- * A new title being placed: the positions lo..hi it can still be at, every answer it was given against an Anchor, in
+ * A picked title being placed: the positions lo..hi it can still be at, every answer it was given against an Anchor, in
  * order (never the same Anchor twice), and its closer-to answer once given: the positions lo..hi it was asked at and
  * the score chosen, which counts only while the same prompt would still be asked. Once an answer settles it (a Duel
  * that leaves it on a score or past the extremes, or the closer-to answer), `contradicts` holds the Anchors whose
@@ -66,7 +66,7 @@ type Side = 'above' | 'below'
 /** An Anchor that may be asked, with its level index. */
 type Voter = { anchor: number; level: number }
 
-export type NewTitles = {
+export type KeepMyScale = {
   format: ScoreFormat
   levels: AnchorLevel[]
   anchorIds: ReadonlySet<number>
@@ -78,24 +78,24 @@ export type NewTitles = {
    */
   suspect: Map<number, number>
   seed: number
-  /** Every new title, in the order they joined (Unforgotten ones at the front). */
+  /** Every picked title, in the order they joined (Unforgotten ones at the front). */
   queue: Placement[]
 }
 
-/** The next Duel: new title `a` against Anchor `b`, which is on Anchor level index `level`. */
+/** The next Duel: picked title `a` against Anchor `b`, which is on Anchor level index `level`. */
 export type AnchorDuel = { a: number; b: number; level: number }
 
 /** The closer-to prompt (GLOSSARY): which of the scores `upper` and `lower` title `id` is closer to. */
 export type CloserTo = { id: number; upper: number; lower: number }
 
-/** What a Score New Titles Ranking asks next. */
-export type NewTitlesQuestion = ({ kind: 'anchor-duel' } & AnchorDuel) | ({ kind: 'closer-to' } & CloserTo)
+/** What a Keep My Scale Ranking asks next. */
+export type KeepMyScaleQuestion = ({ kind: 'anchor-duel' } & AnchorDuel) | ({ kind: 'closer-to' } & CloserTo)
 
 /**
  * Builds the search from the Anchor snapshot, or returns why the snapshot can't be used. Anchors are grouped by
  * score, best first; inside a level they are kept by id, so the choice of Anchor never depends on snapshot order.
  */
-export function startNewTitles(format: ScoreFormat, anchors: readonly AnchorScore[], seed: number): NewTitles | string {
+export function startKeepMyScale(format: ScoreFormat, anchors: readonly AnchorScore[], seed: number): KeepMyScale | string {
   if (!Array.isArray(anchors) || anchors.length === 0) return 'The Anchor snapshot must list at least one Anchor'
   const valid = new Set(levelsOf(format))
   const byLevel = new Map<number, number[]>()
@@ -112,22 +112,22 @@ export function startNewTitles(format: ScoreFormat, anchors: readonly AnchorScor
   return { format, levels, anchorIds: ids, excluded: new Set(), suspect: new Map(), seed, queue: [] }
 }
 
-/** New titles join at the back, knowing nothing yet. */
-export function addNewTitles(state: NewTitles, ids: readonly number[]): void {
+/** Picked titles join at the back, knowing nothing yet. */
+export function addPickedTitles(state: KeepMyScale, ids: readonly number[]): void {
   for (const id of ids) state.queue.push(fresh(state, id))
 }
 
 /** An Unforgotten title starts its search again, at the front. */
-export function returnNewTitle(state: NewTitles, id: number): void {
+export function returnPickedTitle(state: KeepMyScale, id: number): void {
   state.queue.unshift(fresh(state, id))
 }
 
-function fresh(state: NewTitles, id: number): Placement {
+function fresh(state: KeepMyScale, id: number): Placement {
   return { id, lo: 0, hi: 2 * state.levels.length, answers: [] }
 }
 
 /** Takes a title out (Forgotten, or it left the Pool). Every other title keeps what it knows. */
-export function takeOutNewTitle(state: NewTitles, id: number): void {
+export function takeOutPickedTitle(state: KeepMyScale, id: number): void {
   const at = state.queue.findIndex((p) => p.id === id)
   if (at >= 0) state.queue.splice(at, 1)
   refreshSuspects(state)
@@ -142,7 +142,7 @@ const SUSPECT_AFTER = 2
  * without it: suspicion can't feed back into the placements it was judged from. Forgotten or Unforgotten titles take
  * their record with them.
  */
-function refreshSuspects(state: NewTitles): void {
+function refreshSuspects(state: KeepMyScale): void {
   state.suspect.clear()
   for (const placement of state.queue) {
     for (const anchor of placement.contradicts ?? []) state.suspect.set(anchor, (state.suspect.get(anchor) ?? 0) + 1)
@@ -179,12 +179,12 @@ function contradictionsOf(placement: Placement, position: number, open: Range = 
  * Forgotten on an Anchor: it stops being chosen for Duels, and its answers stop counting on boundaries still open
  * (`decide`). Boundaries it already helped decide stay decided: they are kept in lo..hi.
  */
-export function excludeAnchor(state: NewTitles, id: number): void {
+export function excludeAnchor(state: KeepMyScale, id: number): void {
   state.excluded.add(id)
 }
 
 /** Unforgotten on an Anchor: it can be chosen again. */
-export function includeAnchor(state: NewTitles, id: number): void {
+export function includeAnchor(state: KeepMyScale, id: number): void {
   state.excluded.delete(id)
 }
 
@@ -193,7 +193,7 @@ export function includeAnchor(state: NewTitles, id: number): void {
  * `standing` names, against the next Anchor that may vote on that level's first open boundary. Null once no title has
  * one: every title is settled, or left unsettled with nothing to ask (see `standing`).
  */
-export function nextQuestion(state: NewTitles): NewTitlesQuestion | null {
+export function nextQuestion(state: KeepMyScale): KeepMyScaleQuestion | null {
   for (const placement of state.queue) {
     const now = standing(state, placement)
     if (now.kind === 'closer-to') return { kind: 'closer-to', id: placement.id, upper: now.upper, lower: now.lower }
@@ -229,7 +229,7 @@ type Standing =
   | { kind: 'duel'; at: Range; level: number }
   | { kind: 'stuck'; at: Range }
 
-function standing(state: NewTitles, placement: Placement): Standing {
+function standing(state: KeepMyScale, placement: Placement): Standing {
   const at = range(state, placement)
   const open = openLevels(at)
   let pair: [number, number]
@@ -272,7 +272,7 @@ function openLevels({ lo, hi }: Range): { first: number; last: number; middle: n
  * The open level to ask next: the middle one, or when every Anchor on it is Forgotten the nearest open level that
  * still has one (the upper first). Null once the title is settled, or when no open level has an Anchor left.
  */
-function nextLevel(state: NewTitles, at: Range): number | null {
+function nextLevel(state: KeepMyScale, at: Range): number | null {
   const open = openLevels(at)
   if (!open) return null
   const { first, last, middle } = open
@@ -285,7 +285,7 @@ function nextLevel(state: NewTitles, at: Range): number | null {
 }
 
 /** A level's Anchors that may still be chosen, by id ascending. */
-function usable(state: NewTitles, level: number): readonly number[] {
+function usable(state: KeepMyScale, level: number): readonly number[] {
   return state.levels[level].anchors.filter((id) => !state.excluded.has(id) && !state.suspect.has(id))
 }
 
@@ -296,7 +296,7 @@ const levelOfBoundary = (j: number) => Math.floor((j - 1) / 2)
  * The levels whose Anchors may vote on boundary j, in the order they are asked: its own level, then the neighbouring
  * level across it (above a top, below a bottom), then the other neighbour.
  */
-function voterLevels(state: NewTitles, j: number): number[] {
+function voterLevels(state: KeepMyScale, j: number): number[] {
   const m = levelOfBoundary(j)
   const across = j % 2 === 1 ? m - 1 : m + 1
   const other = j % 2 === 1 ? m + 1 : m - 1
@@ -314,7 +314,7 @@ const VOTER_SALT = 0xa0c4
  * Anchors start at a point picked from the seed, the title and the level only, so replay asks the same Duels
  * (ADR 0005) while different titles meet different Anchors.
  */
-function nextVoter(state: NewTitles, placement: Placement, j: number): Voter | null {
+function nextVoter(state: KeepMyScale, placement: Placement, j: number): Voter | null {
   const met = new Set(placement.answers.map((answer) => answer.anchor))
   const unmet = (level: number): Voter | null => {
     const anchors = usable(state, level)
@@ -361,7 +361,7 @@ function vote(j: number, { level, result }: AnchorAnswer): Side | null {
  * contradicting it. Once every voter has answered without a verdict, the side with more votes wins, and an even split
  * goes to the own level's lean. Answers from Forgotten or Suspect Anchors don't count.
  */
-function decide(state: NewTitles, placement: Placement, j: number): Side | null {
+function decide(state: KeepMyScale, placement: Placement, j: number): Side | null {
   const counts = placement.answers.filter((answer) => !state.excluded.has(answer.anchor) && !state.suspect.has(answer.anchor))
   const [ownLevel, ...neighbours] = voterLevels(state, j)
   const own = counts.filter((answer) => answer.level === ownLevel)
@@ -387,7 +387,7 @@ function decide(state: NewTitles, placement: Placement, j: number): Side | null 
  * The positions a title can be at now: its stored lo..hi narrowed, from the top down, by every boundary inside it
  * that the answers decide. Derived, so a Forgotten or Brought back Anchor changes it without an answer.
  */
-function range(state: NewTitles, placement: Placement): Range {
+function range(state: KeepMyScale, placement: Placement): Range {
   let { lo, hi } = placement
   for (let j = lo + 1; j <= hi; j++) {
     const side = decide(state, placement, j)
@@ -402,7 +402,7 @@ function range(state: NewTitles, placement: Placement): Range {
  * isn't the Duel the engine prompts now, so replay can refuse it. What the answer decides is kept in lo..hi: a
  * decided boundary is never reopened by later answers.
  */
-export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner: number | null): boolean {
+export function answerAnchorDuel(state: KeepMyScale, a: number, b: number, winner: number | null): boolean {
   const duel = nextQuestion(state)
   if (duel?.kind !== 'anchor-duel' || !((duel.a === a && duel.b === b) || (duel.a === b && duel.b === a))) return false
   const placement = state.queue.find((p) => p.id === duel.a)!
@@ -423,7 +423,7 @@ export function answerAnchorDuel(state: NewTitles, a: number, b: number, winner:
  * Applies a closer-to answer: title `id` takes `level`. Returns false when it isn't the closer-to prompt asked now, or
  * `level` isn't one of its two scores, so replay can refuse it.
  */
-export function answerCloserTo(state: NewTitles, id: number, level: number): boolean {
+export function answerCloserTo(state: KeepMyScale, id: number, level: number): boolean {
   const question = nextQuestion(state)
   if (question?.kind !== 'closer-to' || question.id !== id || (level !== question.upper && level !== question.lower)) return false
   const placement = state.queue.find((p) => p.id === id)!
@@ -437,10 +437,10 @@ export function answerCloserTo(state: NewTitles, id: number, level: number): boo
 }
 
 /**
- * Re-rank on a new title: it drops every answer it was given (Duels and closer-to) and the contradictions it recorded,
- * and starts its search again at the front. Returns false for anything but a new title in the queue.
+ * Re-rank on a picked title: it drops every answer it was given (Duels and closer-to) and the contradictions it recorded,
+ * and starts its search again at the front. Returns false for anything but a picked title in the queue.
  */
-export function rerankNewTitle(state: NewTitles, id: number): boolean {
+export function rerankPickedTitle(state: KeepMyScale, id: number): boolean {
   const at = state.queue.findIndex((p) => p.id === id)
   if (at < 0) return false
   state.queue.splice(at, 1)
@@ -453,7 +453,7 @@ export function rerankNewTitle(state: NewTitles, id: number): boolean {
  * The scores on either side of gap g: the Anchor levels around it, or past the extremes the next point of the human
  * Score Step grid above the top Anchor score (below the bottom one), never past the Score Format's ends (ADR 0009).
  */
-function gapLevels(state: NewTitles, gap: number): { above: number; below: number } {
+function gapLevels(state: KeepMyScale, gap: number): { above: number; below: number } {
   const k = state.levels.length
   return {
     above: gap === 0 ? humanStepPast(state.format, state.levels[0].level, 1) : state.levels[gap - 1].level,
@@ -462,14 +462,14 @@ function gapLevels(state: NewTitles, gap: number): { above: number; below: numbe
 }
 
 /** The levels a position may still give: its own level, or for a gap the levels on either side of it. */
-function levelsNear(state: NewTitles, position: number): number[] {
+function levelsNear(state: KeepMyScale, position: number): number[] {
   if (position % 2 === 1) return [state.levels[(position - 1) / 2].level]
   const { above, below } = gapLevels(state, position / 2)
   return [above, below]
 }
 
-export function newTitlesView(state: NewTitles): NewTitlesState {
-  const titles = state.queue.map((placement): NewTitle => {
+export function keepMyScaleView(state: KeepMyScale): KeepMyScaleState {
+  const titles = state.queue.map((placement): PickedTitle => {
     const { id } = placement
     const now = standing(state, placement)
     if (now.kind === 'settled') return { id, settled: true, levels: [now.level] }

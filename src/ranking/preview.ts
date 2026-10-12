@@ -2,23 +2,23 @@
 // and the Import plan the write queue writes.
 import type { ScoreFormat } from '../anilist/types.ts'
 import { compareNames } from '../names.ts'
-import { BANDS, type BandIndex, type NewTitlesState, type Prompt, type RankingState } from './engine.ts'
+import { BANDS, type BandIndex, type KeepMyScaleState, type Prompt, type RankingState } from './engine.ts'
 import { levelOfRaw, score, scoreRawOf, type Scores, type ScoringSettings } from './scoring.ts'
 import { isScores } from './sortGoal.ts'
 
 /**
  * Whether Preview can be open on this prompt: every title has its level, or only Refine Duels are left (#29). Those
  * come from a settings change on Scores and leave some titles unsettled; every settled title can still be imported.
- * Under Score New Titles every settled new title can be imported at any time (ADR 0009), so Preview is always open.
+ * Under Keep My Scale every settled picked title can be imported at any time (ADR 0009), so Preview is always open.
  */
 export function previewOpen(prompt: Prompt): boolean {
-  const newTitles = prompt.kind === 'anchor-duel' || prompt.kind === 'closer-to'
-  return prompt.kind === 'all-complete' || newTitles || (prompt.kind === 'duel' && prompt.refine === true)
+  const onKeepMyScale = prompt.kind === 'anchor-duel' || prompt.kind === 'closer-to'
+  return prompt.kind === 'all-complete' || onKeepMyScale || (prompt.kind === 'duel' && prompt.refine === true)
 }
 
 type RowBase = {
   id: number
-  /** Null under Score New Titles, which has no Bands (ADR 0009). */
+  /** Null under Keep My Scale, which has no Bands (ADR 0009). */
   band: BandIndex | null
   /** The title's AniList score now, on the 100-point scale (0 = no score). */
   oldScore100: number
@@ -62,7 +62,7 @@ export function previewRows(
   format: ScoreFormat,
   name: (id: number) => string,
 ): PreviewRow[] {
-  if (ranking.newTitles) return newTitlesRows(ranking.newTitles, oldScores, format, name)
+  if (ranking.keepMyScale) return keepMyScaleRows(ranking.keepMyScale, oldScores, format, name)
   const rows: PreviewRow[] = []
   for (const band of BANDS) {
     const { tiers, unplaced } = ranking.bands[band]
@@ -92,25 +92,25 @@ function byLevelThenName(rows: readonly PreviewRow[], name: (id: number) => stri
 }
 
 /**
- * Score New Titles (ADR 0009): one row per new title still in the Pool, with the Anchor score it settled on. Anchors
+ * Keep My Scale (ADR 0009): one row per picked title still in the Pool, with the Anchor score it settled on. Anchors
  * are never a row, so never written. Scores are the snapshot's levels: written as that raw score, shown at the Score
  * Format AniList reports now (`format`).
  */
-function newTitlesRows(
-  newTitles: NewTitlesState,
+function keepMyScaleRows(
+  keepMyScale: KeepMyScaleState,
   oldScores: ReadonlyMap<number, number>,
   format: ScoreFormat,
   name: (id: number) => string,
 ): PreviewRow[] {
-  const shown = (level: number) => levelOfRaw(format, scoreRawOf(newTitles.format, level))
+  const shown = (level: number) => levelOfRaw(format, scoreRawOf(keepMyScale.format, level))
   const rows: PreviewRow[] = []
-  for (const title of newTitles.titles) {
+  for (const title of keepMyScale.titles) {
     const oldScore100 = oldScores.get(title.id)
     if (oldScore100 === undefined) continue
     const old = levelOfRaw(format, oldScore100)
     const base = { id: title.id, band: null, oldScore100, oldLevel: old === 0 ? null : old }
     if (title.settled) {
-      const scoreRaw = scoreRawOf(newTitles.format, title.levels[0])
+      const scoreRaw = scoreRawOf(keepMyScale.format, title.levels[0])
       const level = shown(title.levels[0])
       rows.push({ ...base, settled: true, level, scoreRaw, changed: base.oldLevel !== level })
     } else {
@@ -121,16 +121,16 @@ function newTitlesRows(
 }
 
 /**
- * Score New Titles (ADR 0009, #47): the Suspect Anchors Preview lists under the score rows, read-only. `level` is the
+ * Keep My Scale (ADR 0009, #47): the Suspect Anchors Preview lists under the score rows, read-only. `level` is the
  * Anchor's old score, shown at the Score Format AniList reports now (`format`); it is never written. Empty on any
  * other Sort Goal.
  */
 export function suspectAnchors(ranking: RankingState, format: ScoreFormat): { id: number; level: number; contradicted: number }[] {
-  const newTitles = ranking.newTitles
-  if (!newTitles) return []
-  return newTitles.suspect.map(({ id, level, contradicted }) => ({
+  const keepMyScale = ranking.keepMyScale
+  if (!keepMyScale) return []
+  return keepMyScale.suspect.map(({ id, level, contradicted }) => ({
     id,
-    level: levelOfRaw(format, scoreRawOf(newTitles.format, level)),
+    level: levelOfRaw(format, scoreRawOf(keepMyScale.format, level)),
     contradicted,
   }))
 }

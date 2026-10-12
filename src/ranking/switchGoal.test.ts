@@ -4,11 +4,12 @@ import { describe, expect, it } from 'vitest'
 import type { ScoreFormat } from '../anilist/types.ts'
 import {
   BANDS,
+  KEEP_MY_SCALE,
   ReplayError,
   appendEvent,
   replay,
   startLog,
-  startNewTitlesLog,
+  startKeepMyScaleLog,
   type BandIndex,
   type DuelLog,
   type LogEvent,
@@ -47,7 +48,7 @@ function play(c: Case, log: DuelLog, stopAfter = Infinity): { state: RankingStat
   const pairs: string[] = []
   for (let state = replay(log); ; state = replay(log)) {
     const p = state.prompt
-    if (p.kind === 'closer-to') throw new Error('a closer-to prompt is Score New Titles only')
+    if (p.kind === 'closer-to') throw new Error('a closer-to prompt is Keep My Scale only')
     if (p.kind === 'all-complete' || pairs.length >= stopAfter) return { state, log, pairs }
     if (p.kind === 'rough-sort') {
       log = appendEvent(log, { type: 'band-assigned', id: p.id, band: c.band.get(p.id)! })
@@ -118,12 +119,12 @@ describe('switching the Sort Goal', () => {
   })
 })
 
-describe('Score New Titles never switches (ADR 0009)', () => {
+describe('Keep My Scale never switches (ADR 0009)', () => {
   const anchors = [9, 8, 7].map((level, i) => ({ id: 101 + i, level }))
-  const newTitlesLog = () => startNewTitlesLog({ seed: 1, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids: [1, 2] })
+  const keepMyScaleLog = () => startKeepMyScaleLog({ seed: 1, userId: 7, mediaType: 'ANIME', format: 'POINT_10', anchors, ids: [1, 2] })
 
   it('to Scores or Full Ranking: no events, and the engine refuses one written by hand at any point', () => {
-    let log = newTitlesLog()
+    let log = keepMyScaleLog()
     for (let answered = 0; answered < 3; answered++) {
       const state = replay(log)
       for (const goal of ['scores', 'full-ranking'] as const) {
@@ -139,7 +140,7 @@ describe('Score New Titles never switches (ADR 0009)', () => {
     const scores = startLog({ seed: 1, userId: 7, mediaType: 'ANIME', ids: [1, 2], scoreFormat: 'POINT_10' })
     const full = switched(scores, 'full-ranking', 'POINT_10')
     for (const log of [scores, full]) {
-      const goal = 'score-new-titles' as unknown as SwitchableGoal
+      const goal = KEEP_MY_SCALE as unknown as SwitchableGoal
       expect(() => replay(appendEvent(log, { type: 'sort-goal-set', goal }))).toThrow(ReplayError)
       expect(() => replay(appendEvent(log, { type: 'anchors-set', format: 'POINT_10', anchors }))).toThrow(ReplayError)
     }

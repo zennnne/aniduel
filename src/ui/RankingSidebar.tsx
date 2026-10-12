@@ -4,7 +4,7 @@ import { BANDS, SUB_BANDS, progressOf, promptedTitle, type BandIndex, type Ranki
 import { SUB_BAND_UI } from './bands.ts'
 import { Kao } from './Kao.tsx'
 import { MEDIA_LABEL, count, titleName } from './meta.ts'
-import { newTitlesLines, rankingLines } from './rankingLines.ts'
+import { keepMyScaleLines, rankingLines } from './rankingLines.ts'
 import { formatLevel } from '../ranking/scoring.ts'
 
 /**
@@ -29,7 +29,7 @@ export function RankingSidebar(props: {
   const roughSorting = prompt.kind === 'rough-sort'
   const { done, total } = roughSorting ? state.progress.roughSort : state.progress.ranked
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
-  if (state.newTitles) return <NewTitlesSidebar {...props} name={name} />
+  if (state.keepMyScale) return <KeepMyScaleSidebar {...props} name={name} />
   return (
     <>
       <div className="logo">
@@ -123,11 +123,11 @@ export function RankingSidebar(props: {
 }
 
 /**
- * Score New Titles (ADR 0009, #39): one "Scored" bar, where the title in the Duel can still land, and one row per
- * score with the covers of a few of its Anchors, then of the new titles settled on it (ringed). Scores the current
+ * Keep My Scale (ADR 0009, #39): one "Scored" bar, where the title in the Duel can still land, and one row per
+ * score with the covers of a few of its Anchors, then of the picked titles settled on it (ringed). Scores the current
  * title can still get are lit. The Anchor in the Duel and its score are never marked.
  */
-function NewTitlesSidebar(props: {
+function KeepMyScaleSidebar(props: {
   viewer: Viewer
   mediaType: MediaType
   state: RankingState
@@ -136,14 +136,14 @@ function NewTitlesSidebar(props: {
   name: (id: number) => string
 }) {
   const { viewer, mediaType, state, entries, menu, name } = props
-  const newTitles = state.newTitles!
+  const keepMyScale = state.keepMyScale!
   const { done, total } = state.progress.ranked
   const prompt = state.prompt
   const asked = promptedTitle(prompt)
-  const current = newTitles.titles.find((t) => t.id === asked)
+  const current = keepMyScale.titles.find((t) => t.id === asked)
   const open = current ? new Set(current.levels) : null
-  const mark = (level: number) => formatLevel(newTitles.format, level)
-  const lines = newTitlesLines(state, name)
+  const mark = (level: number) => formatLevel(keepMyScale.format, level)
+  const lines = keepMyScaleLines(state, name)
   const cover = (id: number, cls: string) => {
     const entry = entries.get(id)
     return entry?.coverUrl ? (
@@ -158,7 +158,7 @@ function NewTitlesSidebar(props: {
         Ani<b>Duel!</b>
       </div>
       <div className="small hide-m">
-        {viewer.name} · {MEDIA_LABEL[mediaType]} · {count(total, 'new title')}
+        {viewer.name} · {MEDIA_LABEL[mediaType]} · {count(total, 'title')}
       </div>
       <div className="col hide-m" style={{ gap: 4 }}>
         <div className="bandrow total">

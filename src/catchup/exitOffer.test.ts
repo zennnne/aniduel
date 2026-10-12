@@ -2,11 +2,11 @@
 import { describe, expect, it } from 'vitest'
 import { exitOffer, type AnimeStanding } from './exitOffer.ts'
 
-const anime = (over: Partial<AnimeStanding> = {}): AnimeStanding => ({ eligibleForNewTitles: false, unscored: 0, saved: 'none', ...over })
+const anime = (over: Partial<AnimeStanding> = {}): AnimeStanding => ({ eligibleForKeepMyScale: false, unscored: 0, saved: 'none', ...over })
 
 describe('the exit offer', () => {
   it('is not shown before anything was saved this visit', () => {
-    expect(exitOffer({ added: 0, anime: anime({ eligibleForNewTitles: true, unscored: 9 }) })).toBeNull()
+    expect(exitOffer({ added: 0, anime: anime({ eligibleForKeepMyScale: true, unscored: 9 }) })).toBeNull()
     expect(exitOffer({ added: 0, anime: anime() })).toBeNull()
   })
 
@@ -14,25 +14,25 @@ describe('the exit offer', () => {
     expect(exitOffer({ added: 14, anime: null })).toBeNull()
   })
 
-  it('offers Score New Titles to a user who qualifies, with the count on Start’s New Titles button', () => {
-    expect(exitOffer({ added: 14, anime: anime({ eligibleForNewTitles: true, unscored: 9 }) })).toEqual({
-      target: 'score-new-titles',
-      label: 'Score 9 new titles →',
+  it('offers Keep My Scale to a user who qualifies, with the count on Start’s Keep My Scale button', () => {
+    expect(exitOffer({ added: 14, anime: anime({ eligibleForKeepMyScale: true, unscored: 9 }) })).toEqual({
+      target: 'keep-my-scale',
+      label: 'Score 9 titles →',
     })
-    expect(exitOffer({ added: 14, anime: anime({ eligibleForNewTitles: true, unscored: 1 }) })?.label).toBe('Score 1 new title →')
+    expect(exitOffer({ added: 14, anime: anime({ eligibleForKeepMyScale: true, unscored: 1 }) })?.label).toBe('Score 1 title →')
   })
 
-  it('asks to replace a saved Scores or Full Ranking Ranking with Score New Titles', () => {
-    expect(exitOffer({ added: 3, anime: anime({ eligibleForNewTitles: true, unscored: 9, saved: 'other' }) })).toEqual({
-      target: 'replace-with-new-titles',
-      label: 'Score 9 new titles →',
+  it('asks to replace a saved Scores or Full Ranking Ranking with Keep My Scale', () => {
+    expect(exitOffer({ added: 3, anime: anime({ eligibleForKeepMyScale: true, unscored: 9, saved: 'other' }) })).toEqual({
+      target: 'replace-with-keep-my-scale',
+      label: 'Score 9 titles →',
     })
   })
 
-  it('carries on a saved Score New Titles Ranking, which the new titles join', () => {
-    expect(exitOffer({ added: 3, anime: anime({ eligibleForNewTitles: true, unscored: 9, saved: 'new-titles' }) })).toEqual({
+  it('carries on a saved Keep My Scale Ranking, which the titles without a score join', () => {
+    expect(exitOffer({ added: 3, anime: anime({ eligibleForKeepMyScale: true, unscored: 9, saved: 'keep-my-scale' }) })).toEqual({
       target: 'saved-ranking',
-      label: 'Score 9 new titles →',
+      label: 'Score 9 titles →',
     })
   })
 
@@ -43,11 +43,11 @@ describe('the exit offer', () => {
   it('carries on a saved Ranking instead of starting Rough Sort', () => {
     const continued = { target: 'saved-ranking', label: 'Continue ranking →' }
     expect(exitOffer({ added: 1, anime: anime({ unscored: 9, saved: 'other' }) })).toEqual(continued)
-    expect(exitOffer({ added: 1, anime: anime({ unscored: 9, saved: 'new-titles' }) })).toEqual(continued)
+    expect(exitOffer({ added: 1, anime: anime({ unscored: 9, saved: 'keep-my-scale' }) })).toEqual(continued)
   })
 
-  it('does not offer Score New Titles with no title to score (e.g. only Planning was added)', () => {
-    expect(exitOffer({ added: 2, anime: anime({ eligibleForNewTitles: true }) })?.target).toBe('default-sort-goal')
-    expect(exitOffer({ added: 2, anime: anime({ eligibleForNewTitles: true, saved: 'other' }) })?.label).toBe('Continue ranking →')
+  it('does not offer Keep My Scale with no title to score (e.g. only Planning was added)', () => {
+    expect(exitOffer({ added: 2, anime: anime({ eligibleForKeepMyScale: true }) })?.target).toBe('default-sort-goal')
+    expect(exitOffer({ added: 2, anime: anime({ eligibleForKeepMyScale: true, saved: 'other' }) })?.label).toBe('Continue ranking →')
   })
 })

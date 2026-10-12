@@ -1,18 +1,18 @@
-// Score New Titles (ADR 0009), the list side: which titles are Anchors, whether the user has enough of a scale to
-// compare against, and which titles a Score New Titles Pool is built from. Pure; callable from Start and Catch-up.
+// Keep My Scale (ADR 0009), the list side: which titles are Anchors, whether the user has enough of a scale to
+// compare against, and which titles a Keep My Scale Pool is built from. Pure; callable from Start and Catch-up.
 import type { ListEntry, ListStatus, ScoreFormat } from '../anilist/types.ts'
 import type { AnchorScore } from '../ranking/engine.ts'
 import { levelOfRaw, type SavedScoring } from '../ranking/scoring.ts'
 import { buildPool, type Pool } from './pool.ts'
 
-/** Score New Titles is offered only with at least this many Anchors… */
+/** Keep My Scale is offered only with at least this many Anchors… */
 export const MIN_ANCHORS = 20
 /** …on at least this many distinct scores. */
 export const MIN_ANCHOR_SCORES = 3
 
 /**
  * Every title in the list with a score, whatever its status, with that score as a level of the Score Format: the
- * snapshot a Score New Titles Ranking starts from. A raw score too small to show as a level isn't one.
+ * snapshot a Keep My Scale Ranking starts from. A raw score too small to show as a level isn't one.
  */
 export function anchorsOf(list: readonly ListEntry[], format: ScoreFormat): AnchorScore[] {
   return list
@@ -21,7 +21,7 @@ export function anchorsOf(list: readonly ListEntry[], format: ScoreFormat): Anch
     .filter((a) => a.level > 0)
 }
 
-export type NewTitlesEligibility = {
+export type KeepMyScaleEligibility = {
   eligible: boolean
   /** How many Anchors, and on how many distinct scores. */
   anchors: number
@@ -30,8 +30,8 @@ export type NewTitlesEligibility = {
   reason: string | null
 }
 
-/** Whether there is enough of a scale for Score New Titles: at least 20 Anchors on at least 3 distinct scores. */
-export function newTitlesEligibility(anchors: readonly AnchorScore[]): NewTitlesEligibility {
+/** Whether there is enough of a scale for Keep My Scale: at least 20 Anchors on at least 3 distinct scores. */
+export function keepMyScaleEligibility(anchors: readonly AnchorScore[]): KeepMyScaleEligibility {
   const scores = new Set(anchors.map((a) => a.level)).size
   const eligible = anchors.length >= MIN_ANCHORS && scores >= MIN_ANCHOR_SCORES
   const reason = eligible
@@ -40,36 +40,36 @@ export function newTitlesEligibility(anchors: readonly AnchorScore[]): NewTitles
   return { eligible, anchors: anchors.length, scores, reason }
 }
 
-/** A saved Score New Titles Ranking's Anchors (its snapshot, ADR 0009) and the titles in its Pool. */
-export type SavedNewTitles = { anchors: ReadonlySet<number>; pool: ReadonlySet<number> }
+/** A saved Keep My Scale Ranking's Anchors (its snapshot, ADR 0009) and the titles in its Pool. */
+export type SavedKeepMyScale = { anchors: ReadonlySet<number>; pool: ReadonlySet<number> }
 
 /**
- * The list a Score New Titles Pool is built from (the status filter comes after): titles without a score, and for a
- * saved Ranking also its new titles that got a score since (e.g. by an Import), so they stay in it. Never an
+ * The list a Keep My Scale Pool is built from (the status filter comes after): titles without a score, and for a
+ * saved Ranking also its picked titles that got a score since (e.g. by an Import), so they stay in it. Never an
  * Anchor of the saved Ranking, even once its score was removed on AniList: the snapshot doesn't change (ADR 0009).
  */
-export function newTitlesList(list: readonly ListEntry[], saved: SavedNewTitles | null): ListEntry[] {
+export function keepMyScaleList(list: readonly ListEntry[], saved: SavedKeepMyScale | null): ListEntry[] {
   return list.filter((e) => !saved?.anchors.has(e.mediaId) && (e.oldScore100 === 0 || Boolean(saved?.pool.has(e.mediaId))))
 }
 
 /**
- * A Score New Titles Ranking's Pool under the chosen statuses (`saved`: null for a new Ranking). The single place
- * that says which titles such a Ranking holds: Start, its New Titles count, sync and Catch-up's exit offer all ask here.
+ * A Keep My Scale Ranking's Pool under the chosen statuses (`saved`: null for a new Ranking). The single place
+ * that says which titles such a Ranking holds: Start, its Keep My Scale count, sync and Catch-up's exit offer all ask here.
  */
-export function newTitlesPool(
+export function keepMyScalePool(
   list: readonly ListEntry[],
   statuses: readonly ListStatus[],
-  saved: SavedNewTitles | null,
+  saved: SavedKeepMyScale | null,
   scale?: SavedScoring,
 ): Pool {
-  return buildPool(newTitlesList(list, saved), statuses, scale)
+  return buildPool(keepMyScaleList(list, saved), statuses, scale)
 }
 
 /**
- * About how many Duels `n` new titles take against `levels` Anchor scores: for each title a binary search over the
+ * About how many Duels `n` picked titles take against `levels` Anchor scores: for each title a binary search over the
  * scores, each step confirmed by a second Anchor (ADR 0009), so about twice the plain search: 2 log2(levels + 1).
- * The oracle runs in src/ranking/newTitles.test.ts take a little less than this.
+ * The oracle runs in src/ranking/keepMyScale.test.ts take a little less than this.
  */
-export function estimateNewTitlesDuels(n: number, levels: number): number {
+export function estimateKeepMyScaleDuels(n: number, levels: number): number {
   return Math.round(2 * n * Math.log2(levels + 1))
 }

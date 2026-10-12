@@ -30,7 +30,7 @@ export function ImportScreen(props: {
   onStart: () => void
   /** The Ranking's Media Type: Start's hint names the other one. */
   mediaType: MediaType
-  /** Score New Titles (ADR 0010): the Import finished and its Ranking is gone, so the only way back is Start. */
+  /** Keep My Scale (ADR 0010): the Import finished and its Ranking is gone, so the only way back is Start. */
   ended?: boolean
 }) {
   const { stage, state, status, entries, titleLanguage, format } = props

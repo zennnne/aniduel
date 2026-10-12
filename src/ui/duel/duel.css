@@ -169,7 +169,7 @@
   transform: translateX(-50%);
   z-index: 6;
 }
-/* Score New Titles: Preview before every new title has a score (ADR 0010). */
+/* Keep My Scale: Preview before every picked title has a score (ADR 0010). */
 .float-preview {
   position: absolute;
   top: 14px;
@@ -177,7 +177,7 @@
   z-index: 6;
 }
 
-/* Closer-to prompt (#48): the new title over two columns, one per score it sits between. */
+/* Closer-to prompt (#48): the picked title over two columns, one per score it sits between. */
 .closer {
   flex: 1;
   min-height: 0;

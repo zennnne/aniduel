@@ -76,7 +76,7 @@ export type PreviewImportDeps = {
   onGatewayError: (error: unknown) => void
   /** Scores AniList has now for titles this Import wrote, so Preview shows them. */
   onWritten: (key: RankingKey, written: ReadonlyMap<number, number>) => void
-  /** The Import wrote every score it planned, with none failed: a Score New Titles Ranking ends here (ADR 0010). */
+  /** The Import wrote every score it planned, with none failed: a Keep My Scale Ranking ends here (ADR 0010). */
   onFinished: (key: RankingKey) => void
 }
 
@@ -88,7 +88,7 @@ export type PreviewImport = {
   open(key: RankingKey): void
   /** Logout: nothing of this user stays. */
   close(): void
-  /** The Ranking is thrown away (Start over, a finished Score New Titles Import): so are its saved Import and ticks. */
+  /** The Ranking is thrown away (Start over, a finished Keep My Scale Import): so are its saved Import and ticks. */
   discard(key: RankingKey): void
   /**
    * Runs `Viewer` again first (spec Auth, ADR 0003): if the Score Format changed since best / worst were chosen, they

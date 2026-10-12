@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Cover, ListStatus, MediaType, Viewer } from '../../anilist/types.ts'
 import { OFFERED_STATUSES, displayTitle, estimateMinutes, type Pool } from '../../pool/pool.ts'
-import { BANDS, type SortGoal } from '../../ranking/engine.ts'
+import { BANDS, KEEP_MY_SCALE, type SortGoal } from '../../ranking/engine.ts'
 import type { ScoresPlan } from '../../ranking/fromScores.ts'
 import { BAND_UI } from '../bands.ts'
 import { Kao } from '../Kao.tsx'
 import { MEDIA_LABEL, pluralWord } from '../meta.ts'
-import { SortGoalSeg, type NewTitlesButton } from '../SortGoalSeg.tsx'
+import { SortGoalSeg, type KeepMyScaleButton } from '../SortGoalSeg.tsx'
 import './start.css'
 import { StartMochi, type StartCatchUp } from './StartMochi.tsx'
 import { statusLabel } from './statusLabel.ts'
@@ -46,15 +46,15 @@ export type PoolForm = {
   onRestore?: () => void
   /** Catch-up's entry: the mochi over the card's corner (#52). */
   catchUp?: StartCatchUp
-  /** Score New Titles (ADR 0009); without it there is no third Sort Goal. */
-  newTitles?: StartNewTitles
+  /** Keep My Scale (ADR 0009); without it there is no third Sort Goal. */
+  keepMyScale?: StartKeepMyScale
 }
 
-/** What Start shows of Score New Titles (ADR 0009). */
-export type StartNewTitles = NewTitlesButton & {
+/** What Start shows of Keep My Scale (ADR 0009). */
+export type StartKeepMyScale = KeepMyScaleButton & {
   /** Why it can't be chosen now, under the seg; null when it can (or is already chosen). */
   reason: string | null
-  /** The Anchors new titles are compared against. */
+  /** The Anchors picked titles are compared against. */
   anchors: number
 }
 
@@ -159,8 +159,8 @@ function PoolSetup(form: PoolForm) {
   const label = (s: (typeof OFFERED_STATUSES)[number]) => statusLabel(s, mediaType)
   const n = pool?.titles.length ?? 0
   const duels = form.bandDuels ?? form.poolDuels ?? 0
-  // Score New Titles (ADR 0009): its Pool is the titles with no score; a saved one can't switch Sort Goal.
-  const newTitles = form.goal === 'score-new-titles'
+  // Keep My Scale (ADR 0009): its Pool is the titles with no score; a saved one can't switch Sort Goal.
+  const onKeepMyScale = form.goal === KEEP_MY_SCALE
 
   return (
     <>
@@ -185,7 +185,7 @@ function PoolSetup(form: PoolForm) {
           </button>
         ))}
       </div>
-      <div className="lab2">List statuses{newTitles ? ' · titles with no score' : ''}</div>
+      <div className="lab2">List statuses{onKeepMyScale ? ' · titles with no score' : ''}</div>
       <div className="chips">
         {OFFERED_STATUSES.map((s) => (
           <button
@@ -204,32 +204,32 @@ function PoolSetup(form: PoolForm) {
       </div>
       <div className="lab2">Sort Goal</div>
       <div className="goalrow">
-        <SortGoalSeg goal={form.goal} onGoal={form.onGoal} newTitles={form.newTitles} locked={newTitles && Boolean(form.saved)} />
-        <GoalInfo extraDuels={form.extraDuels} newTitles={Boolean(form.newTitles)} />
+        <SortGoalSeg goal={form.goal} onGoal={form.onGoal} keepMyScale={form.keepMyScale} locked={onKeepMyScale && Boolean(form.saved)} />
+        <GoalInfo extraDuels={form.extraDuels} keepMyScaleOffered={Boolean(form.keepMyScale)} />
       </div>
       <span className="gexp">
         {GOAL_CAPTION[form.goal]}
-        {newTitles && form.saved ? (
+        {onKeepMyScale && form.saved ? (
           <>
             <br />
             <span className="fine">This Ranking can't switch to Scores or Full Ranking. Start it over to pick another Sort Goal.</span>
           </>
         ) : (
-          form.newTitles?.reason && (
+          form.keepMyScale?.reason && (
             <>
               <br />
-              <span className="fine">🔒 Score New Titles: {form.newTitles.reason}</span>
+              <span className="fine">🔒 Keep My Scale: {form.keepMyScale.reason}</span>
             </>
           )
         )}
       </span>
       <div className="est" aria-live="polite">
-        {pool && newTitles ? (
+        {pool && onKeepMyScale ? (
           <>
-            <b>{n}</b> new {pluralWord(n, 'title')} · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
+            <b>{n}</b> {pluralWord(n, 'title')} to score · about <b>{duels}</b> {pluralWord(duels, 'Duel')}
             {form.saved ? ' left' : ''}
             <span className="small">
-              (each against one of your {form.newTitles?.anchors ?? 0} Anchors, ~{estimateMinutes(duels)} min at 3 s each)
+              (each against one of your {form.keepMyScale?.anchors ?? 0} Anchors, ~{estimateMinutes(duels)} min at 3 s each)
             </span>
           </>
         ) : pool ? (
@@ -244,25 +244,25 @@ function PoolSetup(form: PoolForm) {
           'Loading your list…'
         )}
       </div>
-      {form.saved && newTitles && (
+      {form.saved && onKeepMyScale && (
         <div className="small">
-          You have a saved Ranking here: {form.saved.done} of {form.saved.total} new titles have a score. On Continue,
+          You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a score. On Continue,
           titles that now match these statuses and have no score join it. Your Anchors stay as they were when it started.
         </div>
       )}
-      {form.saved && !newTitles && (
+      {form.saved && !onKeepMyScale && (
         <div className="small">
           You have a saved Ranking here: {form.saved.done} of {form.saved.total} titles have a Band. On Continue,
           titles that now match these statuses join Rough Sort and titles that no longer match leave the Ranking.
         </div>
       )}
-      {plan && !form.saved && !newTitles && <ScoresOffer plan={plan} on={fromScores} onToggle={() => setFromScores((on) => !on)} />}
+      {plan && !form.saved && !onKeepMyScale && <ScoresOffer plan={plan} on={fromScores} onToggle={() => setFromScores((on) => !on)} />}
       <button
         className="go"
         disabled={!form.onStartRoughSort || (!form.saved && (!pool || n === 0))}
-        onClick={() => form.onStartRoughSort?.(Boolean(plan) && fromScores && !newTitles)}
+        onClick={() => form.onStartRoughSort?.(Boolean(plan) && fromScores && !onKeepMyScale)}
       >
-        {form.saved ? 'Continue →' : newTitles ? 'Start Duels →' : 'Start Rough Sort →'}
+        {form.saved ? 'Continue →' : onKeepMyScale ? 'Start Duels →' : 'Start Rough Sort →'}
       </button>
       {form.onRestore && (
         <button className="small link" style={{ alignSelf: 'flex-start' }} onClick={form.onRestore}>
@@ -278,14 +278,14 @@ function PoolSetup(form: PoolForm) {
 const GOAL_CAPTION: Record<SortGoal, string> = {
   scores: 'Stops once every score is settled.',
   'full-ranking': 'Every title gets its own place.',
-  'score-new-titles': 'Only titles with no score, compared against the ones you already scored.',
+  [KEEP_MY_SCALE]: 'Scores the titles with no score against the ones you already scored. Every other score stays as it is.',
 }
 
 /**
  * The ⓘ beside the Sort Goal (#25): the long explanation. On desktop it shows while the pointer is over it; on touch
  * a tap opens it as a popover with ×, and a tap anywhere else closes it.
  */
-function GoalInfo({ extraDuels, newTitles }: { extraDuels: number | null; newTitles: boolean }) {
+function GoalInfo({ extraDuels, keepMyScaleOffered }: { extraDuels: number | null; keepMyScaleOffered: boolean }) {
   // 'hover' follows the mouse; 'pinned' was opened by a tap or click and stays until closed.
   const [open, setOpen] = useState<'hover' | 'pinned' | null>(null)
   const wrap = useRef<HTMLSpanElement>(null)
@@ -326,12 +326,12 @@ function GoalInfo({ extraDuels, newTitles }: { extraDuels: number | null; newTit
           <br />
           <br />
           Same Bands, same kind of Duels. Switch any time from the menu; no answer is lost.
-          {newTitles && (
+          {keepMyScaleOffered && (
             <>
               <br />
               <br />
-              <b>New Titles</b>: only titles with no score, each compared with titles you already scored (your Anchors), and
-              given one of your own scores. Your Anchors never change. Chosen when a Ranking starts, and it can't switch later.
+              <b>Keep My Scale</b>: titles with no score are each compared with titles you already scored (your Anchors) and
+              given one of your own scores. Every other score stays as it is. Chosen when a Ranking starts, and it can't switch later.
             </>
           )}
         </span>

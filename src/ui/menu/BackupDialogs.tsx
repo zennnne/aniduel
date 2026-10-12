@@ -149,10 +149,10 @@ export function StartOverDialog(props: {
 }
 
 /**
- * Score New Titles picked on Start while a Scores / Full Ranking Ranking is saved (#46): there is one Ranking per
+ * Keep My Scale picked on Start while a Scores / Full Ranking Ranking is saved (#46): there is one Ranking per
  * Media Type, so starting it throws the saved one away. A red confirm, with the Backup one tap away.
  */
-export function ReplaceWithNewTitlesDialog(props: {
+export function ReplaceWithKeepMyScaleDialog(props: {
   mediaType: MediaType
   /** The saved Ranking's Sort Goal and Duels; null when it can't be read (it is thrown away all the same). */
   saved: { goal: SortGoal; duels: number } | null
@@ -180,7 +180,7 @@ export function ReplaceWithNewTitlesDialog(props: {
       }
     >
       <p>
-        Score New Titles starts a new {media} Ranking. Your saved{' '}
+        Keep My Scale starts a new {media} Ranking. Your saved{' '}
         {saved ? (
           <>
             <b>{SORT_GOAL_LABEL[saved.goal]}</b> Ranking and its <b>{count(saved.duels, 'Duel')}</b> are

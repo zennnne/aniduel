@@ -12,9 +12,9 @@ You pick a **Sort Goal** when a Ranking starts.
 | --- | --- | --- |
 | **Scores** | you just want new scores on AniList | every title's score is settled |
 | **Full Ranking** | you also want an exact order of your titles | every title has its own place |
-| [**Score New Titles**](#score-new-titles) | you like the scores you have and only want to score the titles that have none | every unscored title has a score |
+| [**Keep My Scale**](#keep-my-scale) | you like the scores you have and only want to score the titles that have none | every unscored title has a score |
 
-Scores and Full Ranking rebuild every score from scratch and share the steps below. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch between the two at any time without losing answers. Score New Titles works differently and is described in [its own section](#score-new-titles).
+Scores and Full Ranking rebuild every score from scratch and share the steps below. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch between the two at any time without losing answers. Keep My Scale works differently and is described in [its own section](#keep-my-scale).
 
 Titles missing from your list? [**Catch-up**](#catch-up) (anime only) suggests anime you have probably watched, so you can add them before you rank.
 
@@ -53,7 +53,7 @@ Under Scores, two more things differ:
 
 Switching keeps every answer. Switching to Full Ranking first shows about how many more Duels it will take.
 
-### Score New Titles
+### Keep My Scale
 
 For when you already have a scoring scale and don't want it changed. Titles that already have an AniList score are **Anchors**: fixed reference points whose scores are never touched. Each title without a score is put through Duels against Anchors only, and gets the score of the Anchors it sits among.
 
@@ -64,11 +64,11 @@ For when you already have a scoring scale and don't want it changed. Titles that
 
 **How it differs from the steps above**
 
-- No Rough Sort, Board or Bands: Duels start straight away, always a new title against an Anchor.
+- No Rough Sort, Board or Bands: Duels start straight away, always a title being scored against an Anchor.
 - A score boundary is passed only when two different Anchors agree.
-- A new title that beats every Anchor of one score and loses to every Anchor of the next gets a one-off **Closer-to prompt**: which of the two scores is it closer to.
+- A title that beats every Anchor of one score and loses to every Anchor of the next gets a one-off **Closer-to prompt**: which of the two scores is it closer to.
 - An Anchor whose Duel results contradict its own score twice becomes a **Suspect Anchor**. It stops being used as a reference and is listed on Preview.
-- Preview opens as soon as one new title is settled, so you can import some scores without finishing the rest.
+- Preview opens as soon as one title is settled, so you can import some scores without finishing the rest.
 - The Ranking ends with its Import. Titles still without a score start fresh next time, against Anchors that now include the ones just imported.
 
 ### Catch-up
@@ -88,9 +88,9 @@ How it works:
 - **What you do:** mark each one Completed, Dropped, Planning or Paused, then save to get the next batch. Saves are written to AniList in the background.
 - **Titles you leave unmarked** are **Passed** and aren't suggested again for 30 days.
 - **With a near-empty list**, Catch-up first asks roughly when you started watching anime.
-- **When you are done**, it offers to go on to Score New Titles if you qualify, or to your default Sort Goal if not.
+- **When you are done**, it offers to go on to Keep My Scale if you qualify, or to your default Sort Goal if not.
 
-So if you already have a scoring scale of your own, the two make a full loop: Catch-up adds the titles you have watched, then Score New Titles gives them scores without changing the ones you already have.
+So if you already have a scoring scale of your own, the two make a full loop: Catch-up adds the titles you have watched, then Keep My Scale gives them scores without changing the ones you already have.
 
 ## Development
 
@@ -122,7 +122,7 @@ src/
   auth/         OAuth token handling
   pool/         Building the Pool, picking Anchors, and syncing with AniList
   ranking/      Ranking engine (replays the Duel log), Sort Goal, scoring, Sub-band split,
-                Rough Sort from Scores, Score New Titles, Refine Duel estimates, Preview
+                Rough Sort from Scores, Keep My Scale, Refine Duel estimates, Preview
   catchup/      Catch-up suggestions, batches, Passed titles, starting era, exit offer
   import/       Import plan and state
   writes/       Write queue and rate limiter shared by Import (scores) and Catch-up (list statuses)
@@ -143,8 +143,9 @@ Key design decisions:
 - [ADR 0006](docs/adr/0006-split-oversized-bands-into-sub-bands.md) — Oversized Bands split into three Sub-bands.
 - [ADR 0007](docs/adr/0007-sort-goal-scores-with-settings-in-the-duel-log.md) — Sort Goal: Scores or Full Ranking (the default follows the Pool size), with scoring settings in the Duel log.
 - [ADR 0008](docs/adr/0008-rough-sort-from-scores-as-one-event.md) — Rough Sort from Scores is one event that carries every Band choice.
-- [ADR 0009](docs/adr/0009-score-new-titles-against-anchors.md) — Score New Titles: a third Sort Goal that scores unscored titles against fixed Anchors.
-- [ADR 0010](docs/adr/0010-score-new-titles-ends-with-its-import.md) — A Score New Titles Ranking ends with its Import.
+- [ADR 0009](docs/adr/0009-score-new-titles-against-anchors.md) — Keep My Scale: a third Sort Goal that scores unscored titles against fixed Anchors.
+- [ADR 0010](docs/adr/0010-score-new-titles-ends-with-its-import.md) — A Keep My Scale Ranking ends with its Import.
+- [ADR 0011](docs/adr/0011-keep-my-scale-a-hand-picked-pool.md) — Keep My Scale: the name of the third Sort Goal, and a Pool picked by hand.
 
 ## Deployment
 

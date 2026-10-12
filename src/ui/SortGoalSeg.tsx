@@ -1,19 +1,19 @@
-import type { SortGoal } from '../ranking/engine.ts'
+import { KEEP_MY_SCALE, type SortGoal } from '../ranking/engine.ts'
 import { SORT_GOAL_LABEL } from './meta.ts'
 
 /**
- * Start's third button, Score New Titles (ADR 0009): `count` titles have no score (the badge, null while unknown);
+ * Start's third button, Keep My Scale (ADR 0009): `count` titles have no score (the badge, null while unknown);
  * `enabled` false shows it disabled with a lock (not eligible, or a Ranking on another Sort Goal is saved).
  */
-export type NewTitlesButton = { count: number | null; enabled: boolean }
+export type KeepMyScaleButton = { count: number | null; enabled: boolean }
 
 /**
  * The Sort Goal `seg` [Scores | Full Ranking] (#25), on Start and in Preview's settings bar. On Start it also has
- * [New Titles] (`newTitles`). `locked`: the shown goal can't be left (a saved Score New Titles Ranking), so every other
+ * [Keep My Scale] (`keepMyScale`). `locked`: the shown goal can't be left (a saved Keep My Scale Ranking), so every other
  * button is disabled.
  */
-export function SortGoalSeg(props: { goal: SortGoal; onGoal: (goal: SortGoal) => void; newTitles?: NewTitlesButton; locked?: boolean }) {
-  const { goal: current, onGoal, newTitles, locked = false } = props
+export function SortGoalSeg(props: { goal: SortGoal; onGoal: (goal: SortGoal) => void; keepMyScale?: KeepMyScaleButton; locked?: boolean }) {
+  const { goal: current, onGoal, keepMyScale, locked = false } = props
   const button = (goal: SortGoal, enabled = true, badge: number | null = null) => (
     <button
       key={goal}
@@ -29,10 +29,10 @@ export function SortGoalSeg(props: { goal: SortGoal; onGoal: (goal: SortGoal) =>
     </button>
   )
   return (
-    <div className={newTitles ? 'seg tight' : 'seg'} role="radiogroup" aria-label="Sort Goal">
+    <div className={keepMyScale ? 'seg tight' : 'seg'} role="radiogroup" aria-label="Sort Goal">
       {button('scores')}
       {button('full-ranking')}
-      {newTitles && button('score-new-titles', newTitles.enabled, newTitles.count)}
+      {keepMyScale && button(KEEP_MY_SCALE, keepMyScale.enabled, keepMyScale.count)}
     </div>
   )
 }

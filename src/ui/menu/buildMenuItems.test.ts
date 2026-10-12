@@ -1,6 +1,6 @@
 // The menu's Board entry: only while the Board is open, i.e. before the first Duel answer.
 import { describe, expect, it } from 'vitest'
-import { replay, startLog, startNewTitlesLog, type BandIndex, type DuelLog, type LogEvent } from '../../ranking/engine.ts'
+import { replay, startLog, startKeepMyScaleLog, type BandIndex, type DuelLog, type LogEvent } from '../../ranking/engine.ts'
 import { buildMenuItems, type MenuActions } from './buildMenuItems.ts'
 
 const header = { seed: 42, userId: 7, mediaType: 'ANIME' as const }
@@ -82,9 +82,9 @@ describe('the Sort Goal switch in the menu', () => {
     expect(items(null).map((i) => i.id)).not.toContain('sort-goal')
   })
 
-  it('is not offered on Score New Titles, and neither are the Board or a Band choice (ADR 0009)', () => {
+  it('is not offered on Keep My Scale, and neither are the Board or a Band choice (ADR 0009)', () => {
     const anchors = [9, 8, 7].map((level, i) => ({ id: 101 + i, level }))
-    const shown = items(startNewTitlesLog({ ...header, format: 'POINT_10', anchors, ids: [1, 2] })).map((i) => i.id)
+    const shown = items(startKeepMyScaleLog({ ...header, format: 'POINT_10', anchors, ids: [1, 2] })).map((i) => i.id)
     expect(shown).not.toContain('sort-goal')
     expect(shown).not.toContain('board')
     expect(shown).not.toContain('choose-band')

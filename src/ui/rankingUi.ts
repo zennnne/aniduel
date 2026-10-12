@@ -27,8 +27,8 @@ export const NO_RANKING_UI: RankingUi = {
 }
 
 /**
- * Leaving the open Ranking, whichever way: another one opens, the Media Type switches, Restore, Start over, Score New
- * Titles replaces it, its Import ends it, or logout. Nothing of its screen state is kept.
+ * Leaving the open Ranking, whichever way: another one opens, the Media Type switches, Restore, Start over, Keep My
+ * Scale replaces it, its Import ends it, or logout. Nothing of its screen state is kept.
  */
 export function leftRanking(): RankingUi {
   return NO_RANKING_UI

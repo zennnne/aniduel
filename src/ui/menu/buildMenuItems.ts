@@ -1,7 +1,7 @@
 import type { ListStatus, MediaType } from '../../anilist/types.ts'
 import type { BandIndex, RankingState, SwitchableGoal } from '../../ranking/engine.ts'
 import { fullRankingExtra } from '../../ranking/estimate.ts'
-import { isNewTitles, isScores } from '../../ranking/sortGoal.ts'
+import { isKeepMyScale, isScores } from '../../ranking/sortGoal.ts'
 import { titlesToSort } from '../../ranking/split.ts'
 import { BAND_UI } from '../bands.ts'
 import { MEDIA_LABEL } from '../meta.ts'
@@ -67,9 +67,9 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       run: actions.changeStatuses,
     },
   ]
-  // Any Ranking can switch, older ones (on Full Ranking, without a Sort Goal) too, but nobody is told (#23). Score
-  // New Titles never switches (ADR 0009).
-  if (context.hasLog && ranking && !isNewTitles(ranking)) {
+  // Any Ranking can switch, older ones (on Full Ranking, without a Sort Goal) too, but nobody is told (#23). Keep My
+  // Scale never switches (ADR 0009).
+  if (context.hasLog && ranking && !isKeepMyScale(ranking)) {
     const toFull = isScores(ranking)
     items.push({
       id: 'sort-goal',

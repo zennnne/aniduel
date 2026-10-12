@@ -19,7 +19,7 @@ function Cover({ entry }: { entry: ListEntry | undefined }) {
 }
 
 /**
- * The closer-to prompt (GLOSSARY, #48): full screen over the Duel, the new title's cover and two columns, one per
+ * The closer-to prompt (GLOSSARY, #48): full screen over the Duel, the picked title's cover and two columns, one per
  * score it sits between, each with a few of that score's Anchors (never Forgotten or Suspect ones).
  * Keys: ← the upper score, → the lower one, Backspace undo.
  */
@@ -33,7 +33,7 @@ export function CloserToScreen(props: {
   early?: EarlyPreview
 }) {
   const { state, prompt, entries, titleLanguage, onPick, onUndo, early } = props
-  const newTitles = state.newTitles!
+  const keepMyScale = state.keepMyScale!
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const { done, total } = state.progress.ranked
 
@@ -57,7 +57,7 @@ export function CloserToScreen(props: {
 
   const column = (level: number, key: string) => {
     const { shown, more } = shownAnchors(state, level)
-    const label = formatLevel(newTitles.format, level)
+    const label = formatLevel(keepMyScale.format, level)
     return (
       <button className="col" onClick={() => onPick(level)} aria-label={`Closer to ${label}`}>
         <span className="n">{label}</span>

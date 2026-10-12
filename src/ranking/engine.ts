@@ -4,21 +4,21 @@ import type { MediaType, ScoreFormat } from '../anilist/types.ts'
 import { seededHash } from './hash.ts'
 import { intervalOf, knowledgeOf, nextLevelDuel, tierIndex, type LevelContext, type PositionRange, type SegmentKnowledge } from './levelSelect.ts'
 import {
-  addNewTitles,
+  addPickedTitles,
   excludeAnchor,
   includeAnchor,
   answerAnchorDuel,
   answerCloserTo,
-  newTitlesView,
+  keepMyScaleView,
   nextQuestion,
-  rerankNewTitle,
-  returnNewTitle,
-  startNewTitles,
-  takeOutNewTitle,
+  rerankPickedTitle,
+  returnPickedTitle,
+  startKeepMyScale,
+  takeOutPickedTitle,
   type AnchorScore,
-  type NewTitles,
-  type NewTitlesState,
-} from './newTitles.ts'
+  type KeepMyScale,
+  type KeepMyScaleState,
+} from './keepMyScale.ts'
 import { defaultSettings, levelAt, parseSavedScoring, type SavedScoring, type ScoringSettings } from './scoring.ts'
 
 export const LOG_FORMAT_VERSION = 1
@@ -28,7 +28,7 @@ export const LOG_FORMAT_VERSION = 1
  * (`EVENT_RULES[type].since`). `appendEvent` stamps the current version, so an older app refuses a log it would
  * replay differently (ADR 0005). Adding an event kind or changing replay means bumping this and, for a new kind,
  * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006). 9 added the closer-to prompt
- * and the scores past the extreme Anchors to Score New Titles (#48); 8 was never released, so no log replays differently.
+ * and the scores past the extreme Anchors to Keep My Scale (#48); 8 was never released, so no log replays differently.
  */
 export const ENGINE_VERSION = 9
 const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VERSION }, (_, i) => i + 1)
@@ -54,16 +54,22 @@ export type LogHeader = {
 export type DuelResult = 'a' | 'b' | 'tie'
 
 /**
+ * Keep My Scale as a Sort Goal value. It still spells the goal's first name, Score New Titles: ADR 0011 kept the value
+ * when it renamed the goal. No log event carries it (`anchors-set` alone starts this goal), so it is only what replay
+ * reports. The only place the old name is spelled.
+ */
+export const KEEP_MY_SCALE = 'score-new-titles'
+/**
  * Sort Goal (ADR 0007): stop a title's Duels once its score level is settled, or give every title its own place.
- * Score New Titles (ADR 0009) scores only unscored titles against Anchors; only `anchors-set` starts it, and a Ranking
+ * Keep My Scale (ADR 0009) scores only unscored titles against Anchors; only `anchors-set` starts it, and a Ranking
  * on it never switches.
  */
-export type SortGoal = 'scores' | 'full-ranking' | 'score-new-titles'
+export type SortGoal = 'scores' | 'full-ranking' | typeof KEEP_MY_SCALE
 /** The Sort Goals `sort-goal-set` can switch between (ADR 0007). */
-export type SwitchableGoal = Exclude<SortGoal, 'score-new-titles'>
+export type SwitchableGoal = Exclude<SortGoal, typeof KEEP_MY_SCALE>
 const SWITCHABLE_GOALS: readonly SwitchableGoal[] = ['scores', 'full-ranking']
 
-export type { AnchorScore, AnchorLevel, NewTitle, NewTitlesState } from './newTitles.ts'
+export type { AnchorScore, AnchorLevel, PickedTitle, KeepMyScaleState } from './keepMyScale.ts'
 
 export type LogEvent =
   /** Titles joining the Pool (the first Pool load, or a sync): they go to the back of the Rough Sort queue. */
@@ -122,13 +128,13 @@ export type LogEvent =
    */
   | { type: 'scoring-set'; format: ScoreFormat; settings: ScoringSettings }
   /**
-   * Starts a Score New Titles Ranking (ADR 0009): the Sort Goal, and the snapshot of every Anchor with its score as a
+   * Starts a Keep My Scale Ranking (ADR 0009): the Sort Goal, and the snapshot of every Anchor with its score as a
    * level of `format` at that time. Only before any title and any Sort Goal; replay never reads AniList scores. Titles
-   * added after it are the new titles, never an Anchor. Undo never reaches past it.
+   * added after it are the picked titles, never an Anchor. Undo never reaches past it.
    */
   | { type: 'anchors-set'; format: ScoreFormat; anchors: AnchorScore[] }
   /**
-   * The answer to the closer-to prompt (GLOSSARY, ADR 0009): new title `id` takes `level`, one of the two Anchor scores
+   * The answer to the closer-to prompt (GLOSSARY, ADR 0009): picked title `id` takes `level`, one of the two Anchor scores
    * it sits strictly between. Refused unless that prompt is asked now.
    */
   | { type: 'closer-to-answered'; id: number; level: number }
@@ -151,7 +157,7 @@ type UndoRole = 'user' | 'barrier' | 'navigation' | 'setting'
  * that error, and its Undo role. Engine version 2 came with `band-split`, 3 with `band-selected`, 4 with
  * `titles-removed`, 5 with the fixes (`band-moved`, `rerank-requested`, `unforgotten`), 6 with `bands-from-scores`,
  * 7 with the Sort Goal and scoring settings (`sort-goal-set`, `scoring-set`, ADR 0007), 8 with
- * Score New Titles (`anchors-set`, ADR 0009).
+ * Keep My Scale (`anchors-set`, ADR 0009).
  */
 const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; name: string; undoRole: UndoRole } } = {
   'titles-added': { since: 1, name: 'Titles added', undoRole: 'barrier' },
@@ -172,10 +178,10 @@ const EVENT_RULES: { readonly [K in RecordedEvent['type']]: { since: number; nam
 }
 
 /**
- * Events that have no meaning under Score New Titles (no Rough Sort, no Bands, no switching, ADR 0009): refused
- * there. `rerank-requested` works on a new title only (`rerankNewTitle`), never on an Anchor.
+ * Events that have no meaning under Keep My Scale (no Rough Sort, no Bands, no switching, ADR 0009): refused
+ * there. `rerank-requested` works on a picked title only (`rerankPickedTitle`), never on an Anchor.
  */
-const NOT_ON_NEW_TITLES: ReadonlySet<RecordedEvent['type']> = new Set([
+const NOT_ON_KEEP_MY_SCALE: ReadonlySet<RecordedEvent['type']> = new Set([
   'band-assigned',
   'band-split',
   'band-selected',
@@ -211,12 +217,12 @@ export type Prompt =
       refine?: true
     }
   /**
-   * Score New Titles (ADR 0009): new title `a` against Anchor `b`, answered with `duel-answered` like any Duel.
+   * Keep My Scale (ADR 0009): picked title `a` against Anchor `b`, answered with `duel-answered` like any Duel.
    * `left` / `right` are display only, as for a Duel; nothing on screen says which side is the Anchor.
    */
   | { kind: 'anchor-duel'; a: number; b: number; left: number; right: number }
   /**
-   * Score New Titles: new title `id` beat every Anchor on score `lower` and lost to every Anchor on score `upper`, so
+   * Keep My Scale: picked title `id` beat every Anchor on score `lower` and lost to every Anchor on score `upper`, so
    * which of the two is it closer to? Answered with `closer-to-answered`.
    */
   | { kind: 'closer-to'; id: number; upper: number; lower: number }
@@ -334,8 +340,8 @@ export type RankingState = {
   scoring?: SavedScoring
   /** Only under Scores: each title's possible positions and whether it is settled. */
   standing?: Standing
-  /** Only under Score New Titles (ADR 0009): the Anchor levels and where every new title stands. */
-  newTitles?: NewTitlesState
+  /** Only under Keep My Scale (ADR 0009): the Anchor levels and where every picked title stands. */
+  keepMyScale?: KeepMyScaleState
 }
 
 /** One title on the Board: `at` is the position of the event that last put it in its Band; `sub` only in a split Band. */
@@ -386,10 +392,10 @@ export function startLog(options: {
 }
 
 /**
- * A new Score New Titles log (ADR 0009): the header, the default scoring settings (unused by this Sort Goal, but
- * Preview and Import read the Score Format from them as on every other log), the Anchor snapshot, then the new titles.
+ * A new Keep My Scale log (ADR 0009): the header, the default scoring settings (unused by this Sort Goal, but
+ * Preview and Import read the Score Format from them as on every other log), the Anchor snapshot, then the picked titles.
  */
-export function startNewTitlesLog(options: {
+export function startKeepMyScaleLog(options: {
   seed: number
   userId: number
   mediaType: MediaType
@@ -476,8 +482,8 @@ type Machine = {
   answeredIn: Segment | null
   /** Whether every score was settled on Scores at some point: Duels on Scores after that are Refine Duels. */
   settledOnce: boolean
-  /** Under Score New Titles only (ADR 0009): the Anchors and every new title's search. */
-  newTitles: NewTitles | null
+  /** Under Keep My Scale only (ADR 0009): the Anchors and every picked title's search. */
+  keepMyScale: KeepMyScale | null
 }
 
 type Place = { band: BandIndex; sub?: SubBandIndex }
@@ -508,7 +514,7 @@ function placeEmptyFronts(segment: Segment): void {
 
 /** Takes a title out of wherever it is (Rough Sort queue, an insertion queue, or a Tier). Every other title keeps its order. */
 function takeOut(machine: Machine, id: number): void {
-  if (machine.newTitles) takeOutNewTitle(machine.newTitles, id)
+  if (machine.keepMyScale) takeOutPickedTitle(machine.keepMyScale, id)
   const waiting = machine.roughSortQueue.indexOf(id)
   if (waiting >= 0) machine.roughSortQueue.splice(waiting, 1)
   for (const segment of machine.segments) {
@@ -571,17 +577,17 @@ export function answeredDuels(log: DuelLog): number {
 function apply(machine: Machine, event: RecordedEvent): void {
   const rule = EVENT_RULES[event.type]
   requireEngine(machine, rule.since, rule.name)
-  if (machine.newTitles && NOT_ON_NEW_TITLES.has(event.type)) {
-    throw new ReplayError(`${rule.name} has no place in a Score New Titles Ranking`)
+  if (machine.keepMyScale && NOT_ON_KEEP_MY_SCALE.has(event.type)) {
+    throw new ReplayError(`${rule.name} has no place in a Keep My Scale Ranking`)
   }
   switch (event.type) {
     case 'titles-added':
       for (const id of event.ids) {
         if (machine.present.has(id)) throw new ReplayError(`Title ${id} was added twice`)
-        if (machine.newTitles?.anchorIds.has(id)) throw new ReplayError(`Title ${id} is an Anchor, so it can't be a new title`)
+        if (machine.keepMyScale?.anchorIds.has(id)) throw new ReplayError(`Title ${id} is an Anchor, so it can't be a picked title`)
         machine.present.add(id)
       }
-      if (machine.newTitles) addNewTitles(machine.newTitles, event.ids)
+      if (machine.keepMyScale) addPickedTitles(machine.keepMyScale, event.ids)
       else machine.roughSortQueue.push(...event.ids)
       machine.total += event.ids.length
       return
@@ -607,9 +613,9 @@ function apply(machine: Machine, event: RecordedEvent): void {
       return
     }
     case 'duel-answered': {
-      if (machine.newTitles) {
+      if (machine.keepMyScale) {
         const winner = event.result === 'tie' ? null : event.result === 'a' ? event.a : event.b
-        if (!answerAnchorDuel(machine.newTitles, event.a, event.b, winner)) throw wrongDuel(machine, event)
+        if (!answerAnchorDuel(machine.keepMyScale, event.a, event.b, winner)) throw wrongDuel(machine, event)
         return
       }
       const work = machine.roughSortQueue.length === 0 ? current(machine) : null
@@ -633,9 +639,9 @@ function apply(machine: Machine, event: RecordedEvent): void {
       return
     }
     case 'forgotten':
-      // Score New Titles: Forgotten on an Anchor stops using it as a reference; another Anchor is chosen (ADR 0009).
-      if (machine.newTitles?.anchorIds.has(event.id) && !machine.forgotten.includes(event.id)) {
-        excludeAnchor(machine.newTitles, event.id)
+      // Keep My Scale: Forgotten on an Anchor stops using it as a reference; another Anchor is chosen (ADR 0009).
+      if (machine.keepMyScale?.anchorIds.has(event.id) && !machine.forgotten.includes(event.id)) {
+        excludeAnchor(machine.keepMyScale, event.id)
         machine.forgotten.push(event.id)
         return
       }
@@ -663,10 +669,10 @@ function apply(machine: Machine, event: RecordedEvent): void {
       machine.placedByHand = true
       return
     case 'rerank-requested': {
-      if (machine.newTitles) {
-        // Score New Titles: a new title's search starts over. Anchors and Forgotten titles aren't in the queue.
-        if (!rerankNewTitle(machine.newTitles, event.id)) {
-          throw new ReplayError(`Title ${event.id} can't be re-ranked: it is not a new title in the Ranking`)
+      if (machine.keepMyScale) {
+        // Keep My Scale: a picked title's search starts over. Anchors and Forgotten titles aren't in the queue.
+        if (!rerankPickedTitle(machine.keepMyScale, event.id)) {
+          throw new ReplayError(`Title ${event.id} can't be re-ranked: it is not a picked title in the Ranking`)
         }
         return
       }
@@ -679,12 +685,12 @@ function apply(machine: Machine, event: RecordedEvent): void {
       const index = machine.forgotten.indexOf(event.id)
       if (index < 0) throw new ReplayError(`Title ${event.id} can't be brought back: it is not Forgotten`)
       machine.forgotten.splice(index, 1)
-      if (machine.newTitles?.anchorIds.has(event.id)) {
-        includeAnchor(machine.newTitles, event.id)
+      if (machine.keepMyScale?.anchorIds.has(event.id)) {
+        includeAnchor(machine.keepMyScale, event.id)
         return
       }
-      if (machine.newTitles) {
-        returnNewTitle(machine.newTitles, event.id)
+      if (machine.keepMyScale) {
+        returnPickedTitle(machine.keepMyScale, event.id)
         return
       }
       machine.placedAt.set(event.id, machine.step)
@@ -723,14 +729,14 @@ function apply(machine: Machine, event: RecordedEvent): void {
       if (machine.present.size > 0 || machine.sortGoal !== null) {
         throw new ReplayError('Anchors set must start the Ranking: before any title and any Sort Goal')
       }
-      const started = startNewTitles(event.format, event.anchors, machine.seed)
+      const started = startKeepMyScale(event.format, event.anchors, machine.seed)
       if (typeof started === 'string') throw new ReplayError(started)
-      machine.newTitles = started
-      machine.sortGoal = 'score-new-titles'
+      machine.keepMyScale = started
+      machine.sortGoal = KEEP_MY_SCALE
       return
     }
     case 'closer-to-answered':
-      if (!machine.newTitles || !answerCloserTo(machine.newTitles, event.id, event.level)) {
+      if (!machine.keepMyScale || !answerCloserTo(machine.keepMyScale, event.id, event.level)) {
         const prompt = nextPrompt(machine)
         const expected = prompt.kind === 'closer-to' ? `${prompt.id}: ${prompt.upper} or ${prompt.lower}` : prompt.kind
         throw new ReplayError(`Closer-to answer ${event.level} for ${event.id}, but the engine prompts ${expected}`)
@@ -1077,8 +1083,8 @@ function current(machine: Machine): Work | null {
 function nextPrompt(machine: Machine): Prompt {
   const roughSort = machine.roughSortQueue[0]
   if (roughSort !== undefined) return { kind: 'rough-sort', id: roughSort }
-  if (machine.newTitles) {
-    const duel = nextQuestion(machine.newTitles)
+  if (machine.keepMyScale) {
+    const duel = nextQuestion(machine.keepMyScale)
     if (!duel) return { kind: 'all-complete' }
     if (duel.kind === 'closer-to') return { kind: 'closer-to', id: duel.id, upper: duel.upper, lower: duel.lower }
     const [left, right] = sides(machine.seed, duel.a, duel.b)
@@ -1151,7 +1157,7 @@ export function replay(log: DuelLog): RankingState {
     scoresCache: { knowledge: new Map() },
     answeredIn: null,
     settledOnce: false,
-    newTitles: null,
+    keepMyScale: null,
   }
   const { effective, canUndo } = resolveUndo(log.events)
   for (let step = 0; step < effective.length; step++) {
@@ -1188,10 +1194,10 @@ export function replay(log: DuelLog): RankingState {
   const work = machine.roughSortQueue.length === 0 && machine.focus === null ? current(machine) : null
   const bandChoice = work ? { finished: machine.finished, next: work.band } : null
   const bandProgress = bands.map((band) => progressOf(standing ? { standing } : {}, band))
-  const newTitles = machine.newTitles && newTitlesView(machine.newTitles)
-  // Under Score New Titles: settled new titles out of every new title (there are no Bands).
-  const ranked = newTitles
-    ? { done: newTitles.titles.filter((t) => t.settled).length, total: newTitles.titles.length }
+  const keepMyScale = machine.keepMyScale && keepMyScaleView(machine.keepMyScale)
+  // Under Keep My Scale: settled picked titles out of every picked title (there are no Bands).
+  const ranked = keepMyScale
+    ? { done: keepMyScale.titles.filter((t) => t.settled).length, total: keepMyScale.titles.length }
     : {
         done: bandProgress.reduce((sum, p) => sum + p.done, 0),
         total: bandProgress.reduce((sum, p) => sum + p.total, 0),
@@ -1207,12 +1213,12 @@ export function replay(log: DuelLog): RankingState {
     },
     bandChoice,
     canUndo,
-    // No Board under Score New Titles: it has no Bands (ADR 0009).
-    board: new LazyBoard(!newTitles && !effective.some((event) => event.type === 'duel-answered'), machine.bands, machine.placedAt),
+    // No Board under Keep My Scale: it has no Bands (ADR 0009).
+    board: new LazyBoard(!keepMyScale && !effective.some((event) => event.type === 'duel-answered'), machine.bands, machine.placedAt),
     ...(machine.sortGoal && { sortGoal: machine.sortGoal }),
     ...(machine.scoring && { scoring: machine.scoring }),
     ...(standing && { standing }),
-    ...(newTitles && { newTitles }),
+    ...(keepMyScale && { keepMyScale }),
   }
 }
 

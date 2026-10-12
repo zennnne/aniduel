@@ -196,7 +196,7 @@
 .goalrow .seg {
   flex-shrink: 0;
 }
-/* Three Sort Goals (ADR 0009): tighter buttons, a count badge on New Titles, and a locked look when disabled. */
+/* Three Sort Goals (ADR 0009): tighter buttons, a count badge on Keep My Scale, and a locked look when disabled. */
 .seg.tight button {
   padding: 7px 12px;
   white-space: nowrap;

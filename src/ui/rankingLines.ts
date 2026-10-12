@@ -13,15 +13,15 @@ export type RankingLine = {
   note: string | null
 }
 
-/** One score of a Score New Titles Ranking (ADR 0009), as the sidebar and Complete show it. */
-export type NewTitlesLine = {
+/** One score of a Keep My Scale Ranking (ADR 0009), as the sidebar and Complete show it. */
+export type KeepMyScaleLine = {
   level: number
   /** The score as the Anchor snapshot's Score Format shows it. */
   mark: string
   /** A few of the score's Anchors to show (none for a score no Anchor has), and how many more it has. */
   anchors: readonly number[]
   more: number
-  /** The settled new titles on it, sorted by `name`: they have no order among themselves. */
+  /** The settled picked titles on it, sorted by `name`: they have no order among themselves. */
   ids: readonly number[]
 }
 
@@ -33,24 +33,24 @@ const ANCHORS_SHOWN = 3
  * Suspect ones: they are no longer a reference.
  */
 export function shownAnchors(state: RankingState, level: number): { shown: number[]; more: number } {
-  const newTitles = state.newTitles
-  if (!newTitles) return { shown: [], more: 0 }
-  const unused = new Set([...state.forgotten, ...newTitles.suspect.map((s) => s.id)])
-  const usable = (newTitles.levels.find((l) => l.level === level)?.anchors ?? []).filter((id) => !unused.has(id))
+  const keepMyScale = state.keepMyScale
+  if (!keepMyScale) return { shown: [], more: 0 }
+  const unused = new Set([...state.forgotten, ...keepMyScale.suspect.map((s) => s.id)])
+  const usable = (keepMyScale.levels.find((l) => l.level === level)?.anchors ?? []).filter((id) => !unused.has(id))
   const shown = usable.slice(0, ANCHORS_SHOWN)
   return { shown, more: usable.length - shown.length }
 }
 
 /**
- * Under Score New Titles: one line per Anchor score, best first, plus any score a settled title got that no Anchor
+ * Under Keep My Scale: one line per Anchor score, best first, plus any score a settled title got that no Anchor
  * has: a score one step past the extreme Anchors (#48), once a title landed on it. Empty on any other Sort Goal.
  */
-export function newTitlesLines(state: RankingState, name: (id: number) => string): NewTitlesLine[] {
-  const newTitles = state.newTitles
-  if (!newTitles) return []
-  const anchorLevels = newTitles.levels.map((l) => l.level)
+export function keepMyScaleLines(state: RankingState, name: (id: number) => string): KeepMyScaleLine[] {
+  const keepMyScale = state.keepMyScale
+  if (!keepMyScale) return []
+  const anchorLevels = keepMyScale.levels.map((l) => l.level)
   const settled = new Map<number, number[]>()
-  for (const title of newTitles.titles) {
+  for (const title of keepMyScale.titles) {
     if (title.settled) settled.set(title.levels[0], [...(settled.get(title.levels[0]) ?? []), title.id])
   }
   return [...new Set([...anchorLevels, ...settled.keys()])]
@@ -59,7 +59,7 @@ export function newTitlesLines(state: RankingState, name: (id: number) => string
       const { shown, more } = shownAnchors(state, level)
       return {
         level,
-        mark: formatLevel(newTitles.format, level),
+        mark: formatLevel(keepMyScale.format, level),
         anchors: shown,
         more,
         ids: [...(settled.get(level) ?? [])].sort((x, y) => compareNames(name(x), name(y))),

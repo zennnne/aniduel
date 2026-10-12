@@ -1,7 +1,7 @@
 // Switching the Sort Goal (ADR 0007, #28): pure, the events to append. Every earlier answer is kept: the engine
 // carries on from the Tiers and insertion bounds it already has, so no Duel is asked again.
 import type { ScoreFormat } from '../anilist/types.ts'
-import type { LogEvent, RankingState, SortGoal, SwitchableGoal } from './engine.ts'
+import { KEEP_MY_SCALE, type LogEvent, type RankingState, type SortGoal, type SwitchableGoal } from './engine.ts'
 import { scoringFor, withStep, type SavedScoring, type ScoreStep } from './scoring.ts'
 
 /** The Score Step a Ranking gets on each Sort Goal: Scores always uses whole points; Full Ranking starts on human. */
@@ -12,7 +12,7 @@ const FULL_RANKING_BELOW = 100
 
 /**
  * The Sort Goal a new Ranking defaults to on Start, from its Pool size (ADR 0007, V3 amendment): Full Ranking below
- * 100 titles, Scores from 100 up. Never Score New Titles.
+ * 100 titles, Scores from 100 up. Never Keep My Scale.
  */
 export function defaultSortGoal(poolSize: number): SortGoal {
   return poolSize < FULL_RANKING_BELOW ? 'full-ranking' : 'scores'
@@ -31,9 +31,9 @@ export function isScores(ranking: Pick<RankingState, 'sortGoal'>): boolean {
   return goalOf(ranking) === 'scores'
 }
 
-/** Whether a Ranking is on Score New Titles (ADR 0009): no Bands, no scoring settings, no switching. */
-export function isNewTitles(ranking: Pick<RankingState, 'sortGoal'>): boolean {
-  return goalOf(ranking) === 'score-new-titles'
+/** Whether a Ranking is on Keep My Scale (ADR 0009): no Bands, no scoring settings, no switching. */
+export function isKeepMyScale(ranking: Pick<RankingState, 'sortGoal'>): boolean {
+  return goalOf(ranking) === KEEP_MY_SCALE
 }
 
 /**
@@ -43,8 +43,8 @@ export function isNewTitles(ranking: Pick<RankingState, 'sortGoal'>): boolean {
  * engine's: Scores needs whole-step settings before it starts, and Full Ranking must start before a finer step.
  */
 export function switchGoalEvents(ranking: RankingState, saved: SavedScoring | null, format: ScoreFormat, goal: SwitchableGoal): LogEvent[] {
-  // A Score New Titles Ranking never switches (ADR 0009): the engine would refuse the events.
-  if (goalOf(ranking) === goal || isNewTitles(ranking)) return []
+  // A Keep My Scale Ranking never switches (ADR 0009): the engine would refuse the events.
+  if (goalOf(ranking) === goal || isKeepMyScale(ranking)) return []
   const { settings } = scoringFor(ranking, saved, format)
   const scoring: LogEvent = { type: 'scoring-set', format, settings: withStep(settings, format, STEP_FOR[goal]) }
   const setGoal: LogEvent = { type: 'sort-goal-set', goal }

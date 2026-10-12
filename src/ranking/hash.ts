@@ -1,5 +1,5 @@
 // A small seeded hash for every choice replay must make the same way each time (ADR 0005): which card is on the
-// left, which titles are sorted first, which Anchor a new title meets. Never `Math.random`.
+// left, which titles are sorted first, which Anchor a picked title meets. Never `Math.random`.
 
 /** `hash(seed, a, b)`: 32-bit FNV-1a over the three words, then a final mix. */
 export function seededHash(seed: number, low: number, high: number): number {

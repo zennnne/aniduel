@@ -512,7 +512,7 @@ a {
   padding: 1px 5px;
   font-size: 11px;
 }
-/* Score New Titles: a score's Anchors as small covers, then the new titles settled on it, ringed */
+/* Keep My Scale: a score's Anchors as small covers, then the picked titles settled on it, ringed */
 .rank .lvcovers {
   display: flex;
   flex-wrap: wrap;

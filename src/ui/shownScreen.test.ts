@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Viewer } from '../anilist/types.ts'
 import type { ImportView } from '../import/previewImport.ts'
-import { appendEvent, replay, startLog, startNewTitlesLog, type BandIndex, type DuelLog, type LogEvent } from '../ranking/engine.ts'
+import { appendEvent, replay, startLog, startKeepMyScaleLog, type BandIndex, type DuelLog, type LogEvent } from '../ranking/engine.ts'
 import { SPLIT_OFFER_THRESHOLD } from '../ranking/split.ts'
 import { rankingLogOf } from '../ranking/testRanking.ts'
 import { NO_RANKING_UI } from './rankingUi.ts'
@@ -46,11 +46,11 @@ describe('Start', () => {
   })
 })
 
-/** Score New Titles: new title 1 against Anchors on 8 and 6. */
-const newTitles = () =>
-  startNewTitlesLog({ ...header, format: 'POINT_10', anchors: [{ id: 101, level: 8 }, { id: 102, level: 6 }], ids: [1] })
+/** Keep My Scale: picked title 1 against Anchors on 8 and 6. */
+const keepMyScale = () =>
+  startKeepMyScaleLog({ ...header, format: 'POINT_10', anchors: [{ id: 101, level: 8 }, { id: 102, level: 6 }], ids: [1] })
 
-/** Answers Anchor Duels until the closer-to prompt: the new title beats the Anchor on 6 and loses to the one on 8. */
+/** Answers Anchor Duels until the closer-to prompt: the picked title beats the Anchor on 6 and loses to the one on 8. */
 function toCloserTo(log: DuelLog): DuelLog {
   for (let state = replay(log); state.prompt.kind !== 'closer-to'; state = replay(log)) {
     const p = state.prompt
@@ -81,13 +81,13 @@ describe("the Ranking screen follows the engine's next prompt", () => {
     expect(kindAt(chosen, { screen: 'bands', rankingUi: continued })).toBe('band-choice')
   })
 
-  it('a Duel against an Anchor under Score New Titles, also when the Band choice is asked for', () => {
-    expect(kindAt(newTitles())).toBe('duel')
-    expect(kindAt(newTitles(), { screen: 'bands' })).toBe('duel')
+  it('a Duel against an Anchor under Keep My Scale, also when the Band choice is asked for', () => {
+    expect(kindAt(keepMyScale())).toBe('duel')
+    expect(kindAt(keepMyScale(), { screen: 'bands' })).toBe('duel')
   })
 
-  it('the Closer-to prompt for a new title between two scores', () => {
-    expect(kindAt(toCloserTo(newTitles()))).toBe('closer-to')
+  it('the Closer-to prompt for a picked title between two scores', () => {
+    expect(kindAt(toCloserTo(keepMyScale()))).toBe('closer-to')
   })
 
   it('the finished Ranking', () => {
@@ -177,8 +177,8 @@ describe('Preview', () => {
     expect(shown).toMatchObject({ scoring: replay(finished()).scoring?.settings })
   })
 
-  it('shows before the end under Score New Titles', () => {
-    expect(kindAt(newTitles(), { screen: 'preview', preview: checked })).toBe('preview')
+  it('shows before the end under Keep My Scale', () => {
+    expect(kindAt(keepMyScale(), { screen: 'preview', preview: checked })).toBe('preview')
   })
 
   it('asked for without the fresh Viewer check shows the Ranking screen', () => {
@@ -218,7 +218,7 @@ describe('Import', () => {
     expect(kindAt(finished(), { importing: importOn('running') })).toBe('complete')
   })
 
-  it('finished for a Score New Titles Ranking shows its summary with no Ranking left', () => {
+  it('finished for a Keep My Scale Ranking shows its summary with no Ranking left', () => {
     expect(shownScreen(at(null, { screen: 'import', importing: importOn('done') }))).toMatchObject({ kind: 'import', ranking: null, importing: { stage: 'done' } })
     // The list is not waited for: only the summary shows.
     expect(kindAt(null, { screen: 'import', importing: importOn('done'), listLoaded: false })).toBe('import')

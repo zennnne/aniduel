@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ListEntry, ListStatus } from '../anilist/types.ts'
-import { anchorsOf, newTitlesEligibility, newTitlesList } from './anchors.ts'
+import { anchorsOf, keepMyScaleEligibility, keepMyScaleList } from './anchors.ts'
 
 let nextId = 1
 const entry = (oldScore100: number, status: ListStatus = 'COMPLETED'): ListEntry => ({
@@ -32,39 +32,39 @@ describe('Anchors', () => {
   })
 })
 
-describe('Score New Titles eligibility', () => {
+describe('Keep My Scale eligibility', () => {
   it('needs at least 20 Anchors', () => {
-    expect(newTitlesEligibility(anchorsOf(scored(19, [90, 80, 70]), 'POINT_10'))).toMatchObject({ eligible: false, anchors: 19, scores: 3 })
-    expect(newTitlesEligibility(anchorsOf(scored(20, [90, 80, 70]), 'POINT_10'))).toMatchObject({ eligible: true, anchors: 20, scores: 3 })
+    expect(keepMyScaleEligibility(anchorsOf(scored(19, [90, 80, 70]), 'POINT_10'))).toMatchObject({ eligible: false, anchors: 19, scores: 3 })
+    expect(keepMyScaleEligibility(anchorsOf(scored(20, [90, 80, 70]), 'POINT_10'))).toMatchObject({ eligible: true, anchors: 20, scores: 3 })
   })
 
   it('needs at least 3 distinct Anchor scores', () => {
-    expect(newTitlesEligibility(anchorsOf(scored(30, [90, 80]), 'POINT_10'))).toMatchObject({ eligible: false, anchors: 30, scores: 2 })
-    expect(newTitlesEligibility(anchorsOf(scored(30, [90, 80, 70]), 'POINT_10'))).toMatchObject({ eligible: true, scores: 3 })
+    expect(keepMyScaleEligibility(anchorsOf(scored(30, [90, 80]), 'POINT_10'))).toMatchObject({ eligible: false, anchors: 30, scores: 2 })
+    expect(keepMyScaleEligibility(anchorsOf(scored(30, [90, 80, 70]), 'POINT_10'))).toMatchObject({ eligible: true, scores: 3 })
   })
 
   it('counts distinct scores at the Score Format the user sees', () => {
     // 85, 88 and 81 are all 8 on 10 points.
-    expect(newTitlesEligibility(anchorsOf(scored(30, [85, 88, 81]), 'POINT_10'))).toMatchObject({ eligible: false, scores: 1 })
+    expect(keepMyScaleEligibility(anchorsOf(scored(30, [85, 88, 81]), 'POINT_10'))).toMatchObject({ eligible: false, scores: 1 })
   })
 
   it('says why when not eligible', () => {
-    expect(newTitlesEligibility(anchorsOf(scored(12, [90, 80]), 'POINT_10')).reason).toBe(
+    expect(keepMyScaleEligibility(anchorsOf(scored(12, [90, 80]), 'POINT_10')).reason).toBe(
       'Needs at least 20 scored titles on 3 different scores. You have 12 on 2.',
     )
-    expect(newTitlesEligibility(anchorsOf(scored(20, [90, 80, 70]), 'POINT_10')).reason).toBeNull()
+    expect(keepMyScaleEligibility(anchorsOf(scored(20, [90, 80, 70]), 'POINT_10')).reason).toBeNull()
   })
 })
 
-describe('the list a Score New Titles Pool is built from', () => {
-  it('holds the titles without a score, plus the new titles already in the Ranking even once scored', () => {
+describe('the list a Keep My Scale Pool is built from', () => {
+  it('holds the titles without a score, plus the picked titles already in the Ranking even once scored', () => {
     const anchor = entry(80)
     const unscored = entry(0)
     const imported = entry(70)
     const list = [anchor, unscored, imported]
-    expect(newTitlesList(list, null).map((e) => e.mediaId)).toEqual([unscored.mediaId])
+    expect(keepMyScaleList(list, null).map((e) => e.mediaId)).toEqual([unscored.mediaId])
     const inRanking = new Set([imported.mediaId])
-    expect(newTitlesList(list, { anchors: new Set([anchor.mediaId]), pool: inRanking }).map((e) => e.mediaId)).toEqual([
+    expect(keepMyScaleList(list, { anchors: new Set([anchor.mediaId]), pool: inRanking }).map((e) => e.mediaId)).toEqual([
       unscored.mediaId,
       imported.mediaId,
     ])
@@ -72,6 +72,6 @@ describe('the list a Score New Titles Pool is built from', () => {
 
   it('never holds an Anchor, even once its score is removed on AniList', () => {
     const anchor = entry(0)
-    expect(newTitlesList([anchor], { anchors: new Set([anchor.mediaId]), pool: new Set() })).toEqual([])
+    expect(keepMyScaleList([anchor], { anchors: new Set([anchor.mediaId]), pool: new Set() })).toEqual([])
   })
 })

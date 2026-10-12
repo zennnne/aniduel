@@ -3,12 +3,12 @@
 
 /** Where the user's anime stands, as Start would show it. */
 export type AnimeStanding = {
-  /** Whether the user qualifies for Score New Titles (`newTitlesEligibility` on their anime list's Anchors). */
-  eligibleForNewTitles: boolean
-  /** The titles Score New Titles would rank: the count on Start's New Titles button. */
+  /** Whether the user qualifies for Keep My Scale (`keepMyScaleEligibility` on their anime list's Anchors). */
+  eligibleForKeepMyScale: boolean
+  /** The titles Keep My Scale would rank: the count on Start's Keep My Scale button. */
   unscored: number
-  /** The anime Ranking saved in this browser: none, a Score New Titles one, or one on another Sort Goal. */
-  saved: 'none' | 'new-titles' | 'other'
+  /** The anime Ranking saved in this browser: none, a Keep My Scale one, or one on another Sort Goal. */
+  saved: 'none' | 'keep-my-scale' | 'other'
 }
 
 export type ExitOfferInput = {
@@ -20,13 +20,13 @@ export type ExitOfferInput = {
 
 /**
  * Every target is Start on anime:
- * `score-new-titles`: with Score New Titles picked, to place the new titles on the user's own scale.
- * `replace-with-new-titles`: asking to replace the saved Ranking with a Score New Titles one (#46).
+ * `keep-my-scale`: with Keep My Scale picked, to place the titles without a score on the user's own scale.
+ * `replace-with-keep-my-scale`: asking to replace the saved Ranking with a Keep My Scale one (#46).
  * `saved-ranking`: with the saved Ranking as it is, to continue it.
  * `default-sort-goal`: with the Pool-size default Sort Goal, to build that scale first.
  */
 export type ExitOffer = {
-  target: 'score-new-titles' | 'replace-with-new-titles' | 'saved-ranking' | 'default-sort-goal'
+  target: 'keep-my-scale' | 'replace-with-keep-my-scale' | 'saved-ranking' | 'default-sort-goal'
   label: string
 }
 
@@ -36,10 +36,10 @@ export type ExitOffer = {
  */
 export function exitOffer({ added, anime }: ExitOfferInput): ExitOffer | null {
   if (added === 0 || !anime) return null
-  if (anime.eligibleForNewTitles && anime.unscored > 0) {
-    const label = `Score ${anime.unscored} new ${anime.unscored === 1 ? 'title' : 'titles'} →`
-    if (anime.saved === 'none') return { target: 'score-new-titles', label }
-    return { target: anime.saved === 'new-titles' ? 'saved-ranking' : 'replace-with-new-titles', label }
+  if (anime.eligibleForKeepMyScale && anime.unscored > 0) {
+    const label = `Score ${anime.unscored} ${anime.unscored === 1 ? 'title' : 'titles'} →`
+    if (anime.saved === 'none') return { target: 'keep-my-scale', label }
+    return { target: anime.saved === 'keep-my-scale' ? 'saved-ranking' : 'replace-with-keep-my-scale', label }
   }
   if (anime.saved !== 'none') return { target: 'saved-ranking', label: 'Continue ranking →' }
   return { target: 'default-sort-goal', label: 'Start Rough Sort →' }

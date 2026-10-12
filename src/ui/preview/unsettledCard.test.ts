@@ -1,7 +1,7 @@
 // Preview's unsettled card (#29): it shows after a settings change, but also after Forgotten, a sync or a Band move,
 // so its copy names no cause.
 import { describe, expect, it } from 'vitest'
-import { newTitlesUnsettledSummary, unsettledSummary } from './unsettledCard.ts'
+import { keepMyScaleUnsettledSummary, unsettledSummary } from './unsettledCard.ts'
 
 describe("the unsettled card's summary", () => {
   it('counts the titles not settled yet and the Refine Duels, whatever unsettled them', () => {
@@ -13,16 +13,16 @@ describe("the unsettled card's summary", () => {
   })
 })
 
-describe("the unsettled card's summary on Score New Titles", () => {
+describe("the unsettled card's summary on Keep My Scale", () => {
   it('says a few more Duels decide while Duels are left', () => {
-    expect(newTitlesUnsettledSummary(2, true)).toBe('2 titles not settled yet · a few more Duels decide')
+    expect(keepMyScaleUnsettledSummary(2, true)).toBe('2 titles not settled yet · a few more Duels decide')
   })
 
   it('says no Anchor is left to compare with once no Duel is left, and how to go on', () => {
-    expect(newTitlesUnsettledSummary(1, false)).toBe(
+    expect(keepMyScaleUnsettledSummary(1, false)).toBe(
       '1 title not settled · no Anchor left to compare it with · Bring back a Forgotten Anchor to go on',
     )
-    expect(newTitlesUnsettledSummary(3, false)).toBe(
+    expect(keepMyScaleUnsettledSummary(3, false)).toBe(
       '3 titles not settled · no Anchor left to compare them with · Bring back a Forgotten Anchor to go on',
     )
   })

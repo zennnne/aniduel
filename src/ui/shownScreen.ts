@@ -45,7 +45,7 @@ type InRanking = { viewer: Viewer; ranking: RankingState }
 export type Shown =
   | { kind: 'start' }
   | { kind: 'catch-up'; viewer: Viewer }
-  /** `ranking` is null once a Score New Titles Ranking ended with this Import (ADR 0010): only its summary is left. */
+  /** `ranking` is null once a Keep My Scale Ranking ended with this Import (ADR 0010): only its summary is left. */
   | { kind: 'import'; viewer: Viewer; ranking: RankingState | null; importing: ImportView }
   | (InRanking & { kind: 'preview'; scoring: ScoringSettings; oldScores: ReadonlyMap<number, number> })
   | RankingShown
@@ -94,7 +94,7 @@ function promptScreen(input: ScreenInput, open: InRanking): RankingShown {
     case 'duel':
       return ranking.bandChoice || screen === 'bands' ? { ...open, kind: 'band-choice', prompt } : { ...open, kind: 'duel', prompt }
     case 'anchor-duel':
-      // Score New Titles (ADR 0009): no Band to choose.
+      // Keep My Scale (ADR 0009): no Band to choose.
       return { ...open, kind: 'duel', prompt }
     case 'closer-to':
       return { ...open, kind: 'closer-to', prompt }
@@ -112,7 +112,7 @@ export function shownScreen(input: ScreenInput): Shown {
   if (!viewer) return { kind: 'start' }
   if (screen === 'catchup') return { kind: 'catch-up', viewer }
   const importing = screen === 'import' && input.importing?.stage !== 'dropped' ? input.importing : null
-  // A Score New Titles Ranking is gone once its Import finished (ADR 0010); the summary still shows.
+  // A Keep My Scale Ranking is gone once its Import finished (ADR 0010); the summary still shows.
   if (importing?.stage === 'done' && !ranking) return { kind: 'import', viewer, ranking: null, importing }
   // Wait for the list's display data, unless AniList is unreachable: answers still work then, with plain cards.
   if (screen === 'start' || !ranking || !(input.listLoaded || input.notice)) return { kind: 'start' }

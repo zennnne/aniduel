@@ -23,12 +23,13 @@ import {
 import { DEFAULT_STATUSES, OFFERED_STATUSES } from '../pool/pool.ts'
 import { syncEvents } from '../pool/sync.ts'
 import {
+  KEEP_MY_SCALE,
   answeredDuels,
   appendEvent,
   promptedTitle,
   replay,
   startLog,
-  startNewTitlesLog,
+  startKeepMyScaleLog,
   withSub,
   type BandIndex,
   type LogEvent,
@@ -40,7 +41,7 @@ import {
 import { fullRankingExtra } from '../ranking/estimate.ts'
 import { previewOpen, readPreview } from '../ranking/preview.ts'
 import type { ScoringSettings } from '../ranking/scoring.ts'
-import { goalOf, isNewTitles, switchGoalEvents } from '../ranking/sortGoal.ts'
+import { goalOf, isKeepMyScale, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
 import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
@@ -64,7 +65,7 @@ import { LogoutDialog } from './LogoutDialog.tsx'
 import { FullRankingDialog } from './menu/FullRankingDialog.tsx'
 import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
 import { buildMenuItems } from './menu/buildMenuItems.ts'
-import { ReplaceWithNewTitlesDialog, RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
+import { ReplaceWithKeepMyScaleDialog, RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
 import { ImportScreen } from './import/ImportScreen.tsx'
 import { usePreviewImport } from './import/usePreviewImport.ts'
 import { useWriteQueue } from './useWriteQueue.ts'
@@ -81,7 +82,7 @@ import { animeStanding, startView, type StartView } from './start/startView.ts'
 import { useTheme } from './theme.ts'
 import { useDuelLog } from './useDuelLog.ts'
 
-type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-new-titles'
+type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-keep-my-scale'
 
 const TOAST_MS = 4000
 
@@ -192,7 +193,7 @@ export function App() {
         if (!current) return prev
         return { ...prev, [key.mediaType]: current.map((e) => (written.has(e.mediaId) ? { ...e, oldScore100: written.get(e.mediaId)! } : e)) }
       }),
-    onFinished: endNewTitles,
+    onFinished: endKeepMyScale,
   })
 
   const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(localStorage, viewerId)), [viewerId])
@@ -452,7 +453,7 @@ export function App() {
     if (refining && state.prompt.kind === 'all-complete') {
       patchRankingUi({ refining: false })
       if (screen !== 'preview') goTo('preview')
-      showToast(state.newTitles ? 'Every new title has a score' : 'Every score is settled again')
+      showToast(state.keepMyScale ? 'Every title has a score' : 'Every score is settled again')
     }
     return state
   }
@@ -531,8 +532,8 @@ export function App() {
     if (!duelLog.latest()) {
       if (!start?.startOrder) return
       const { startOrder, newGoal, scoresPlan } = start
-      if (newGoal === 'score-new-titles') {
-        startNewTitles(startOrder)
+      if (newGoal === KEEP_MY_SCALE) {
+        startKeepMyScale(startOrder)
         return
       }
       // The new log carries its own Sort Goal and default scoring settings (ADR 0007).
@@ -554,12 +555,12 @@ export function App() {
    * best / worst were chosen, they were converted to the new format, and a blue banner says so.
    */
   function openPreview() {
-    const newTitles = ranking !== null && isNewTitles(ranking)
+    const onKeepMyScale = ranking !== null && isKeepMyScale(ranking)
     void imports.openPreview().then((checked) => {
       if (!checked) return
       if (checked.converted) {
-        // Score New Titles has no best / worst: its scores are the Anchors', shown in the new Score Format.
-        const check = newTitles ? 'Check the new scores' : 'Best / Worst were converted. Check them'
+        // Keep My Scale has no best / worst: its scores are the Anchors', shown in the new Score Format.
+        const check = onKeepMyScale ? 'Check the new scores' : 'Best / Worst were converted. Check them'
         setNotice({
           tone: 'info',
           message: `Your Score Format changed to ${SCORE_FORMAT_LABEL[checked.format]}. ${check} before importing.`,
@@ -665,40 +666,40 @@ export function App() {
     showToast(summary ? `${restored} · ${summary}` : restored)
   }
 
-  /** Score New Titles (ADR 0009): the Anchors are snapshotted into a new log now; Duels start straight away. */
-  function startNewTitles(ids: number[]) {
+  /** Keep My Scale (ADR 0009): the Anchors are snapshotted into a new log now; Duels start straight away. */
+  function startKeepMyScale(ids: number[]) {
     const { anchors, eligibility } = start ?? {}
     if (!viewer || !anchors || !eligibility?.eligible) return
-    const log = startNewTitlesLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids })
+    const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids })
     if (saved(() => duelLog.save(log))) goTo('ranking')
   }
 
   /**
    * Runs only after the user confirmed in the Replace dialog (#46): the saved Scores / Full Ranking Ranking is thrown
-   * away and a Score New Titles one starts on the unscored titles of the chosen statuses.
+   * away and a Keep My Scale one starts on the unscored titles of the chosen statuses.
    */
-  function replaceWithNewTitles() {
+  function replaceWithKeepMyScale() {
     if (!rankingKey || !startInput || !start?.eligibility?.eligible) return
-    // The Rough Sort order Start would give a new Score New Titles Ranking.
-    const ids = startView({ ...startInput, saved: null, savedBroken: false, picked: 'score-new-titles' }).startOrder
+    // The Rough Sort order Start would give a new Keep My Scale Ranking.
+    const ids = startView({ ...startInput, saved: null, savedBroken: false, picked: KEEP_MY_SCALE }).startOrder
     if (!ids) return
     deleteDuelLog(localStorage, rankingKey)
     imports.discard(rankingKey)
     setDialog(null)
     setNotice(null)
     openRanking(rankingKey, false)
-    setPickedGoal('score-new-titles')
-    startNewTitles(ids)
-    showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was replaced by Score New Titles.`)
+    setPickedGoal(KEEP_MY_SCALE)
+    startKeepMyScale(ids)
+    showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was replaced by Keep My Scale.`)
   }
 
   /**
-   * A Score New Titles Ranking ends with its Import (ADR 0010): nothing of it is kept, settled or not. The Import
+   * A Keep My Scale Ranking ends with its Import (ADR 0010): nothing of it is kept, settled or not. The Import
    * screen stays on its summary; the titles it wrote are Anchors for the next Ranking.
    */
-  function endNewTitles(key: RankingKey) {
+  function endKeepMyScale(key: RankingKey) {
     const current = duelLog.latest()
-    if (!current || !isNewTitles(replay(current))) return
+    if (!current || !isKeepMyScale(replay(current))) return
     deleteDuelLog(localStorage, key)
     imports.discard(key)
     duelLog.show(null)
@@ -731,16 +732,16 @@ export function App() {
   }
 
   /**
-   * Leaving Catch-up through its exit offer: on to Start on anime. Without a saved Ranking, Score New Titles is picked,
+   * Leaving Catch-up through its exit offer: on to Start on anime. Without a saved Ranking, Keep My Scale is picked,
    * or nothing is so the Sort Goal follows the Pool size (#38). A saved Ranking is shown as it is, with the Replace
-   * dialog (#46) over it when the offer was Score New Titles and the Ranking is on another Sort Goal.
+   * dialog (#46) over it when the offer was Keep My Scale and the Ranking is on another Sort Goal.
    */
   function takeExitOffer(offer: ExitOffer) {
     switchMediaType('ANIME')
-    if (offer.target === 'score-new-titles') setPickedGoal('score-new-titles')
+    if (offer.target === 'keep-my-scale') setPickedGoal(KEEP_MY_SCALE)
     if (offer.target === 'default-sort-goal') setPickedGoal(null)
     goTo('start')
-    if (offer.target === 'replace-with-new-titles') setDialog('replace-with-new-titles')
+    if (offer.target === 'replace-with-keep-my-scale') setDialog('replace-with-keep-my-scale')
   }
 
   const hasProgress = Boolean(log) || savedBroken
@@ -783,8 +784,8 @@ export function App() {
         mediaType,
         onGoal: (goal: SortGoal) => {
           if (!ranking) setPickedGoal(goal)
-          else if (goal !== 'score-new-titles') requestSortGoal(goal)
-          else if (!isNewTitles(ranking)) setDialog('replace-with-new-titles')
+          else if (goal !== KEEP_MY_SCALE) requestSortGoal(goal)
+          else if (!isKeepMyScale(ranking)) setDialog('replace-with-keep-my-scale')
         },
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
@@ -903,7 +904,7 @@ export function App() {
         )
       case 'import': {
         const { importing } = shown
-        // A Score New Titles Ranking is gone once its Import finished (ADR 0010); the summary still shows.
+        // A Keep My Scale Ranking is gone once its Import finished (ADR 0010); the summary still shows.
         const ended = shown.ranking === null
         return (
           <ImportScreen
@@ -937,13 +938,13 @@ export function App() {
             format={shown.viewer.scoreFormat}
             settings={shown.scoring}
             onSettings={changeScoring}
-            onSwitchGoal={isNewTitles(ranking) ? undefined : requestSortGoal}
+            onSwitchGoal={isKeepMyScale(ranking) ? undefined : requestSortGoal}
             onRefine={ranking.prompt.kind === 'all-complete' ? undefined : refineFromPreview}
             overrides={ticks}
             onTick={imports.tick}
             onImport={imports.importing?.stage === 'running' ? undefined : () => imports.planImport() && goTo('import')}
             onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
-            onMove={isNewTitles(ranking) ? undefined : (id) => patchRankingUi({ previewMoving: id })}
+            onMove={isKeepMyScale(ranking) ? undefined : (id) => patchRankingUi({ previewMoving: id })}
             onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}
           />
         )
@@ -958,8 +959,8 @@ export function App() {
     const state = shown.ranking
     const titleLanguage = shown.viewer.titleLanguage
     const shared = { state, entries, titleLanguage, mediaType, onUndo: () => answer({ type: 'undo' }) }
-    // Score New Titles: every settled new title can be imported before the rest are (ADR 0010).
-    const settled = state.newTitles?.titles.filter((t) => t.settled).length ?? 0
+    // Keep My Scale: every settled picked title can be imported before the rest are (ADR 0010).
+    const settled = state.keepMyScale?.titles.filter((t) => t.settled).length ?? 0
     const early = settled > 0 ? { settled, onOpen: list && !imports.openingPreview ? openPreview : undefined } : undefined
     switch (shown.kind) {
       case 'split': {
@@ -1055,7 +1056,7 @@ export function App() {
       }
       case 'duel': {
         const { prompt } = shown
-        // Against an Anchor (Score New Titles, ADR 0009): no Band to choose, nothing to move.
+        // Against an Anchor (Keep My Scale, ADR 0009): no Band to choose, nothing to move.
         const inBand = prompt.kind === 'duel'
         const fixing = previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : undefined
         return (
@@ -1073,7 +1074,7 @@ export function App() {
         )
       }
       case 'closer-to': {
-        // Score New Titles (#48): which of the two scores the title sits between is it closer to.
+        // Keep My Scale (#48): which of the two scores the title sits between is it closer to.
         const { prompt } = shown
         return (
           <CloserToScreen
@@ -1174,11 +1175,11 @@ export function App() {
           }}
         />
       )}
-      {dialog === 'replace-with-new-titles' && viewer && (
-        <ReplaceWithNewTitlesDialog
+      {dialog === 'replace-with-keep-my-scale' && viewer && (
+        <ReplaceWithKeepMyScaleDialog
           mediaType={mediaType}
           saved={ranking && log ? { goal: goalOf(ranking), duels: answeredDuels(log) } : null}
-          onConfirm={replaceWithNewTitles}
+          onConfirm={replaceWithKeepMyScale}
           onSaveBackup={log ? saveBackup : undefined}
           onCancel={() => setDialog(null)}
         />

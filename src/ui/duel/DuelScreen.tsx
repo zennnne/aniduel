@@ -10,7 +10,7 @@ import { useHesitation } from './hesitation.ts'
 import './duel.css'
 
 type DuelPrompt = Extract<Prompt, { kind: 'duel' }>
-/** Score New Titles (ADR 0009): the same two cards; neither says which is the Anchor. */
+/** Keep My Scale (ADR 0009): the same two cards; neither says which is the Anchor. */
 type AnchorDuelPrompt = Extract<Prompt, { kind: 'anchor-duel' }>
 
 /** Duels left for this insertion at most: binary search over the remaining lo..hi slots (Full Ranking only). */
@@ -69,10 +69,10 @@ function Card(props: {
   )
 }
 
-/** How many new titles are settled, and Preview's opener (undefined while it can't open). */
+/** How many picked titles are settled, and Preview's opener (undefined while it can't open). */
 export type EarlyPreview = { settled: number; onOpen?: () => void }
 
-/** Score New Titles (ADR 0010): top right of a Duel or Closer-to prompt, once at least one new title is settled. */
+/** Keep My Scale (ADR 0010): top right of a Duel or Closer-to prompt, once at least one picked title is settled. */
 export function EarlyPreviewButton({ settled, onOpen }: EarlyPreview) {
   return (
     <div className="float-preview">
@@ -105,7 +105,7 @@ export function DuelScreen(props: {
   onMove?: (id: number, band: BandIndex, sub?: SubBandIndex) => void
   /** Shown in front of the pill while a fix is being placed, e.g. "Re-ranking: Frieren". */
   note?: string
-  /** Score New Titles (ADR 0010): the way to Preview before every new title has a score. */
+  /** Keep My Scale (ADR 0010): the way to Preview before every picked title has a score. */
   early?: EarlyPreview
 }) {
   const { state, prompt, entries, titleLanguage, mediaType, onPick, onTie, onForget, onUndo, onChooseBand, onMove, note, early } = props
@@ -113,7 +113,7 @@ export function DuelScreen(props: {
   // `M` waits for ← / →; then the sheet is open for that card.
   const [movePending, setMovePending] = useState(false)
   const [moving, setMoving] = useState<number | null>(null)
-  // Inside a split Band the pill counts the current Sub-band only; Score New Titles counts every new title.
+  // Inside a split Band the pill counts the current Sub-band only; Keep My Scale counts every picked title.
   const bandDuel = prompt.kind === 'duel' ? prompt : null
   const part = bandDuel?.sub !== undefined ? state.bands[bandDuel.band].subBands?.[bandDuel.sub] : undefined
   const overall = state.progress.ranked
@@ -198,7 +198,7 @@ export function DuelScreen(props: {
               )}
             </>
           ) : (
-            'Score New Titles'
+            'Keep My Scale'
           )}{' '}
           · {progress.done}/{progress.total}
           {spots !== null && <> · {count(spots, 'spot')} left</>}
