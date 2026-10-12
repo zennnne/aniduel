@@ -2,6 +2,8 @@
 
 _Amended by [ADR 0011](0011-keep-my-scale-a-hand-picked-pool.md): the goal is now called Keep My Scale, its Pool is picked by hand and can hold scored titles, and sync no longer adds titles._
 
+_Amended by [ADR 0012](0012-keep-my-scale-a-split-on-a-score-is-not-asked.md): a title that both beat and lost to Anchors of a score, and ends up next to that score, gets it without the Closer-to prompt, and an Anchor is Suspect only when the titles that contradicted it are most of the titles settled against it._
+
 Users who already have their own scoring scale don't want it rescaled; they want the titles they never scored to get scores on that same scale. Every other Sort Goal turns Ranking positions into scores through a Distribution (ADR 0002/0003), which rewrites every score. **Score New Titles** works the other way round: titles that already have an AniList score are Anchors with fixed scores, and each unscored title gets the score of the Anchors it sits among, found by Duels against Anchors only. We call it a Sort Goal because to the user it is a different goal for the sort, even though it can't be switched to or from the other two.
 
 ## Rules

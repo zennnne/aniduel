@@ -11,6 +11,11 @@
 // a boundary is decided, and a boundary is decided by the votes of different Anchors: two agreeing, or the majority
 // once they disagree. The level's own Anchors vote first; once every one of them has answered (a single-Anchor level,
 // or a split pair), the Anchors of the neighbouring levels vote too.
+//
+// A split on a score (ADR 0012): a title that beat one Anchor of a level and lost to another still has a third Anchor
+// decide the boundary, but where the Duels then leave it beside that level (between two scores, or past the top or
+// bottom one) it gets the level's score instead of the closer-to prompt or the score past the end. Rankings started
+// before engine 10 keep the rule they were answered under (`SplitRule`).
 import type { ScoreFormat } from '../anilist/types.ts'
 import { seededHash } from './hash.ts'
 import { humanStepPast, levels as levelsOf } from './scoring.ts'
@@ -60,6 +65,17 @@ type Placement = {
   contradicts?: readonly number[]
 }
 
+/**
+ * Where a title ends that the Duels leave between two scores after it both beat and lost to Anchors of one of them
+ * (ADR 0012). 'closer-to' is the rule every Ranking started before engine 10 was answered under: it is asked the
+ * closer-to prompt like any title between two scores. 'on-the-score' gives it the score it was split on, past the top
+ * or bottom Anchor score too, has a win and a loss on a score with two Anchors ask one Anchor of each neighbouring
+ * score instead of all of them (`decide`), and makes an Anchor Suspect only when most of the titles that met it
+ * contradicted it (`refreshSuspects`). Named by the Anchor snapshot, so a log always replays under the rule its
+ * answers were given to.
+ */
+export type SplitRule = 'closer-to' | 'on-the-score'
+
 /** Which side of boundary j a vote puts the title: 'above' = a position before j, 'below' = j or after. */
 type Side = 'above' | 'below'
 
@@ -73,11 +89,13 @@ export type KeepMyScale = {
   /** Anchors no longer used as a reference (Forgotten): never chosen for a Duel, their levels and scores unchanged. */
   excluded: Set<number>
   /**
-   * Suspect Anchors: contradicted by at least two titles still in the queue. Derived from the queue's `contradicts`
+   * Suspect Anchors: contradicted by at least two titles still in the queue (under 'on-the-score', also by most of
+   * the settled titles that met them). Derived from the queue's `contradicts`
    * and refreshed whenever they change; never chosen for a Duel, and their answers stop counting, as if Forgotten.
    */
   suspect: Map<number, number>
   seed: number
+  split: SplitRule
   /** Every picked title, in the order they joined (Unforgotten ones at the front). */
   queue: Placement[]
 }
@@ -95,7 +113,12 @@ export type KeepMyScaleQuestion = ({ kind: 'anchor-duel' } & AnchorDuel) | ({ ki
  * Builds the search from the Anchor snapshot, or returns why the snapshot can't be used. Anchors are grouped by
  * score, best first; inside a level they are kept by id, so the choice of Anchor never depends on snapshot order.
  */
-export function startKeepMyScale(format: ScoreFormat, anchors: readonly AnchorScore[], seed: number): KeepMyScale | string {
+export function startKeepMyScale(
+  format: ScoreFormat,
+  anchors: readonly AnchorScore[],
+  seed: number,
+  split: SplitRule = 'closer-to',
+): KeepMyScale | string {
   if (!Array.isArray(anchors) || anchors.length === 0) return 'The Anchor snapshot must list at least one Anchor'
   const valid = new Set(levelsOf(format))
   const byLevel = new Map<number, number[]>()
@@ -109,7 +132,7 @@ export function startKeepMyScale(format: ScoreFormat, anchors: readonly AnchorSc
   const levels = [...byLevel]
     .sort((x, y) => y[0] - x[0])
     .map(([level, members]) => ({ level, anchors: members.sort((x, y) => x - y) }))
-  return { format, levels, anchorIds: ids, excluded: new Set(), suspect: new Map(), seed, queue: [] }
+  return { format, levels, anchorIds: ids, excluded: new Set(), suspect: new Map(), seed, split, queue: [] }
 }
 
 /** Picked titles join at the back, knowing nothing yet. */
@@ -133,7 +156,7 @@ export function takeOutPickedTitle(state: KeepMyScale, id: number): void {
   refreshSuspects(state)
 }
 
-/** An Anchor contradicted by this many titles becomes Suspect (ADR 0009). */
+/** An Anchor contradicted by this many titles becomes Suspect (ADR 0009); see `refreshSuspects` for 'on-the-score'. */
 const SUSPECT_AFTER = 2
 
 /**
@@ -147,7 +170,18 @@ function refreshSuspects(state: KeepMyScale): void {
   for (const placement of state.queue) {
     for (const anchor of placement.contradicts ?? []) state.suspect.set(anchor, (state.suspect.get(anchor) ?? 0) + 1)
   }
-  for (const [anchor, times] of state.suspect) if (times < SUSPECT_AFTER) state.suspect.delete(anchor)
+  // Under 'on-the-score' those titles must also be most of the settled titles that met it: an honest Anchor a little
+  // better or worse than its score is the odd one out for a title now and then, and would be Suspect in a long Ranking.
+  const met = new Map<number, number>()
+  if (state.split === 'on-the-score') {
+    for (const placement of state.queue) {
+      if (!placement.contradicts) continue
+      for (const { anchor } of placement.answers) met.set(anchor, (met.get(anchor) ?? 0) + 1)
+    }
+  }
+  for (const [anchor, times] of state.suspect) {
+    if (times < SUSPECT_AFTER || 2 * times <= (met.get(anchor) ?? 0)) state.suspect.delete(anchor)
+  }
 }
 
 /**
@@ -161,11 +195,23 @@ function contradictsAt(position: number, { level, result }: AnchorAnswer): boole
   return position !== own
 }
 
+/** The answers that count: those of Anchors still used as a reference (not Forgotten, not Suspect). */
+function counted(state: KeepMyScale, placement: Placement): AnchorAnswer[] {
+  return placement.answers.filter((answer) => !state.excluded.has(answer.anchor) && !state.suspect.has(answer.anchor))
+}
+
+/** Whether the title both beat and lost to Anchors of level index `level` (ADR 0012). */
+function splitOn(state: KeepMyScale, placement: Placement, level: number): boolean {
+  const own = counted(state, placement).filter((answer) => answer.level === level)
+  return own.some((answer) => answer.result === 'win') && own.some((answer) => answer.result === 'loss')
+}
+
 /**
  * The Anchors a title's answers contradict, recorded at the answer that settles it (#47), judged against the level it
  * settled at (`position`). Settled by the closer-to answer, that is the score it chose; an answer then counts only
  * where it also disagrees with every place lo..hi the Duels left open (`open`), so beating the Anchors of the lower
- * score and then choosing that score is no contradiction, but losing to one of them is.
+ * score and then choosing that score is no contradiction, but losing to one of them is. A title given the score it was
+ * split on (ADR 0012) is judged the same way, as if it had chosen that score.
  */
 function contradictionsOf(placement: Placement, position: number, open: Range = { lo: position, hi: position }): number[] {
   const disagrees = (answer: AnchorAnswer) => {
@@ -210,11 +256,13 @@ export function nextQuestion(state: KeepMyScale): KeepMyScaleQuestion | null {
 
 /**
  * Where a title stands now, derived from its answers and the Anchors still usable:
- * - `settled` at a position, with its score: a Duel left it on a level, or past the extreme Anchors; or only one
+ * - `settled` at a position, with its score: a Duel left it on a level, or past the extreme Anchors (then, under
+ *   'on-the-score', on the extreme level itself when it is split on it); or only one
  *   level is left open and none of its Anchors can be asked (settled by elimination); or it answered the closer-to
  *   prompt it is still at.
  * - `closer-to`: which of two neighbouring scores it is closer to. Asked when the Duels put it strictly between them,
- *   and when the only levels left open are two neighbours and neither has an Anchor left to ask.
+ *   and when the only levels left open are two neighbours and neither has an Anchor left to ask. Not asked, under
+ *   'on-the-score', of a title split on exactly one of the two (`splitOn`): it is settled on that one.
  * - `duel` at the open level to ask next.
  * - `stuck`: three or more levels are open and none has an Anchor left to ask (every one Forgotten or Suspect). It is
  *   never settled without a confirmed answer: Duels skip it, and Bring back on an Anchor resumes them.
@@ -237,8 +285,15 @@ function standing(state: KeepMyScale, placement: Placement): Standing {
     const position = at.lo
     const gap = position / 2
     if (position % 2 === 1) return { kind: 'settled', position, level: state.levels[(position - 1) / 2].level }
-    if (gap === 0) return { kind: 'settled', position, level: gapLevels(state, gap).above }
-    if (gap === state.levels.length) return { kind: 'settled', position, level: gapLevels(state, gap).below }
+    if (gap === 0 || gap === state.levels.length) {
+      // Past the top or bottom Anchor score, but split on it: that score, as between two scores.
+      const end = gap === 0 ? 0 : gap - 1
+      if (state.split === 'on-the-score' && splitOn(state, placement, end)) {
+        return { kind: 'settled', position: 2 * end + 1, level: state.levels[end].level }
+      }
+      const { above, below } = gapLevels(state, gap)
+      return { kind: 'settled', position, level: gap === 0 ? above : below }
+    }
     pair = [gap - 1, gap]
   } else {
     const level = nextLevel(state, at)
@@ -252,6 +307,11 @@ function standing(state: KeepMyScale, placement: Placement): Standing {
   const { closer } = placement
   if (closer?.lo === at.lo && closer.hi === at.hi) {
     return { kind: 'settled', position: 2 * pair[closer.level === upper ? 0 : 1] + 1, level: closer.level }
+  }
+  // After the closer-to answer: the score the user chose stands, whatever the title is split on later.
+  if (state.split === 'on-the-score') {
+    const split = pair.filter((index) => splitOn(state, placement, index))
+    if (split.length === 1) return { kind: 'settled', position: 2 * split[0] + 1, level: state.levels[split[0]].level }
   }
   return { kind: 'closer-to', at, upper, lower }
 }
@@ -360,9 +420,14 @@ function vote(j: number, { level, result }: AnchorAnswer): Side | null {
  * split) stands once each neighbour has been asked and it still has more votes: the neighbours confirm it by not
  * contradicting it. Once every voter has answered without a verdict, the side with more votes wins, and an even split
  * goes to the own level's lean. Answers from Forgotten or Suspect Anchors don't count.
+ *
+ * Under 'on-the-score' an own level split evenly (a win and a loss on a score with two Anchors) also stands on its
+ * lean once each neighbour has been asked: any vote of theirs would have been the third and a verdict, so reaching
+ * here they told nothing, and asking the rest of them could only tell the same. Before engine 10 every Anchor of
+ * both neighbours was asked first.
  */
 function decide(state: KeepMyScale, placement: Placement, j: number): Side | null {
-  const counts = placement.answers.filter((answer) => !state.excluded.has(answer.anchor) && !state.suspect.has(answer.anchor))
+  const counts = counted(state, placement)
   const [ownLevel, ...neighbours] = voterLevels(state, j)
   const own = counts.filter((answer) => answer.level === ownLevel)
   const tally = { above: 0, below: 0 }
@@ -370,6 +435,8 @@ function decide(state: KeepMyScale, placement: Placement, j: number): Side | nul
     tally.above >= 2 && tally.above > tally.below ? 'above' : tally.below >= 2 && tally.below > tally.above ? 'below' : null
   for (const answer of own) tally[vote(j, answer)!]++
   if (verdict() || own.length < usable(state, ownLevel).length) return verdict()
+  // An even split of the own level, under 'on-the-score': one answer from each neighbour is enough (see above).
+  const evenSplit = state.split === 'on-the-score' && own.length > 0 && tally.above === tally.below
   const lean = tally.above !== tally.below ? (tally.above > tally.below ? 'above' : 'below') : own.length > 0 ? vote(j, own[0]) : null
   const heard = neighbours.every((level) => usable(state, level).length === 0 || counts.some((answer) => answer.level === level))
   for (const answer of counts) {
@@ -377,7 +444,7 @@ function decide(state: KeepMyScale, placement: Placement, j: number): Side | nul
     if (side) tally[side]++
   }
   if (verdict()) return verdict()
-  if (lean && heard && tally[lean] > tally[lean === 'above' ? 'below' : 'above']) return lean
+  if (lean && heard && (evenSplit || tally[lean] > tally[lean === 'above' ? 'below' : 'above'])) return lean
   if (nextVoter(state, placement, j)) return null
   if (tally.above !== tally.below) return tally.above > tally.below ? 'above' : 'below'
   return lean
@@ -409,11 +476,15 @@ export function answerAnchorDuel(state: KeepMyScale, a: number, b: number, winne
   const result = winner === null ? 'tie' : winner === duel.a ? 'win' : 'loss'
   placement.answers.push({ anchor: duel.b, level: duel.level, result })
   Object.assign(placement, range(state, placement))
-  // Settled by this answer, on a score or past the extremes. Strictly between two scores it is settled only by the
-  // closer-to answer, which records its contradictions then.
+  // Settled by this answer: on a score, past the extremes, or between two scores on the one it was split on (then
+  // judged as the closer-to answer is, against the place the Duels left it too). Strictly between two scores
+  // otherwise, it is settled only by the closer-to answer, which records its contradictions then.
   const now = standing(state, placement)
   if (placement.lo === placement.hi && now.kind === 'settled') {
-    placement.contradicts = contradictionsOf(placement, now.position)
+    // Only under 'on-the-score': a Ranking on the older rule records what it always did (ADR 0005).
+    const split = state.split === 'on-the-score' && now.position !== placement.lo
+    const open = split ? { lo: Math.min(placement.lo, now.position), hi: Math.max(placement.lo, now.position) } : undefined
+    placement.contradicts = contradictionsOf(placement, now.position, open)
     refreshSuspects(state)
   }
   return true

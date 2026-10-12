@@ -101,7 +101,7 @@ The screen where the user picks by hand the titles a Keep My Scale Ranking will 
 _Avoid_: Selection, chooser, title list
 
 **Suspect Anchor**:
-An Anchor whose Duel results have contradicted its own score at least twice. It stops being used as a reference, and its score is still left untouched.
+An Anchor whose own score was contradicted by at least two of the titles settled against it, and by more of them than not. It stops being used as a reference, and its score is still left untouched.
 _Avoid_: Wrong anchor, outlier
 
 **Closer-to prompt**:

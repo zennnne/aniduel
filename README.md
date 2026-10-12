@@ -86,8 +86,9 @@ For when you already have a scoring scale and don't want it changed. You pick th
 
 - No Rough Sort, Board or Bands: Duels start straight away, always a title being scored against an Anchor.
 - A score boundary is passed only when two different Anchors agree.
+- A title that beats one Anchor of a score and loses to another meets a third (or, on a score with only two Anchors, one Anchor of each neighbouring score). If it then ends up next to that score, it gets that score without being asked.
 - A title that beats every Anchor of one score and loses to every Anchor of the next gets a one-off **Closer-to prompt**: which of the two scores is it closer to.
-- An Anchor whose Duel results contradict its own score twice becomes a **Suspect Anchor**. It stops being used as a reference and is listed on Preview.
+- An Anchor whose own score is contradicted by at least two titles, and by most of the titles settled against it, becomes a **Suspect Anchor**. It stops being used as a reference and is listed on Preview.
 - Preview opens as soon as one title is settled, so you can import some scores without finishing the rest.
 - The Ranking ends with its Import. Picked titles not yet settled can be picked again next time and start fresh, against Anchors that now include the ones just imported.
 
@@ -172,6 +173,7 @@ Key design decisions:
 - [ADR 0009](docs/adr/0009-score-new-titles-against-anchors.md) — Keep My Scale: a third Sort Goal that scores unscored titles against fixed Anchors.
 - [ADR 0010](docs/adr/0010-score-new-titles-ends-with-its-import.md) — A Keep My Scale Ranking ends with its Import.
 - [ADR 0011](docs/adr/0011-keep-my-scale-a-hand-picked-pool.md) — Keep My Scale: the name of the third Sort Goal, and a Pool picked by hand.
+- [ADR 0012](docs/adr/0012-keep-my-scale-a-split-on-a-score-is-not-asked.md) — Keep My Scale: a title split on a score gets that score instead of the Closer-to prompt.
 
 ## Deployment
 
