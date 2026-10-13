@@ -1,50 +1,22 @@
 import { useEffect, useEffectEvent, useState, type DragEvent, type ReactNode } from 'react'
 import type { ListEntry, TitleLanguage } from '../../anilist/types.ts'
-import {
-  BANDS,
-  SUB_BANDS,
-  progressOf,
-  type BandIndex,
-  type BandState,
-  type LogEvent,
-  type RankingState,
-  type SubBandIndex,
-} from '../../ranking/engine.ts'
-import {
-  LOW_SAVINGS,
-  defaultCuts,
-  offerSavings,
-  quarterSplit,
-  splitSavings,
-  unplacedToSort,
-  worstCaseDuels,
-  type SegmentSize,
-} from '../../ranking/split.ts'
+import { SUB_BANDS, type BandIndex, type RankingState, type SubBandIndex } from '../../ranking/engine.ts'
 import { BAND_UI, SUB_BAND_UI } from '../bands.ts'
 import { Dialog } from '../Dialog.tsx'
 import { Kao, SubPill } from '../Kao.tsx'
 import { titleName } from '../meta.ts'
+import {
+  keepSorting,
+  moveDivider,
+  moveTitle,
+  splitView,
+  startingChoices,
+  takeOffer,
+  type BandSplitEvent,
+  type SplitBar,
+  type SplitStrip,
+} from './splitView.ts'
 import './split.css'
-
-type BandSplitEvent = Extract<LogEvent, { type: 'band-split' }>
-
-/** Worst-case Duels left in a Band, Sub-band by Sub-band once it is split; settled titles on Scores need none. */
-function bandWorstCase(state: RankingState, band: BandState): number {
-  const parts = band.subBands ?? [band]
-  return worstCaseDuels(parts.map((p) => ({ places: p.tiers.length, unplaced: unplacedToSort(state, p).length })))
-}
-
-/**
- * Whether the Band's ranked titles need the "Already ranked" strip with dividers. A Band fresh from Rough Sort
- * has one placed title (the first needs no Duel); that single Tier is shown as a cover in the columns instead,
- * and the column it ends up in decides the cut points.
- */
-const needsStrip = (band: BandState) => band.tiers.length > 1 || (band.tiers[0]?.length ?? 0) > 1
-
-/** Cut points that put a Band's single Tier into the given Sub-band. */
-const LONE_TIER_CUTS: Record<SubBandIndex, [number, number]> = { 0: [1, 1], 1: [0, 1], 2: [0, 0] }
-
-const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0)
 
 function useKey(handler: (e: KeyboardEvent) => void) {
   const onKey = useEffectEvent(handler)
@@ -56,31 +28,14 @@ function useKey(handler: (e: KeyboardEvent) => void) {
 }
 
 /** Bars per Band (and per Sub-band once split), with the "Duels pile up" line at 40 titles. */
-function SplitChart(props: { state: RankingState; split?: BandIndex; over?: BandIndex }) {
-  const { state, split, over } = props
-  const bars: { key: string; count: number; colour: string; label: ReactNode; over?: boolean }[] = []
-  for (const band of BANDS) {
-    const b = state.bands[band]
-    if (band === split && b.subBands) {
-      SUB_BANDS.forEach((sub) => {
-        const part = b.subBands![sub]
-        bars.push({
-          key: `${band}-${sub}`,
-          count: sum(part.tiers.map((t) => t.length)) + part.unplaced.length,
-          colour: SUB_BAND_UI[sub].colour,
-          label: <SubPill sub={sub} size={10} />,
-        })
-      })
-    } else {
-      bars.push({
-        key: String(band),
-        count: state.progress.bands[band].total,
-        colour: BAND_UI[band].colour,
-        label: <Kao band={band} size={10} />,
-        over: band === over,
-      })
-    }
-  }
+function SplitChart(props: { bars: readonly SplitBar[] }) {
+  const bars = props.bars.map((bar) => ({
+    key: bar.subBand === null ? String(bar.band) : `${bar.band}-${bar.subBand}`,
+    count: bar.count,
+    colour: bar.subBand === null ? BAND_UI[bar.band].colour : SUB_BAND_UI[bar.subBand].colour,
+    label: bar.subBand === null ? <Kao band={bar.band} size={10} /> : <SubPill sub={bar.subBand} size={10} />,
+    over: bar.oversized,
+  }))
   const height = (n: number) => (Math.min(n, 150) / 150) * 200
   return (
     <div className="spchart">
@@ -129,21 +84,17 @@ function Cover(props: { id: number; entry: ListEntry | undefined; titleLanguage:
  * use ← / →. A divider starts at ¼ / ¾ of the titles, snapped to the nearest Tier edge.
  */
 function RankedStrip(props: {
-  band: BandState
-  cuts: [number, number]
-  onCuts: (cuts: [number, number]) => void
+  strip: SplitStrip
+  /** A divider (0 = Best / Middle, 1 = Middle / Lowest) put on a Tier edge. */
+  onMove: (divider: 0 | 1, edge: number) => void
   entries: ReadonlyMap<number, ListEntry>
   titleLanguage: TitleLanguage
 }) {
-  const { band, cuts, onCuts, entries, titleLanguage } = props
+  const { strip, onMove: move, entries, titleLanguage } = props
+  const { tiers, cuts } = strip
   const [dragging, setDragging] = useState<0 | 1 | null>(null)
   const [overEdge, setOverEdge] = useState<number | null>(null)
-  const last = band.tiers.length
-  const move = (which: 0 | 1, edge: number) => {
-    const e = Math.max(0, Math.min(last, edge))
-    onCuts(which === 0 ? [e, Math.max(e, cuts[1])] : [Math.min(cuts[0], e), e])
-  }
-  const subOf = (t: number): SubBandIndex => (t < cuts[0] ? 0 : t < cuts[1] ? 1 : 2)
+  const last = tiers.length
   const name = (id: number) => titleName(entries.get(id), id, titleLanguage)
   const edge = (e: number) => (
     <div
@@ -203,8 +154,8 @@ function RankedStrip(props: {
       </div>
       <div className="strip">
         {edge(0)}
-        {band.tiers.map((tier, t) => [
-          <div key={tier[0]} className="stier" style={{ ['--b' as string]: SUB_BAND_UI[subOf(t)].colour }} title={tier.map(name).join(' = ')}>
+        {tiers.map(({ titles: tier, subBand }, t) => [
+          <div key={tier[0]} className="stier" style={{ ['--b' as string]: SUB_BAND_UI[subBand].colour }} title={tier.map(name).join(' = ')}>
             {tier.slice(0, 3).map((id) => (
               <div key={id} className="pc">
                 <Cover id={id} entry={entries.get(id)} titleLanguage={titleLanguage} />
@@ -238,84 +189,39 @@ export function SplitScreen(props: {
   nextStep?: 'duels' | 'last-check'
 }) {
   const { state, band, entries, titleLanguage, onSplit, onSkip, onClose, nextStep = 'duels' } = props
-  const b = state.bands[band]
   const label = BAND_UI[band].label
-  const [phase, setPhase] = useState<'offer' | 'split'>('offer')
-  const strip = needsStrip(b)
-  const [cuts, setCuts] = useState<[number, number]>(() => defaultCuts(b.tiers.map((t) => t.length)))
-  // Where each title starts: everything unplaced in Middle; a single ranked Tier too.
-  const [columnOf, setColumnOf] = useState<ReadonlyMap<number, SubBandIndex>>(() => new Map(b.unplaced.map((id) => [id, 1])))
-  const [loneSub, setLoneSub] = useState<SubBandIndex>(1)
-  const [warning, setWarning] = useState(false)
+  const [choices, setChoices] = useState(() => startingChoices(state, band))
   const [overColumn, setOverColumn] = useState<SubBandIndex | null>(null)
+  const view = splitView({ state, band, choices })
 
-  const loneTier = !strip && b.tiers.length === 1 ? b.tiers[0] : null
-  const effectiveCuts = strip ? cuts : loneTier ? LONE_TIER_CUTS[loneSub] : ([0, 0] as [number, number])
-  // Settled titles (Scores) still go in a column, since the split places every unplaced title, but the estimates skip them.
-  const columns = SUB_BANDS.map((sub) => b.unplaced.filter((id) => (columnOf.get(id) ?? 1) === sub))
-  const toSort = new Set(unplacedToSort(state, b))
-  const places = [effectiveCuts[0], effectiveCuts[1] - effectiveCuts[0], b.tiers.length - effectiveCuts[1]]
-  const whole: SegmentSize = { places: b.tiers.length, unplaced: toSort.size }
-  const parts = SUB_BANDS.map((sub) => ({ places: places[sub], unplaced: columns[sub].filter((id) => toSort.has(id)).length })) as [
-    SegmentSize,
-    SegmentSize,
-    SegmentSize,
-  ]
-  const liveSavings = splitSavings(whole, parts)
-  const quarterSavings = (() => {
-    const [q1, q2, q3] = quarterSplit(toSort.size)
-    return splitSavings(whole, [
-      { places: places[0], unplaced: q1 },
-      { places: places[1], unplaced: q2 },
-      { places: places[2], unplaced: q3 },
-    ])
-  })()
-  const allNow = sum(state.bands.map((band) => bandWorstCase(state, band)))
-  const thisNow = bandWorstCase(state, b)
-
-  const moveTo = (id: number, sub: SubBandIndex) => {
-    if (loneTier?.includes(id)) setLoneSub(sub)
-    else setColumnOf((prev) => new Map(prev).set(id, sub))
-  }
-
-  function finish() {
-    onSplit({ type: 'band-split', band, cuts: effectiveCuts, unplaced: [columns[0], columns[1], columns[2]] })
-  }
+  const moveTo = (id: number, sub: SubBandIndex) => setChoices((prev) => moveTitle({ state, band, choices: prev }, id, sub))
 
   function done() {
-    if (liveSavings < LOW_SAVINGS) setWarning(true)
-    else finish()
+    if (view.step !== 'columns') return
+    if (view.done.ask) setChoices(view.done.choices)
+    else onSplit(view.done.event)
   }
 
-  const isDone = Boolean(b.subBands)
   useKey((e) => {
     if (e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.altKey) return
     if (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, button, a, [contenteditable]')) return
     e.preventDefault()
-    if (isDone) onClose()
-    else if (phase === 'offer') setPhase('split')
+    if (view.step === 'done') onClose()
+    else if (view.step === 'offer') setChoices(takeOffer)
     else done()
   })
 
-  if (isDone) {
-    const after = bandWorstCase(state, b)
-    // Choosing a split Band starts at its first Sub-band with titles to place.
-    const first =
-      SUB_BANDS.find((sub) => {
-        const part = b.subBands?.[sub]
-        if (!part) return false
-        const { done, total } = progressOf(state, part)
-        return done < total
-      }) ?? null
+  if (view.step === 'done') {
+    const first = view.firstSubBand
     return (
       <div className="sppage">
         <div className="h1 row">
           {label} is split <Kao band={band} size={18} />
         </div>
         <div className="sub">
-          Up to <b>{after}</b> Duels to go in {label}, Sub-band by Sub-band.
+          Up to <b>{view.duelsLeft}</b> Duels to go in {label}, Sub-band by Sub-band.
         </div>
-        <SplitChart state={state} split={band} />
+        <SplitChart bars={view.bars} />
         <button className="go" onClick={onClose}>
           {first !== null && nextStep === 'duels' ? `Start Duels in ${label} › ${SUB_BAND_UI[first].label}` : 'Continue'} <span className="kbd">Enter</span>
         </button>
@@ -326,13 +232,12 @@ export function SplitScreen(props: {
     )
   }
 
-  if (phase === 'offer') {
-    const offer = offerSavings(state, b)
+  if (view.step === 'offer') {
     return (
       <div className="sppage">
         <div className="h1">Your Bands are lopsided</div>
         <div className="sub">Duels only happen inside a Band, and one big Band costs far more Duels than a few small ones.</div>
-        <SplitChart state={state} over={band} />
+        <SplitChart bars={view.bars} />
         <div className="spcount">
           <b className="strong">Split {label} into Best / Middle / Lowest?</b>
           <div className="small">
@@ -341,16 +246,16 @@ export function SplitScreen(props: {
           </div>
           <div className="spnums">
             <div>
-              <b>{allNow}</b> Duels now, at most
+              <b>{view.duelsNow}</b> Duels now, at most
             </div>
             <div className="eq">→</div>
             <div className="good">
-              <b>{allNow - offer}</b> after splitting · up to −{offer} Duels
+              <b>{view.duelsAfter}</b> after splitting · up to −{view.savings} Duels
             </div>
           </div>
           <div className="small fine">With Tiers ("about the same"), the real savings run about 15–30% lower.</div>
           <div className="row">
-            <button className="go" onClick={() => setPhase('split')}>
+            <button className="go" onClick={() => setChoices(takeOffer)}>
               Split {label} <span className="kbd">Enter</span>
             </button>
             <button className="link" onClick={onSkip}>
@@ -362,7 +267,7 @@ export function SplitScreen(props: {
     )
   }
 
-  const card = (id: number, sub: SubBandIndex, ranked = false) => (
+  const card = (id: number, sub: SubBandIndex, ranked: boolean) => (
     <div
       key={id}
       className="pc"
@@ -388,7 +293,7 @@ export function SplitScreen(props: {
       </Cover>
     </div>
   )
-  const counts = SUB_BANDS.map((sub) => columns[sub].length + (loneTier && loneSub === sub ? loneTier.length : 0))
+  const counts = view.columns.map((column) => column.length)
 
   return (
     <div className="sppaint">
@@ -404,14 +309,21 @@ export function SplitScreen(props: {
             {SUB_BAND_UI[sub].label} {counts[sub]}
           </SubPill>
         ))}
-        <span className={liveSavings < LOW_SAVINGS ? 'livesave low' : 'livesave'} aria-live="polite">
-          up to −{liveSavings} Duels
+        <span className={view.lowSavings ? 'livesave low' : 'livesave'} aria-live="polite">
+          up to −{view.savings} Duels
         </span>
         <button className="go sm" onClick={done}>
           Done <span className="kbd">Enter</span>
         </button>
       </div>
-      {strip && <RankedStrip band={b} cuts={cuts} onCuts={setCuts} entries={entries} titleLanguage={titleLanguage} />}
+      {view.strip && (
+        <RankedStrip
+          strip={view.strip}
+          onMove={(divider, edge) => setChoices((prev) => moveDivider({ state, band, choices: prev }, divider, edge))}
+          entries={entries}
+          titleLanguage={titleLanguage}
+        />
+      )}
       <div className="spcols">
         {SUB_BANDS.map((sub) => (
           <div
@@ -426,8 +338,7 @@ export function SplitScreen(props: {
             onDrop={(e) => {
               e.preventDefault()
               setOverColumn(null)
-              const id = Number(e.dataTransfer.getData('text/plain'))
-              if (b.unplaced.includes(id) || loneTier?.includes(id)) moveTo(id, sub)
+              moveTo(Number(e.dataTransfer.getData('text/plain')), sub)
             }}
           >
             <div className="spcolh">
@@ -435,36 +346,35 @@ export function SplitScreen(props: {
               <span className="small">{counts[sub]}</span>
             </div>
             <div className="pgrid">
-              {loneTier && loneSub === sub && loneTier.map((id) => card(id, sub, true))}
-              {columns[sub].map((id) => card(id, sub))}
+              {view.columns[sub].map(({ id, ranked }) => card(id, sub, ranked))}
               {counts[sub] === 0 && <div className="empty">drop covers here</div>}
             </div>
           </div>
         ))}
       </div>
-      {warning && (
+      {view.warning && (
         <Dialog
-          title={`Middle still has ${counts[1]} titles`}
-          onCancel={() => setWarning(false)}
+          title={`Middle still has ${view.warning.middle} titles`}
+          onCancel={() => setChoices(keepSorting)}
           actions={
             <>
-              <button className="link" onClick={finish}>
+              <button className="link" onClick={() => view.warning && onSplit(view.warning.event)}>
                 Finish anyway
               </button>
-              <button className="go sm" onClick={() => setWarning(false)}>
+              <button className="go sm" onClick={() => setChoices(keepSorting)}>
                 Keep sorting
               </button>
             </>
           }
         >
           <div>
-            That only saves up to {liveSavings} Duels. Move a few more up to Best or down to Lowest and it saves a lot more: a
-            quarter each way is up to −{quarterSavings}.
+            That only saves up to {view.savings} Duels. Move a few more up to Best or down to Lowest and it saves a lot more: a
+            quarter each way is up to −{view.warning.quarterSavings}.
           </div>
         </Dialog>
       )}
       <div className="small fine">
-        {label} has up to {thisNow} Duels to go as one Band.
+        {label} has up to {view.duelsAsOneBand} Duels to go as one Band.
       </div>
     </div>
   )
