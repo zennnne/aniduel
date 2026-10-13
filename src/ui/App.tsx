@@ -65,7 +65,7 @@ import {
 import { Screens } from './Screens.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { SCREENS, rankingShown, shownScreen, splitBandOf, type Screen } from './shownScreen.ts'
-import type { PickerStart, PickerWayIn } from './picker/pickerView.ts'
+import { useKeepMyScaleFlow } from './picker/useKeepMyScaleFlow.ts'
 import { animeStanding, startView, type StartView } from './start/startView.ts'
 import { useTheme } from './theme.ts'
 import { useAniListSession } from './useAniListSession.ts'
@@ -122,12 +122,6 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   // The Sort Goal the user picked on Start for a new Ranking (#28), or null while they haven't touched it and it
   // follows the Pool size (#38). A saved Ranking's goal lives in its log. Not reset on logout: logging in again loads the page anew.
   const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
-  // How the Picker was last opened, which decides its starting picks (#64); the picks themselves live in the Picker.
-  const [pickerWayIn, setPickerWayIn] = useState<PickerWayIn>({ from: 'start' })
-  // The remembered unsettled titles the user chose to pick again on the way in (#66); empty when they said no.
-  const [pickAgain, setPickAgain] = useState<readonly number[]>([])
-  // What the Picker's Confirm would start, held while the Replace dialog asks about the saved Ranking.
-  const [pickedStart, setPickedStart] = useState<PickerStart | null>(null)
 
   // The login, the Viewer and the lists: the selected Media Type's, and in Catch-up the anime list too, where its exit
   // offer checks the Anchors (#52).
@@ -176,6 +170,24 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   // The anime list without its Planning titles, as Catch-up reads it (it reads Planning itself, fresh).
   const watchedAnime = useMemo(() => lists.ANIME?.filter(isWatched) ?? null, [lists.ANIME])
 
+  // The way into a Keep My Scale Ranking, from the Picker to the Import that ends it.
+  const keepMyScale = useKeepMyScaleFlow({
+    storage,
+    viewer,
+    mediaType,
+    lists,
+    duelLog,
+    lifecycle,
+    showDialog: setDialog,
+    onPicker: showPicker,
+    onStarted: showKeepMyScaleDuels,
+    onReplaced: keepMyScaleReplaced,
+    onNotStarted: (failure) => reportFailure(failure, couldNotStart),
+    // Not the Duel log, but the same refusal: the same banner says so.
+    onSaveRefused: () => reportFailure({ reason: 'save-refused' }),
+    onEnded: () => setRankingUi(leftRanking),
+  })
+
   const imports = usePreviewImport({
     storage,
     gateway,
@@ -191,7 +203,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     onSaveRefused: () => reportFailure({ reason: 'save-refused' }),
     // Preview should show the scores AniList has now.
     onWritten: (key, written) => aniList.scoresWritten(key.mediaType, written),
-    onFinished: endKeepMyScale,
+    onFinished: keepMyScale.end,
   })
 
   /**
@@ -627,96 +639,26 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     showToast(summary ? `${restored} · ${summary}` : restored)
   }
 
-  /**
-   * Opens the Picker (#64); it starts from the picks for how it was opened. When the last Keep My Scale Ranking left
-   * titles unsettled that the Picker can show, the user is first asked whether to pick them again (#66).
-   */
-  function openPicker(wayIn: PickerWayIn, type: MediaType = mediaType) {
-    setPickerWayIn(wayIn)
-    // Catch-up's exit offer switches to anime in the same click, so the store and list are read for `type`.
-    const remembered = viewerId === null ? [] : createUnsettledStore(storage, { userId: viewerId, mediaType: type }).titles(lists[type] ?? [])
-    if (remembered.length > 0) {
-      setDialog('pick-again')
-      return
-    }
-    enterPicker([])
-  }
-
-  /** Opens the Picker, with the remembered titles to tick on top of the way in's own (#66). */
-  function enterPicker(remembered: readonly number[]) {
-    setPickAgain(remembered)
-    setDialog(null)
+  /** The Picker opens under its own history entry, so Back from it returns to where it was opened. */
+  function showPicker() {
     goTo('picker')
   }
 
-  /**
-   * The Picker's Confirm (#64): starts the Keep My Scale Ranking on the picks, or first asks to replace a saved
-   * Scores / Full Ranking Ranking (#46).
-   */
-  function confirmPicks(picks: PickerStart) {
-    if (log) {
-      setPickedStart(picks)
-      setDialog('replace-with-keep-my-scale')
-      return
-    }
-    startKeepMyScale(picks)
-  }
-
-  /**
-   * Keep My Scale (ADR 0009, ADR 0011): the Picker's Anchor snapshot (every scored title but the picks) goes into a
-   * new log now, naming the split rule chosen in the Picker (ADR 0013); Duels start straight away. The Picker leaves
-   * the history, so Back from the Duels goes to Start.
-   */
-  function startKeepMyScale(picks: PickerStart) {
-    if (!viewer || !rankingKey) return
-    const started = lifecycle.startKeepMyScale(rankingKey, viewer.scoreFormat, picks)
-    if (!started.ok) return reportFailure(started, couldNotStart)
-    showKeepMyScaleDuels()
-  }
-
-  /** A Keep My Scale Ranking just started: on to its Duels, with the Picker out of the history. */
+  /** A Keep My Scale Ranking just started: on to its Duels, with the Picker out of the history, so Back goes to Start. */
   function showKeepMyScaleDuels() {
     window.history.replaceState({ screen: 'start' }, '')
     goTo('ranking')
   }
 
-  /** Cancel in the Replace dialog: the picks held for it are let go. */
-  function cancelReplace() {
-    setDialog(null)
-    setPickedStart(null)
-  }
-
-  /**
-   * Runs only after the user confirmed in the Replace dialog (#46): a Keep My Scale Ranking on the titles picked in
-   * the Picker is saved over the saved Scores / Full Ranking Ranking. If the browser refuses, that one is still saved
-   * and open, and the banner says so.
-   */
-  function replaceWithKeepMyScale() {
-    if (!viewer || !rankingKey || !pickedStart) return
-    setDialog(null)
-    setPickedStart(null)
-    const replaced = lifecycle.replaceWithKeepMyScale(rankingKey, viewer.scoreFormat, pickedStart)
-    if (!replaced.ok) return reportFailure(replaced, couldNotStart)
+  /** A Keep My Scale Ranking was saved over the saved Scores / Full Ranking Ranking (#46). */
+  function keepMyScaleReplaced(key: RankingKey) {
     setNotice(null)
     // What only made sense for the old Ranking goes with it; its unfinished Import, if any, is no longer offered.
     setRankingUi(leftRanking)
-    imports.open(rankingKey)
+    imports.open(key)
     setPickedGoal(KEEP_MY_SCALE)
     showKeepMyScaleDuels()
-    showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was replaced by Keep My Scale.`)
-  }
-
-  /**
-   * A Keep My Scale Ranking ends with its Import (ADR 0010): of it only the titles left unsettled are kept, without
-   * their answers, for the next Picker to offer (ADR 0011, #66). The Import screen stays on its summary; the titles it
-   * wrote are Anchors for the next Ranking.
-   */
-  function endKeepMyScale(key: RankingKey) {
-    const end = lifecycle.endKeepMyScale(key)
-    if (!end.ended) return
-    // Not the Duel log, but the same refusal: the same banner says so.
-    if (end.unsettled === 'lost') reportFailure({ reason: 'save-refused' })
-    setRankingUi(leftRanking)
+    showToast(`Your ${MEDIA_LABEL[key.mediaType]} Ranking was replaced by Keep My Scale.`)
   }
 
   /** Runs only after the user confirmed in the Start over dialog. */
@@ -761,7 +703,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
       setPickedGoal(KEEP_MY_SCALE)
       // Start goes into the history under the Picker, so Back from the Picker lands there.
       goTo('start')
-      openPicker({ from: 'catch-up' }, 'ANIME')
+      keepMyScale.openPicker({ from: 'catch-up' }, 'ANIME')
       return
     }
     if (offer.target === 'default-sort-goal') setPickedGoal(null)
@@ -824,7 +766,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
         },
         onLogout: () => setDialog('logout'),
         onStartRoughSort: savedBroken ? undefined : startOrContinue,
-        onChooseTitles: savedBroken ? undefined : () => openPicker({ from: 'start' }),
+        onChooseTitles: savedBroken ? undefined : () => keepMyScale.openPicker({ from: 'start' }),
         onRestore: () => setDialog('restore'),
         catchUp: {
           sign: startSign(mediaType, catchUp.queue),
@@ -931,9 +873,9 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
           theme,
           onToggleTheme: toggleTheme,
         }}
-        pickerWayIn={pickerWayIn}
-        pickAgain={pickAgain}
-        onConfirmPicks={confirmPicks}
+        pickerWayIn={keepMyScale.wayIn}
+        pickAgain={keepMyScale.pickAgain}
+        onConfirmPicks={keepMyScale.confirm}
         catchUp={catchUp}
         exitOffer={offer}
         onTakeExitOffer={takeExitOffer}
@@ -972,9 +914,9 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
         onRestore={restore}
         onFullRanking={() => applySortGoal('full-ranking')}
         onClearPassed={clearPassed}
-        onReplaceWithKeepMyScale={replaceWithKeepMyScale}
-        onCancelReplace={cancelReplace}
-        onEnterPicker={enterPicker}
+        onReplaceWithKeepMyScale={keepMyScale.replace}
+        onCancelReplace={keepMyScale.cancelReplace}
+        onEnterPicker={keepMyScale.enterPicker}
         onStartOver={startOver}
         onSaveBackup={saveBackup}
       />
