@@ -138,7 +138,7 @@ const LEGACY_IMPORT_PART = 'import'
 const MEDIA_TYPES: readonly MediaType[] = ['ANIME', 'MANGA']
 
 function writeQueueKey(userId: number): string {
-  return `${userPrefix(userId)}write-queue`
+  return userStorageKey(userId, 'write-queue')
 }
 
 /** Saves the user's write queue (Import scores and Catch-up statuses), after every write; null deletes it. */
@@ -203,7 +203,7 @@ export function deleteTickOverrides(storage: Storage, key: RankingKey): void {
 }
 
 function lastMediaTypeKey(userId: number): string {
-  return `${userPrefix(userId)}last-media-type`
+  return userStorageKey(userId, 'last-media-type')
 }
 
 /** Remembers the Media Type the user last worked on, so a returning user lands back on it. */

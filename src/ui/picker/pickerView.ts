@@ -178,7 +178,7 @@ export type PickerDock = {
 }
 
 /** From this many Anchors per Anchor score, on average, "More Duels first" is recommended (ADR 0013). */
-export const RECOMMEND_DECIDING_DUELS_FROM = 20
+const RECOMMEND_DECIDING_DUELS_FROM = 20
 
 /**
  * The split rule recommended for a list (ADR 0013): "More Duels first" when the Anchors left after the picks average
