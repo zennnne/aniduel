@@ -5,6 +5,7 @@ import type { Cover, ListEntry, ListStatus, MediaType, Viewer } from '../anilist
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
+import { createSplitChoiceStore } from '../persistence/splitChoice.ts'
 import { createUnsettledStore } from '../persistence/unsettledTitles.ts'
 import { browserClock } from '../clock.ts'
 import { importSummary } from '../import/importState.ts'
@@ -725,12 +726,14 @@ export function App({ fake }: { fake?: AniListSession }) {
    * new log now, naming the split rule chosen in the Picker (ADR 0013); Duels start straight away. The Picker leaves
    * the history, so Back from the Duels goes to Start.
    */
-  function startKeepMyScale({ order, anchors, split }: PickerStart) {
+  function startKeepMyScale({ order, anchors, split, ownSplit }: PickerStart) {
     if (!viewer) return
     const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids: order, split })
     if (!saved(() => duelLog.save(log))) return
     // The titles left unsettled last time are offered no more, whether or not they were picked again (#66).
     unsettledStore?.clear()
+    // Only a choice the user made themselves is remembered, never one that followed the recommendation (ADR 0013).
+    if (ownSplit) createSplitChoiceStore(localStorage, viewer.id).remember(ownSplit)
     window.history.replaceState({ screen: 'start' }, '')
     goTo('ranking')
   }
@@ -956,6 +959,7 @@ export function App({ fake }: { fake?: AniListSession }) {
             titleLanguage={shown.viewer.titleLanguage}
             mediaType={mediaType}
             initialPicks={startingPicks(list ?? [], shown.viewer.scoreFormat, pickerWayIn, pickAgain)}
+            rememberedSplit={createSplitChoiceStore(localStorage, shown.viewer.id).choice()}
             onBack={() => window.history.back()}
             onConfirm={confirmPicks}
           />

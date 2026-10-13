@@ -568,6 +568,72 @@ describe('the choice for a title that lands between two scores (ADR 0013)', () =
   })
 })
 
+describe('the choice recommended for the list (ADR 0013)', () => {
+  /** `perScore` Anchors on each of 9, 8 and 7, plus two titles without a score. */
+  function evenList(perScore: number) {
+    const anchors = Array.from({ length: perScore * 3 }, (_, i) => entry([90, 80, 70][i % 3]))
+    const fresh = [entry(0), entry(0)]
+    return { anchors, fresh, list: [...anchors, ...fresh] }
+  }
+  const started = (v: ReturnType<typeof view>) => {
+    if (!v.confirm.allowed) throw new Error(v.confirm.reason)
+    return v.confirm
+  }
+
+  it('is "More Duels first" when the Anchors left average at least 20 per Anchor score, and "Ask me" below that', () => {
+    // 60 Anchors on 3 scores: 20 each.
+    expect(view({ list: evenList(20).list }).dock.recommended).toBe('deciding-duels')
+    // 57 on 3 scores: 19 each.
+    expect(view({ list: evenList(19).list }).dock.recommended).toBe('on-the-score')
+    expect(view({ list: [entry(0)] }).dock.recommended).toBe('on-the-score')
+  })
+
+  it('goes by the average, not by every score: 30, 20 and 10 Anchors are 20 per score', () => {
+    const list = [...Array.from({ length: 30 }, () => entry(90)), ...Array.from({ length: 20 }, () => entry(80)), ...Array.from({ length: 10 }, () => entry(70))]
+    expect(view({ list }).dock.recommended).toBe('deciding-duels')
+  })
+
+  it('is worked out from the Anchors left after the picks: a picked title is no longer an Anchor', () => {
+    const { anchors, fresh, list } = evenList(20)
+    expect(view({ list, picked: new Set(ids(fresh)) }).dock.recommended).toBe('deciding-duels')
+    // One scored title picked leaves 59 Anchors on 3 scores, under 20 each.
+    expect(view({ list, picked: new Set([anchors[0].mediaId]) }).dock.recommended).toBe('on-the-score')
+  })
+
+  it('is the option selected, and the rule the Ranking starts under, while the user has made no choice', () => {
+    const { anchors, fresh, list } = evenList(20)
+    const many = view({ list, picked: new Set(ids(fresh)) })
+    expect(many.dock.split).toBe('deciding-duels')
+    expect(started(many).split).toBe('deciding-duels')
+    // Two titles over 3 scores: 2 · 2 log2(4) = 8, and one more each under "More Duels first".
+    expect(many.summary.duels).toBe(10)
+    expect(many.dock.trade).toBe("Fewer 'closer to' questions, about 2 more Duels")
+
+    const fewer = view({ list, picked: new Set([...ids(fresh), anchors[0].mediaId]) })
+    expect(fewer.dock.split).toBe('on-the-score')
+    expect(started(fewer).split).toBe('on-the-score')
+  })
+
+  it("leaves the user's own choice selected whatever the picks do, and still says which option is recommended", () => {
+    const { anchors, fresh, list } = evenList(20)
+    const many = view({ list, picked: new Set(ids(fresh)), split: 'on-the-score' })
+    expect(many.dock).toMatchObject({ split: 'on-the-score', recommended: 'deciding-duels' })
+    expect(started(many).split).toBe('on-the-score')
+
+    const fewer = view({ list, picked: new Set([...ids(fresh), anchors[0].mediaId]), split: 'deciding-duels' })
+    expect(fewer.dock).toMatchObject({ split: 'deciding-duels', recommended: 'on-the-score' })
+    expect(started(fewer).split).toBe('deciding-duels')
+  })
+
+  it("starts with the user's own choice to remember, and with none when the selection only followed the recommendation", () => {
+    const { fresh, list } = evenList(20)
+    const picked = new Set(ids(fresh))
+    expect(started(view({ list, picked })).ownSplit).toBeNull()
+    expect(started(view({ list, picked, split: 'deciding-duels' })).ownSplit).toBe('deciding-duels')
+    expect(started(view({ list, picked, split: 'on-the-score' })).ownSplit).toBe('on-the-score')
+  })
+})
+
 describe('ticking a title', () => {
   it('picks it, and ticking it again unpicks it, leaving the other picks', () => {
     const once = togglePick(new Set([1]), 2)

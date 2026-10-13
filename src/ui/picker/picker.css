@@ -478,6 +478,13 @@
   color: #fff;
   white-space: nowrap;
 }
+/* "Recommended for your list", under the option's name. */
+.pk-split-seg button small {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+}
 .pk-split-seg button.on {
   background: var(--blue);
   color: var(--on-accent);

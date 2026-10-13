@@ -29,8 +29,9 @@ export type PickerInput = {
   /** What narrows and orders the rows (#65); `DEFAULT_PICKER_FILTERS` when left out. In memory only, like the picks. */
   filters?: PickerFilters
   /**
-   * What happens to a title that lands between two scores (ADR 0013), chosen in the dock: "Ask me" (`on-the-score`,
-   * when left out) or "More Duels first" (`deciding-duels`). In memory only, like the picks.
+   * What happens to a title that lands between two scores (ADR 0013), as the user chose it themselves: "Ask me"
+   * (`on-the-score`) or "More Duels first" (`deciding-duels`), by touching the control in the dock or remembered from
+   * last time. Left out, the control follows the option recommended for the list.
    */
   split?: NamedSplitRule
 }
@@ -103,10 +104,11 @@ export type PickerSummary = {
 
 /**
  * What Confirm starts a Keep My Scale Ranking on: the picked titles in the order its Duels meet them (most recently
- * completed first, then by title), the Anchor snapshot, which never holds a picked title, and the split rule chosen
- * in the dock (ADR 0013).
+ * completed first, then by title), the Anchor snapshot, which never holds a picked title, and the split rule selected
+ * in the dock (ADR 0013). `ownSplit` is that rule when the user chose it themselves, to be remembered; null when the
+ * selection only followed the recommendation.
  */
-export type PickerStart = { order: number[]; anchors: AnchorScore[]; split: NamedSplitRule }
+export type PickerStart = { order: number[]; anchors: AnchorScore[]; split: NamedSplitRule; ownSplit: NamedSplitRule | null }
 
 /** Whether Confirm may start a Keep My Scale Ranking, and on what. When it may not, the reason as the Picker shows it. */
 export type PickerConfirm = ({ allowed: true } & PickerStart) | { allowed: false; reason: string }
@@ -167,10 +169,24 @@ export type PickerDock = {
    * plain with nothing picked, a warning when the picks leave too few Anchors or scores.
    */
   blocked: { text: string; warn: boolean } | null
-  /** The split rule selected in the control (ADR 0013). */
+  /** The split rule selected in the control (ADR 0013): the user's own choice, else the recommended one. */
   split: NamedSplitRule
+  /** The option that carries "Recommended for your list", worked out from the Anchors the picks leave. */
+  recommended: NamedSplitRule
   /** The line under the control: what the selected rule trades, naming the Duels "More Duels first" adds for the picks. */
   trade: string
+}
+
+/** From this many Anchors per Anchor score, on average, "More Duels first" is recommended (ADR 0013). */
+export const RECOMMEND_DECIDING_DUELS_FROM = 20
+
+/**
+ * The split rule recommended for a list (ADR 0013): "More Duels first" when the Anchors left after the picks average
+ * at least `RECOMMEND_DECIDING_DUELS_FROM` per Anchor score, "Ask me" below that, where Deciding Duels too often rest
+ * on an Anchor that turns Suspect.
+ */
+function recommendedSplit(left: KeepMyScaleEligibility): NamedSplitRule {
+  return left.scores > 0 && left.anchors / left.scores >= RECOMMEND_DECIDING_DUELS_FROM ? 'deciding-duels' : 'on-the-score'
 }
 
 /** How many covers the dock stacks. */
@@ -326,7 +342,7 @@ function sorted(entries: readonly ListEntry[], sort: PickerSort, format: ScoreFo
 }
 
 export function pickerView(input: PickerInput): PickerView {
-  const { list, scoreFormat, titleLanguage, picked, filters = DEFAULT_PICKER_FILTERS, split = 'on-the-score' } = input
+  const { list, scoreFormat, titleLanguage, picked, filters = DEFAULT_PICKER_FILTERS } = input
   const shown = pickable(list).filter((e) => matches(e, filters, titleLanguage, picked))
   const rows = sorted(shown, filters.sort, scoreFormat, titleLanguage).map((entry): PickerRow => {
     return {
@@ -343,6 +359,8 @@ export function pickerView(input: PickerInput): PickerView {
   // Every scored title is an Anchor, Planning ones included (ADR 0009), except the picks: `list` is read with them.
   const anchors = anchorsOf(list, scoreFormat, pickedIds)
   const left = keepMyScaleEligibility(anchors)
+  const recommended = recommendedSplit(left)
+  const split = input.split ?? recommended
   const summary: PickerSummary = {
     picked: pickedEntries.length,
     anchors: left.anchors,
@@ -385,12 +403,13 @@ export function pickerView(input: PickerInput): PickerView {
   const latest = [...picked].flatMap((id) => byId.get(id) ?? []).reverse()
   const statusCounts = Object.fromEntries(OFFERED_STATUSES.map((status) => [status, 0]))
   for (const e of pickable(list)) if (e.status in statusCounts) statusCounts[e.status]++
-  const confirm = confirmOf(pickedEntries, anchors, left, titleLanguage, split)
+  const confirm = confirmOf(pickedEntries, anchors, left, titleLanguage, split, input.split ?? null)
   const dock: PickerDock = {
     replacing: pickedEntries.filter((e) => hasScore(e, scoreFormat)).length,
     covers: latest.slice(0, DOCK_COVERS),
     blocked: confirm.allowed ? null : { text: confirm.reason, warn: pickedEntries.length > 0 },
     split,
+    recommended,
     // One more Duel per picked title, as `estimateKeepMyScaleDuels` counts them.
     trade: tradeOf(split, pickedEntries.length),
   }
@@ -429,6 +448,7 @@ function confirmOf(
   left: KeepMyScaleEligibility,
   language: TitleLanguage,
   split: NamedSplitRule,
+  ownSplit: NamedSplitRule | null,
 ): PickerConfirm {
   if (picked.length === 0) return { allowed: false, reason: 'Pick at least one title.' }
   if (!left.eligible) {
@@ -439,5 +459,5 @@ function confirmOf(
         `at least ${MIN_ANCHORS} on ${MIN_ANCHOR_SCORES} are needed. Untick some titles that have a score.`,
     }
   }
-  return { allowed: true, order: newestCompletedFirst(picked, language), anchors, split }
+  return { allowed: true, order: newestCompletedFirst(picked, language), anchors, split, ownSplit }
 }

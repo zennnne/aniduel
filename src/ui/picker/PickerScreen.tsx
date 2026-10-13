@@ -80,6 +80,8 @@ export function PickerScreen(props: {
   mediaType: MediaType
   /** The picks it opens with (`startingPicks`). */
   initialPicks: ReadonlySet<number>
+  /** The split choice the user made themselves last time (ADR 0013); null without one. */
+  rememberedSplit: NamedSplitRule | null
   onBack: () => void
   /** Confirm: start the Ranking on these titles, in this order, against this Anchor snapshot, under this split rule. */
   onConfirm: (start: PickerStart) => void
@@ -87,16 +89,17 @@ export function PickerScreen(props: {
   const { list, scoreFormat, titleLanguage, mediaType } = props
   const [picked, setPicked] = useState<ReadonlySet<number>>(props.initialPicks)
   const [filters, setFilters] = useState<PickerFilters>(DEFAULT_PICKER_FILTERS)
-  // What happens to a title that lands between two scores (ADR 0013): "Ask me" until the user chooses otherwise.
-  const [split, setSplit] = useState<NamedSplitRule>('on-the-score')
+  // What happens to a title that lands between two scores (ADR 0013), once the user has chosen it themselves: the
+  // remembered choice, then whatever they click. While null, the control follows the recommendation for the list.
+  const [ownSplit, setOwnSplit] = useState<NamedSplitRule | null>(props.rememberedSplit)
   // Layout only (#67): the rail open or closed, the genres and tags dialog, the phone's bottom sheet.
   const [railOpen, setRailOpen] = useState(true)
   const [genresOpen, setGenresOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const mobile = useMobile()
   const view = useMemo(
-    () => pickerView({ list, scoreFormat, titleLanguage, picked, filters, split }),
-    [list, scoreFormat, titleLanguage, picked, filters, split],
+    () => pickerView({ list, scoreFormat, titleLanguage, picked, filters, split: ownSplit ?? undefined }),
+    [list, scoreFormat, titleLanguage, picked, filters, ownSplit],
   )
   const { summary, confirm, dock } = view
   const patch = (more: Partial<PickerFilters>) => setFilters((current) => ({ ...current, ...more }))
@@ -287,9 +290,10 @@ export function PickerScreen(props: {
                     role="radio"
                     aria-checked={dock.split === rule}
                     className={dock.split === rule ? 'on' : undefined}
-                    onClick={() => setSplit(rule)}
+                    onClick={() => setOwnSplit(rule)}
                   >
                     {SPLIT_LABEL[rule]}
+                    {dock.recommended === rule && <small>Recommended for your list</small>}
                   </button>
                 ))}
               </div>
@@ -299,7 +303,9 @@ export function PickerScreen(props: {
               className="go"
               disabled={!confirm.allowed}
               title={confirm.allowed ? undefined : confirm.reason}
-              onClick={() => confirm.allowed && props.onConfirm({ order: confirm.order, anchors: confirm.anchors, split: confirm.split })}
+              onClick={() => {
+                if (confirm.allowed) props.onConfirm({ order: confirm.order, anchors: confirm.anchors, split: confirm.split, ownSplit: confirm.ownSplit })
+              }}
             >
               Start Duels
             </button>
