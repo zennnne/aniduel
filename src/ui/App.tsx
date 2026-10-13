@@ -148,11 +148,6 @@ export function App({ fake }: { fake?: AniListSession }) {
   const [rankingUi, setRankingUi] = useState(NO_RANKING_UI)
   const { lastCheckContinued, previewFix, previewMoving } = rankingUi
   const patchRankingUi = (change: Partial<RankingUi>) => setRankingUi((s) => ({ ...s, ...change }))
-  /** What a transition of the open Ranking's screen state decided: its fields that change, then the screen to go to. */
-  function apply({ change, goTo: next }: Transition) {
-    patchRankingUi(change)
-    if (next) goTo(next)
-  }
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
   // The Sort Goal the user picked on Start for a new Ranking (#28), or null while they haven't touched it and it
@@ -268,6 +263,12 @@ export function App({ fake }: { fake?: AniListSession }) {
   function goTo(next: Screen) {
     window.history.pushState({ screen: next }, '')
     setScreen(next)
+  }
+
+  /** What a transition of the open Ranking's screen state decided: its fields that change, then the screen to go to. */
+  function apply({ change, goTo: next }: Transition) {
+    patchRankingUi(change)
+    if (next) goTo(next)
   }
 
   useEffect(() => {
