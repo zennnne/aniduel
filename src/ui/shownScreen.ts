@@ -1,4 +1,4 @@
-// Which screen shows (ADR 0004): the screen name in app state is only part of the answer. Pure; App renders the answer.
+// Which screen shows (ADR 0004): the screen name in app state is only part of the answer. Pure; Screens renders the answer.
 import type { Viewer } from '../anilist/types.ts'
 import type { ImportProgress, ImportView, PreviewCheck } from '../import/previewImport.ts'
 import type { BandIndex, DuelLog, Prompt, RankingState } from '../ranking/engine.ts'

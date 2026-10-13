@@ -7,7 +7,6 @@ import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
 import type { DuelLogFailure } from '../persistence/duelLogStore.ts'
 import type { StartFailure } from '../persistence/rankingLifecycle.ts'
-import { createSplitChoiceStore } from '../persistence/splitChoice.ts'
 import { createUnsettledStore } from '../persistence/unsettledTitles.ts'
 import { browserClock } from '../clock.ts'
 import { importSummary } from '../import/importState.ts'
@@ -23,7 +22,6 @@ import { DEFAULT_STATUSES } from '../pool/pool.ts'
 import { syncEvents } from '../pool/sync.ts'
 import {
   KEEP_MY_SCALE,
-  answeredDuels,
   withSub,
   type BandIndex,
   type LogEvent,
@@ -32,39 +30,23 @@ import {
   type SubBandIndex,
   type SwitchableGoal,
 } from '../ranking/engine.ts'
-import { fullRankingExtra } from '../ranking/estimate.ts'
 import { readPreview } from '../ranking/preview.ts'
-import { hasHumanStep, type ScoringSettings } from '../ranking/scoring.ts'
+import type { ScoringSettings } from '../ranking/scoring.ts'
 import { goalOf, isKeepMyScale, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { splitOffers } from '../ranking/split.ts'
+import { AppDialogs, type DialogName } from './AppDialogs.tsx'
 import { BAND_UI } from './bands.ts'
 import { createPassedStore } from '../catchup/passed.ts'
-import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
 import { isWatched } from '../catchup/watched.ts'
 import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
-import { CatchUpScreen } from './catchup/CatchUpScreen.tsx'
-import { StartingEraChip, StartingEraQuestion } from './catchup/StartingEraQuestion.tsx'
-import { ClearPassedDialog } from './catchup/ClearPassedDialog.tsx'
-import { ExitOfferButton } from './catchup/ExitOfferButton.tsx'
 import { useCatchUp } from './catchup/useCatchUp.ts'
-import { BoardScreen } from './board/BoardScreen.tsx'
-import { SplitScreen } from './split/SplitScreen.tsx'
-import { CloserToScreen } from './duel/CloserToScreen.tsx'
-import { CompleteScreen } from './duel/CompleteScreen.tsx'
-import { DuelScreen } from './duel/DuelScreen.tsx'
 import { Kao, SubPill } from './Kao.tsx'
-import { MoveSheet } from './move/MoveSheet.tsx'
-import { LogoutDialog } from './LogoutDialog.tsx'
-import { FullRankingDialog } from './menu/FullRankingDialog.tsx'
 import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
 import { buildMenuItems } from './menu/buildMenuItems.ts'
-import { ReplaceWithKeepMyScaleDialog, RestoreDialog, StartOverDialog } from './menu/BackupDialogs.tsx'
-import { ImportScreen } from './import/ImportScreen.tsx'
 import { usePreviewImport } from './import/usePreviewImport.ts'
 import { useWriteQueue } from './useWriteQueue.ts'
 import { MEDIA_LABEL, count, titleName } from './meta.ts'
-import { PreviewScreen } from './preview/PreviewScreen.tsx'
 import { SCORE_FORMAT_LABEL } from './preview/scoreFormat.ts'
 import { RankingSidebar } from './RankingSidebar.tsx'
 import {
@@ -80,19 +62,14 @@ import {
   type RankingUi,
   type Transition,
 } from './rankingUi.ts'
-import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
+import { Screens } from './Screens.tsx'
 import { Shell, type Notice } from './Shell.tsx'
-import { SCREENS, rankingShown, shownScreen, splitBandOf, type RankingShown, type Screen, type Shown } from './shownScreen.ts'
-import { PickAgainDialog } from './picker/PickAgainDialog.tsx'
-import { PickerScreen } from './picker/PickerScreen.tsx'
-import { startingPicks, type PickerStart, type PickerWayIn } from './picker/pickerView.ts'
-import { StartScreen } from './start/StartScreen.tsx'
+import { SCREENS, rankingShown, shownScreen, splitBandOf, type Screen } from './shownScreen.ts'
+import type { PickerStart, PickerWayIn } from './picker/pickerView.ts'
 import { animeStanding, startView, type StartView } from './start/startView.ts'
 import { useTheme } from './theme.ts'
 import { useAniListSession } from './useAniListSession.ts'
 import { useDuelLog } from './useDuelLog.ts'
-
-type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-keep-my-scale' | 'pick-again'
 
 const TOAST_MS = 4000
 
@@ -194,6 +171,8 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   const pool = start?.pool ?? null
   const oldScores = start?.oldScores ?? null
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
+  // Start's collage: the Pool's covers, the list's until there is a Pool, the trending ones before login.
+  const covers = useMemo(() => pool?.titles ?? list?.filter(isWatched) ?? trending, [pool, list, trending])
   // The anime list without its Planning titles, as Catch-up reads it (it reads Planning itself, fresh).
   const watchedAnime = useMemo(() => lists.ANIME?.filter(isWatched) ?? null, [lists.ANIME])
 
@@ -393,6 +372,12 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   /** The Board's entry points (Rough Sort pill, Band choice pill, menu) while it is open: before the first Duel answer. */
   function openBoard() {
     apply(boardOpened(ranking))
+  }
+
+  /** Skip on a split offer: the Band isn't offered again in this session. */
+  function skipSplit(band: BandIndex) {
+    setRankingUi((s) => splitSkipped(s, band))
+    showToast(<>Skipped. {BAND_UI[band].label} stays one Band</>)
   }
 
   /** "Continue →" on the last check: the Band choice comes next. */
@@ -695,6 +680,12 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     goTo('ranking')
   }
 
+  /** Cancel in the Replace dialog: the picks held for it are let go. */
+  function cancelReplace() {
+    setDialog(null)
+    setPickedStart(null)
+  }
+
   /**
    * Runs only after the user confirmed in the Replace dialog (#46): a Keep My Scale Ranking on the titles picked in
    * the Picker is saved over the saved Scores / Full Ranking Ranking. If the browser refuses, that one is still saved
@@ -750,6 +741,12 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   function openCatchUp() {
     if (screen !== 'catchup') goTo('catchup')
     void catchUp.open()
+  }
+
+  /** Runs only after the user confirmed in the Clear Passed dialog. */
+  function clearPassed() {
+    catchUp.clearPassed()
+    showToast('Catch-up’s Passed list is cleared')
   }
 
   /**
@@ -894,256 +891,6 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     action: list ? { label: 'Resume Import', onClick: () => void imports.resume().then(showResumed) } : undefined,
   }
 
-  /** Renders the screen `shownScreen` answered with. */
-  function screenOf(shown: Shown) {
-    switch (shown.kind) {
-      case 'start':
-        return (
-          <StartScreen
-            form={form}
-            covers={pool?.titles ?? list?.filter(isWatched) ?? trending}
-            loggingIn={Boolean(token) && !viewer && !notice}
-            onLogin={loginRedirect}
-            theme={theme}
-            onToggleTheme={toggleTheme}
-          />
-        )
-      case 'picker':
-        return (
-          <PickerScreen
-            key={mediaType}
-            list={list ?? []} // the Picker shows only once the list is loaded
-            scoreFormat={shown.viewer.scoreFormat}
-            titleLanguage={shown.viewer.titleLanguage}
-            mediaType={mediaType}
-            initialPicks={startingPicks(list ?? [], shown.viewer.scoreFormat, pickerWayIn, pickAgain)}
-            rememberedSplit={createSplitChoiceStore(storage, shown.viewer.id).choice()}
-            onBack={() => window.history.back()}
-            onConfirm={confirmPicks}
-          />
-        )
-      case 'catch-up':
-        return (
-          <CatchUpScreen
-            view={catchUp.view}
-            queue={catchUp.queue}
-            batchExtra={
-              catchUp.startingEraLabel !== null && (
-                <StartingEraChip label={catchUp.startingEraLabel} onChange={catchUp.changeStartingEra} />
-              )
-            }
-            eraQuestion={
-              catchUp.view.phase === 'era' && (
-                <StartingEraQuestion
-                  popular={catchUp.view.popular}
-                  answer={catchUp.view.answer}
-                  titleLanguage={shown.viewer.titleLanguage}
-                  onAnswer={catchUp.answerStartingEra}
-                />
-              )
-            }
-            titleLanguage={shown.viewer.titleLanguage}
-            onBack={() => window.history.back()}
-            onReload={catchUp.open}
-            onCycle={catchUp.cycle}
-            onMark={catchUp.mark}
-            onSave={catchUp.saveAndNext}
-            onRetryWrites={catchUp.retryWrites}
-            headerAction={offer && <ExitOfferButton offer={offer} onTake={takeExitOffer} />}
-          />
-        )
-      case 'import': {
-        const { importing } = shown
-        // A Keep My Scale Ranking is gone once its Import finished (ADR 0010); the summary still shows.
-        const ended = shown.ranking === null
-        return (
-          <ImportScreen
-            stage={importing.stage}
-            state={importing.state}
-            status={importing.status}
-            writtenBefore={importing.writtenBefore}
-            entries={entries}
-            titleLanguage={shown.viewer.titleLanguage}
-            format={importing.state.format}
-            onConfirm={imports.confirm}
-            onStop={imports.stop}
-            onResume={() => void imports.resume().then(showResumed)}
-            onRetry={() => void imports.retry().then(showResumed)}
-            onBack={() => goTo('preview')}
-            onStart={() => goTo('start')}
-            mediaType={mediaType}
-            ended={ended}
-          />
-        )
-      }
-      case 'preview': {
-        const { ranking } = shown
-        return (
-          <PreviewScreen
-            state={ranking}
-            preview={previewRead!} // read whenever Preview shows
-            entries={entries}
-            oldScores={shown.oldScores}
-            titleLanguage={shown.viewer.titleLanguage}
-            format={shown.viewer.scoreFormat}
-            settings={shown.scoring}
-            onSettings={changeScoring}
-            onSwitchGoal={isKeepMyScale(ranking) ? undefined : requestSortGoal}
-            onRefine={ranking.prompt.kind === 'all-complete' ? undefined : refineFromPreview}
-            overrides={ticks}
-            onTick={imports.tick}
-            onImport={imports.importing?.stage === 'running' ? undefined : () => imports.planImport() && goTo('import')}
-            onRerank={(id) => fixFromPreview(id, 'Re-ranking', answer({ type: 'rerank-requested', id }))}
-            onMove={isKeepMyScale(ranking) ? undefined : (id) => patchRankingUi({ previewMoving: id })}
-            onBringBack={(id) => fixFromPreview(id, 'Bringing back', answer({ type: 'unforgotten', id }))}
-          />
-        )
-      }
-      default:
-        return rankingScreen(shown)
-    }
-  }
-
-  /** The Ranking screen: the screen for the engine's next prompt, or the Split screen or the last check over it. */
-  function rankingScreen(shown: RankingShown) {
-    const state = shown.ranking
-    const titleLanguage = shown.viewer.titleLanguage
-    const shared = { state, entries, titleLanguage, mediaType, onUndo: () => answer({ type: 'undo' }) }
-    // Keep My Scale: every settled picked title can be imported before the rest are (ADR 0010).
-    const settled = state.keepMyScale?.titles.filter((t) => t.settled).length ?? 0
-    const early = settled > 0 ? { settled, onOpen: list && !imports.openingPreview ? openPreview : undefined } : undefined
-    switch (shown.kind) {
-      case 'split': {
-        const { band, lastCheckNext } = shown
-        return (
-          <SplitScreen
-            key={band}
-            state={state}
-            band={band}
-            entries={entries}
-            titleLanguage={titleLanguage}
-            onSplit={(event) => {
-              patchRankingUi({ splitView: { band } })
-              answer(event)
-            }}
-            onSkip={() => {
-              setRankingUi((s) => splitSkipped(s, band))
-              showToast(<>Skipped. {BAND_UI[band].label} stays one Band</>)
-            }}
-            // The last check comes before any Duel, so the Band choice comes after it, not straight away.
-            nextStep={lastCheckNext ? 'last-check' : 'duels'}
-            onClose={() => {
-              patchRankingUi({ splitView: null })
-              // "Start Duels in Loved › Best": the split Band is chosen, so its Duels come next.
-              if (!lastCheckNext && state.bands[band].subBands) chooseBand(band)
-            }}
-          />
-        )
-      }
-      case 'last-check':
-        return (
-          <BoardScreen
-            state={state}
-            entries={entries}
-            titleLanguage={titleLanguage}
-            heading="Last check"
-            hint="Moves are free until your first Duel. After that, moving a title costs Duels."
-            mainLabel="Continue →"
-            onMain={continueFromLastCheck}
-            onMove={moveTitle}
-            onUndo={shared.onUndo}
-          />
-        )
-      case 'board': {
-        const { done, total } = state.progress.roughSort
-        const placed = state.board.bands.reduce((sum, band) => sum + band.titles.length, 0)
-        return (
-          <BoardScreen
-            state={state}
-            entries={entries}
-            titleLanguage={titleLanguage}
-            heading="Board"
-            hint={`${count(placed, 'title')} ${placed === 1 ? 'has' : 'have'} a Band. Drag a title to another Band.`}
-            mainLabel={
-              <>
-                ← Back to Rough Sort<span className="hide-m"> · {total - done} left</span>
-              </>
-            }
-            onMain={() => goTo('ranking')}
-            onMove={moveTitle}
-            onUndo={shared.onUndo}
-          />
-        )
-      }
-      case 'rough-sort': {
-        const { prompt } = shown
-        return (
-          <RoughSortScreen
-            {...shared}
-            key={prompt.id}
-            id={prompt.id}
-            onBand={(band, sub) => answer(withSub({ type: 'band-assigned', id: prompt.id, band }, sub))}
-            onForget={() => answer({ type: 'forgotten', id: prompt.id })}
-            onBoard={state.board.open ? openBoard : undefined}
-          />
-        )
-      }
-      case 'band-choice': {
-        const { prompt } = shown
-        return (
-          <BandChoiceScreen
-            key={`${state.bandChoice?.finished ?? 'none'}-${state.bandChoice?.next ?? prompt.band}`}
-            state={state}
-            entries={entries}
-            titleLanguage={titleLanguage}
-            finished={state.bandChoice?.finished ?? null}
-            next={state.bandChoice?.next ?? prompt.band}
-            onChoose={chooseBand}
-            onUndo={shared.onUndo}
-            onBoard={state.board.open ? openBoard : undefined}
-          />
-        )
-      }
-      case 'duel': {
-        const { prompt } = shown
-        // Against an Anchor (Keep My Scale, ADR 0009): no Band to choose, nothing to move.
-        const inBand = prompt.kind === 'duel'
-        const fixing = previewFix?.id === prompt.a ? `${previewFix.verb}: ${nameOf(prompt.a)}` : undefined
-        return (
-          <DuelScreen
-            {...shared}
-            prompt={prompt}
-            onChooseBand={inBand ? () => goTo('bands') : undefined}
-            onPick={(winner) => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: winner === prompt.a ? 'a' : 'b' })}
-            onTie={() => answer({ type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'tie' })}
-            onForget={(id) => answer({ type: 'forgotten', id })}
-            onMove={inBand ? moveTitle : undefined}
-            note={fixing ?? (inBand && prompt.refine ? 'Refine' : undefined)}
-            early={early}
-          />
-        )
-      }
-      case 'closer-to': {
-        // Keep My Scale (#48): which of the two scores the title sits between is it closer to.
-        const { prompt } = shown
-        return (
-          <CloserToScreen
-            key={prompt.id}
-            state={state}
-            prompt={prompt}
-            entries={entries}
-            titleLanguage={titleLanguage}
-            onPick={(level) => answer({ type: 'closer-to-answered', id: prompt.id, level })}
-            onUndo={shared.onUndo}
-            early={early}
-          />
-        )
-      }
-      case 'complete':
-        return <CompleteScreen {...shared} onScore={list && !imports.openingPreview ? openPreview : undefined} />
-    }
-  }
-
   return (
     <Shell
       notice={notice ?? resumeNotice}
@@ -1169,91 +916,68 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
         ) : undefined
       }
     >
-      {screenOf(shown)}
-      {shown.kind === 'preview' && previewMoving !== null && (
-        <MoveSheet
-          state={shown.ranking}
-          id={previewMoving}
-          entries={entries}
-          titleLanguage={shown.viewer.titleLanguage}
-          onClose={() => patchRankingUi({ previewMoving: null })}
-          onMove={(band, sub) => {
-            const id = previewMoving
-            patchRankingUi({ previewMoving: null })
-            fixFromPreview(id, 'Moving', moveTitle(id, band, sub))
-          }}
-        />
-      )}
+      <Screens
+        shown={shown}
+        storage={storage}
+        mediaType={mediaType}
+        list={list}
+        entries={entries}
+        nameOf={nameOf}
+        start={{
+          form,
+          covers,
+          loggingIn: Boolean(token) && !viewer && !notice,
+          onLogin: loginRedirect,
+          theme,
+          onToggleTheme: toggleTheme,
+        }}
+        pickerWayIn={pickerWayIn}
+        pickAgain={pickAgain}
+        onConfirmPicks={confirmPicks}
+        catchUp={catchUp}
+        exitOffer={offer}
+        onTakeExitOffer={takeExitOffer}
+        imports={imports}
+        onResumed={showResumed}
+        previewRead={previewRead}
+        previewFix={previewFix}
+        previewMoving={previewMoving}
+        onSettings={changeScoring}
+        onSwitchGoal={requestSortGoal}
+        onRefine={refineFromPreview}
+        onFixFromPreview={fixFromPreview}
+        onOpenPreview={openPreview}
+        answer={answer}
+        moveTitle={moveTitle}
+        goTo={goTo}
+        patchRankingUi={patchRankingUi}
+        onChooseBand={chooseBand}
+        onSkipSplit={skipSplit}
+        onContinueFromLastCheck={continueFromLastCheck}
+        onOpenBoard={openBoard}
+      />
       {viewer && !dialog && previewMoving === null && <CommandPalette items={menuItems} />}
-      {dialog === 'logout' && (
-        <LogoutDialog
-          onCancel={() => setDialog(null)}
-          onConfirm={(deleteProgress) => {
-            setDialog(null)
-            endSession(deleteProgress)
-          }}
-        />
-      )}
-      {dialog === 'restore' && viewer && (
-        <RestoreDialog
-          userId={viewer.id}
-          userName={viewer.name}
-          mediaType={mediaType}
-          replacesProgress={hasProgress}
-          onRestore={restore}
-          onCancel={() => setDialog(null)}
-        />
-      )}
-      {dialog === 'full-ranking' && ranking && (
-        <FullRankingDialog
-          extraDuels={fullRankingExtra(ranking)}
-          finerSteps={viewerFormat !== undefined && hasHumanStep(viewerFormat)}
-          onCancel={() => setDialog(null)}
-          onConfirm={() => {
-            setDialog(null)
-            applySortGoal('full-ranking')
-          }}
-        />
-      )}
-      {dialog === 'clear-passed' && (
-        <ClearPassedDialog
-          hidden={passedHidden}
-          onCancel={() => setDialog(null)}
-          onConfirm={() => {
-            setDialog(null)
-            catchUp.clearPassed()
-            showToast('Catch-up’s Passed list is cleared')
-          }}
-        />
-      )}
-      {dialog === 'replace-with-keep-my-scale' && viewer && (
-        <ReplaceWithKeepMyScaleDialog
-          mediaType={mediaType}
-          saved={ranking && log ? { goal: goalOf(ranking), duels: answeredDuels(log) } : null}
-          onConfirm={replaceWithKeepMyScale}
-          onSaveBackup={log ? saveBackup : undefined}
-          onCancel={() => {
-            setDialog(null)
-            setPickedStart(null)
-          }}
-        />
-      )}
-      {dialog === 'pick-again' && unsettledStore && (
-        <PickAgainDialog
-          left={unsettledStore.titles(list ?? []).length}
-          onPickAgain={() => enterPicker(unsettledStore.titles(list ?? []))}
-          onSkip={() => enterPicker([])}
-        />
-      )}
-      {dialog === 'start-over' && viewer && (
-        <StartOverDialog
-          mediaType={mediaType}
-          counts={ranking && log ? { roughSort: ranking.progress.roughSort.done, duels: answeredDuels(log) } : null}
-          onConfirm={startOver}
-          onSaveBackup={log ? saveBackup : undefined}
-          onCancel={() => setDialog(null)}
-        />
-      )}
+      <AppDialogs
+        dialog={dialog}
+        onClose={() => setDialog(null)}
+        viewer={viewer}
+        mediaType={mediaType}
+        list={list}
+        ranking={ranking}
+        log={log}
+        hasProgress={hasProgress}
+        passedHidden={passedHidden}
+        unsettledStore={unsettledStore}
+        onLogout={endSession}
+        onRestore={restore}
+        onFullRanking={() => applySortGoal('full-ranking')}
+        onClearPassed={clearPassed}
+        onReplaceWithKeepMyScale={replaceWithKeepMyScale}
+        onCancelReplace={cancelReplace}
+        onEnterPicker={enterPicker}
+        onStartOver={startOver}
+        onSaveBackup={saveBackup}
+      />
     </Shell>
   )
 }
