@@ -53,7 +53,7 @@ export type StartView = {
   eligibility: KeepMyScaleEligibility | null
   /** The saved Ranking is a Keep My Scale one, or Keep My Scale is selected for a new one (the Picker comes next). */
   onKeepMyScale: boolean
-  /** The Sort Goal a new Ranking starts on: the pick, else the default for the Pool size (ADR 0007, V3 amendment). */
+  /** The Sort Goal a new Ranking starts on: the pick, else the default for the Pool size and Score Format (ADR 0007 amendments). */
   newGoal: SortGoal
   /** A new Ranking's Rough Sort order; null while the list is loading, progress is saved, or under Keep My Scale (the Picker gives its own). */
   startOrder: number[] | null
@@ -97,7 +97,7 @@ export function startView(input: StartInput): StartView {
       : choosingTitles && !ranking
         ? null
         : buildPool(list, statuses, scale)
-  const newGoal = (picked === KEEP_MY_SCALE && !keepMyScalePicked ? null : picked) ?? defaultSortGoal(pool?.titles.length ?? 0)
+  const newGoal = (picked === KEEP_MY_SCALE && !keepMyScalePicked ? null : picked) ?? defaultSortGoal(pool?.titles.length ?? 0, scoreFormat)
   const oldScores = pool && new Map(pool.titles.map((e) => [e.mediaId, e.oldScore100]))
   const startOrder = pool && !saved && !savedBroken && !onKeepMyScale ? roughSortOrder(pool.titles, titleLanguage) : null
   const scoresPlan = startOrder && planFromScores(startOrder.map((id) => ({ id, score100: oldScores?.get(id) ?? 0 })))

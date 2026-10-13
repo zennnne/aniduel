@@ -57,9 +57,15 @@ describe('the Pool of a new Ranking', () => {
   })
 
   it('starts on Full Ranking under 100 titles and on Scores from 100, unless a Sort Goal was picked', () => {
-    expect(view({ list: many(99, [80]) }).newGoal).toBe('full-ranking')
-    expect(view({ list: many(100, [80]) }).newGoal).toBe('scores')
-    expect(view({ list: many(100, [80]), picked: 'full-ranking' }).newGoal).toBe('full-ranking')
+    const decimal = { scoreFormat: 'POINT_10_DECIMAL' } as const
+    expect(view({ ...decimal, list: many(99, [80]) }).newGoal).toBe('full-ranking')
+    expect(view({ ...decimal, list: many(100, [80]) }).newGoal).toBe('scores')
+    expect(view({ ...decimal, list: many(100, [80]), picked: 'full-ranking' }).newGoal).toBe('full-ranking')
+  })
+
+  it('starts on Scores at any size when the Score Format has one Score Step, unless a Sort Goal was picked', () => {
+    expect(view({ list: many(99, [80]) }).newGoal).toBe('scores')
+    expect(view({ list: many(99, [80]), picked: 'full-ranking' }).newGoal).toBe('full-ranking')
   })
 
   it('shows the estimate of its Sort Goal, and how many more Duels Full Ranking takes', () => {
@@ -100,7 +106,7 @@ describe('Keep My Scale picked on Start', () => {
 
   it("stops counting when there aren't enough Anchors: the Sort Goal follows the Pool size again", () => {
     const list = [...many(5, [90, 80]), ...many(3, [0])]
-    const start = view({ list, picked: KEEP_MY_SCALE })
+    const start = view({ list, scoreFormat: 'POINT_10_DECIMAL', picked: KEEP_MY_SCALE })
     expect(start.onKeepMyScale).toBe(false)
     expect(start.newGoal).toBe('full-ranking')
     expect(start.form).toMatchObject({ statusChips: true, mainAction: 'start-rough-sort' })

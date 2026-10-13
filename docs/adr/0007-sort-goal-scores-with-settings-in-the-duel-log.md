@@ -4,8 +4,8 @@ Most users want scores, not a full order, and a full sort of 200 titles costs ab
 
 ## Rules
 
-- **The default is Scores, and we don't ask.** Full Ranking can be picked from the menu or on Start. The user can switch either way at any time and keeps every answer. Switching to Full Ranking first shows about how many more Duels it will take.
-- **Moving boundaries become Refine Duels.** Changing settings, a sync, Forgotten or a Band move can shift the level boundaries. Titles whose level is no longer settled go back into the Duel queue. On Preview those titles can't be ticked for Import until they are settled; the other titles can still be imported.
+- **The default is Scores, and we don't ask** (since V3 only from 100 titles up, see the amendment below). Full Ranking can be picked from the menu or on Start. The user can switch either way at any time and keeps every answer. Switching to Full Ranking first shows about how many more Duels it will take.
+- **Moving boundaries become Refine Duels.** Changing settings, a sync, Forgotten, a Band move or a Re-rank can shift the level boundaries. Titles whose level is no longer settled go back into the Duel queue. On Preview those titles can't be ticked for Import until they are settled; the other titles can still be imported.
 - **Ties work as before.** "About the same" puts both titles in one Tier with one score.
 - **Preview and "Ranking so far"** show Scores as groups by level, sorted by name inside each group, so they don't suggest an order that was never asked.
 - **Settings events and Undo.** Undo skips settings events: it neither cancels them nor gets blocked by them. Undo is for answers, so undoing a mis-tapped Duel must never also undo a best/worst change.
@@ -36,4 +36,10 @@ Spike: 200 titles, Linear 10..3, 20–40 runs each, with and without 30% ties. T
 
 ## Amendment (V3): the default depends on Pool size
 
-The default is now **Full Ranking when the Pool has fewer than 100 titles**, and Scores from 100 up. Below 100 a full sort costs few enough Duels that the extra order is worth it. The default follows the Pool size on Start as the statuses change, until the user picks a Sort Goal themselves. A third Sort Goal, Score New Titles, is added in ADR 0009; it is never the default.
+The default is now **Full Ranking when the Pool has fewer than 100 titles**, and Scores from 100 up. Below 100 a full sort costs few enough Duels that the extra order is worth it. The default follows the Pool size on Start as the statuses change, until the user picks a Sort Goal themselves. A third Sort Goal, Score New Titles, is added in ADR 0009 and renamed Keep My Scale in ADR 0011; it is never the default.
+
+## Amendment: the default also depends on the Score Format
+
+A Score Format with only one Score Step (10 point, 5 star, 3 smiley) now **defaults to Scores at any Pool size**. Full Ranking's finer Score Steps don't exist there, so both Sort Goals write the same scores to AniList and Full Ranking only adds the order inside each score, for about 40–60% more Duels (99 titles, estimate: 301 on Full Ranking against 212 / 195 / 187 on Scores). The 100 point and 10 point decimal formats keep the V3 rule. Full Ranking can still be picked on Start or from the menu; Start's explanation and the switch dialog say the scores come out the same there.
+
+- **Keep the size-only default and only explain it on Start**: rejected. Most users start on the default, so they would still pay the extra Duels without knowing.

@@ -14,7 +14,7 @@ You pick a **Sort Goal** when a Ranking starts.
 | **Full Ranking** | you also want an exact order of your titles | every title has its own place |
 | [**Keep My Scale**](#keep-my-scale) | you like the scores you have and only want to score the titles you pick | every picked title has a score |
 
-Scores and Full Ranking rebuild every score from scratch and share the steps below. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up, and you can switch between the two at any time without losing answers. Keep My Scale works differently and is described in [its own section](#keep-my-scale).
+Scores and Full Ranking rebuild every score from scratch and share the steps below. The default is Full Ranking for a Pool under 100 titles and Scores from 100 up (always Scores on the 10 point, 5 star and 3 smiley formats, where both give the same scores), and you can switch between the two at any time without losing answers. Keep My Scale works differently and is described in [its own section](#keep-my-scale).
 
 Titles missing from your list? [**Catch-up**](#catch-up) (anime only) suggests anime you have probably watched, so you can add them before you rank.
 
@@ -47,11 +47,12 @@ See [GLOSSARY.md](GLOSSARY.md) for the exact meaning of each term.
 
 ### Scores or Full Ranking?
 
-| | **Scores** (default from 100 titles) | **Full Ranking** (default under 100 titles) |
+| | **Scores** | **Full Ranking** |
 | --- | --- | --- |
+| Default | from 100 titles, and at any size on the 10 point, 5 star and 3 smiley formats | under 100 titles, on the 100 point and 10 point decimal formats only |
 | Duels stop when | every title's score is settled | every title has its own place |
 | Titles with the same score | grouped, no order among them (sorted by name) | each in its own place, or a Tier if you called them equal |
-| Score Step | whole points only (every 1 on 10 points with decimals, every 10 on 100 points) | fine (every level) or human (every 0.5 / every 5) |
+| Score Step | whole points only (every 1 on 10 points with decimals, every 10 on 100 points) | fine (every level) or human (every 0.5 / every 5); the other formats have one step, so the scores match Scores |
 | Duels needed | about 30–40% fewer than Full Ranking (200 titles, whole points) | about 1,000 for 200 titles |
 | Changing best/worst or Distribution later | costs Refine Duels (roughly 50–120) before the affected titles can be imported | free: the order is already complete |
 

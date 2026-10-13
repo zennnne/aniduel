@@ -42,7 +42,7 @@ import {
 } from '../ranking/engine.ts'
 import { fullRankingExtra } from '../ranking/estimate.ts'
 import { previewOpen, readPreview } from '../ranking/preview.ts'
-import type { ScoringSettings } from '../ranking/scoring.ts'
+import { hasHumanStep, type ScoringSettings } from '../ranking/scoring.ts'
 import { goalOf, isKeepMyScale, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
@@ -1249,6 +1249,7 @@ export function App({ fake }: { fake?: AniListSession }) {
       {dialog === 'full-ranking' && ranking && (
         <FullRankingDialog
           extraDuels={fullRankingExtra(ranking)}
+          finerSteps={viewerFormat !== undefined && hasHumanStep(viewerFormat)}
           onCancel={() => setDialog(null)}
           onConfirm={() => {
             setDialog(null)

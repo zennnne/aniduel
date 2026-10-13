@@ -3,6 +3,7 @@ import type { Cover, ListStatus, MediaType, Viewer } from '../../anilist/types.t
 import { OFFERED_STATUSES, displayTitle, estimateMinutes, type Pool } from '../../pool/pool.ts'
 import { BANDS, KEEP_MY_SCALE, type SortGoal } from '../../ranking/engine.ts'
 import type { ScoresPlan } from '../../ranking/fromScores.ts'
+import { hasHumanStep } from '../../ranking/scoring.ts'
 import { BAND_UI } from '../bands.ts'
 import { Kao } from '../Kao.tsx'
 import { MEDIA_LABEL, pluralWord } from '../meta.ts'
@@ -218,10 +219,15 @@ function PoolSetup(form: PoolForm) {
       <div className="lab2">Sort Goal</div>
       <div className="goalrow">
         <SortGoalSeg goal={form.goal} onGoal={form.onGoal} keepMyScale={form.keepMyScale} locked={onKeepMyScale && Boolean(form.saved)} />
-        <GoalInfo extraDuels={form.extraDuels} keepMyScaleOffered={Boolean(form.keepMyScale)} />
+        <GoalInfo
+          extraDuels={form.extraDuels}
+          keepMyScaleOffered={Boolean(form.keepMyScale)}
+          finerSteps={hasHumanStep(form.viewer.scoreFormat)}
+        />
       </div>
       <span className="gexp">
         {GOAL_CAPTION[form.goal]}
+        {form.goal === 'full-ranking' && !hasHumanStep(form.viewer.scoreFormat) && ' The scores come out the same as on Scores.'}
         {onKeepMyScale && form.saved ? (
           <>
             <br />
@@ -310,9 +316,11 @@ const GOAL_CAPTION: Record<SortGoal, string> = {
 
 /**
  * The ⓘ beside the Sort Goal (#25): the long explanation. On desktop it shows while the pointer is over it; on touch
- * a tap opens it as a popover with ×, and a tap anywhere else closes it.
+ * a tap opens it as a popover with ×, and a tap anywhere else closes it. `finerSteps`: the Score Format has more than
+ * one Score Step, so Full Ranking can score finer than Scores.
  */
-function GoalInfo({ extraDuels, keepMyScaleOffered }: { extraDuels: number | null; keepMyScaleOffered: boolean }) {
+function GoalInfo(props: { extraDuels: number | null; keepMyScaleOffered: boolean; finerSteps: boolean }) {
+  const { extraDuels, keepMyScaleOffered, finerSteps } = props
   // 'hover' follows the mouse; 'pinned' was opened by a tap or click and stays until closed.
   const [open, setOpen] = useState<'hover' | 'pinned' | null>(null)
   const wrap = useRef<HTMLSpanElement>(null)
@@ -344,11 +352,24 @@ function GoalInfo({ extraDuels, keepMyScaleOffered }: { extraDuels: number | nul
               ×
             </button>
           )}
-          <b>Scores</b> (default from 100 titles): Duels stop once every title's score is settled. Whole points (8, not 8.5). Titles on
-          the same score have no order among themselves.
-          <br />
-          <br />
-          <b>Full Ranking</b> (default under 100 titles): every title gets its own place, even on the same score, and you can pick 0.5 or 0.1 steps.
+          {finerSteps ? (
+            <>
+              <b>Scores</b> (default from 100 titles): Duels stop once every title's score is settled. Whole points (8, not 8.5). Titles on
+              the same score have no order among themselves.
+              <br />
+              <br />
+              <b>Full Ranking</b> (default under 100 titles): every title gets its own place, even on the same score, and you can pick 0.5 or 0.1 steps.
+            </>
+          ) : (
+            <>
+              <b>Scores</b> (default): Duels stop once every title's score is settled. Titles on the same score have no
+              order among themselves.
+              <br />
+              <br />
+              <b>Full Ranking</b>: every title gets its own place, even on the same score. The scores come out the same
+              as on Scores; only the order is extra.
+            </>
+          )}
           {extraDuels ? ` About ${extraDuels} more Duels.` : ''}
           <br />
           <br />
