@@ -15,6 +15,7 @@ import {
   type KeepMyScaleEligibility,
 } from '../../pool/anchors.ts'
 import { DEFAULT_STATUSES, displayTitle, OFFERED_STATUSES, roughSortOrder } from '../../pool/pool.ts'
+import type { KeepMyScalePicks } from '../../persistence/rankingLifecycle.ts'
 import type { AnchorScore, NamedSplitRule } from '../../ranking/engine.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
 import { count, pluralWord } from '../meta.ts'
@@ -103,12 +104,12 @@ export type PickerSummary = {
 }
 
 /**
- * What Confirm starts a Keep My Scale Ranking on: the picked titles in the order its Duels meet them (most recently
- * completed first, then by title), the Anchor snapshot, which never holds a picked title, and the split rule selected
- * in the dock (ADR 0013). `ownSplit` is that rule when the user chose it themselves, to be remembered; null when the
- * selection only followed the recommendation.
+ * What Confirm starts a Keep My Scale Ranking on, as the Ranking's lifecycle takes it: the picked titles in the order
+ * its Duels meet them (most recently completed first, then by title), the Anchor snapshot, which never holds a picked
+ * title, and the split rule selected in the dock (ADR 0013). `ownSplit` is that rule when the user chose it
+ * themselves, to be remembered; null when the selection only followed the recommendation.
  */
-export type PickerStart = { order: number[]; anchors: AnchorScore[]; split: NamedSplitRule; ownSplit: NamedSplitRule | null }
+export type PickerStart = KeepMyScalePicks
 
 /** Whether Confirm may start a Keep My Scale Ranking, and on what. When it may not, the reason as the Picker shows it. */
 export type PickerConfirm = ({ allowed: true } & PickerStart) | { allowed: false; reason: string }
