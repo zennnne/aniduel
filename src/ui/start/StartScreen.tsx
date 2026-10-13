@@ -228,6 +228,7 @@ function PoolSetup(form: PoolForm) {
       <span className="gexp">
         {GOAL_CAPTION[form.goal]}
         {form.goal === 'full-ranking' && !hasHumanStep(form.viewer.scoreFormat) && ' The scores come out the same as on Scores.'}
+        {form.goal === 'scores' && !hasHumanStep(form.viewer.scoreFormat) && ' On your score format, Full Ranking gives the same scores for more Duels.'}
         {onKeepMyScale && form.saved ? (
           <>
             <br />
