@@ -19,6 +19,9 @@ export type DuelLogFailure =
 /** The log now open with its replay, or why nothing changed. */
 export type DuelLogResult = ({ ok: true } & ReplayedLog) | ({ ok: false } & DuelLogFailure)
 
+/** The same for a whole log put in the store, which needs no log to be open already. */
+export type WholeLogResult = Exclude<DuelLogResult, { reason: 'no-open-log' }>
+
 export type DuelLogStore = {
   /**
    * The open Ranking's log with its replay, or null when no Ranking is open. Updated synchronously, so two quick key
@@ -28,11 +31,11 @@ export type DuelLogStore = {
   /** Called on every change; returns an unsubscribe. */
   subscribe(listener: (latest: ReplayedLog | null) => void): () => void
   /** Opens another log (a loaded or restored one) without saving it, once it replays. */
-  show(next: DuelLog): DuelLogResult
+  show(next: DuelLog): WholeLogResult
   /** No Ranking is open any more (logout, a Ranking thrown away or ended). Nothing saved is touched. */
   close(): void
   /** Saves a log (a new one) and opens it, once it replays. */
-  save(next: DuelLog): DuelLogResult
+  save(next: DuelLog): WholeLogResult
   /**
    * Appends events to the open log (ADR 0005), checks it still replays, saves it, then opens it. A log that doesn't
    * replay is not saved; one that can't be saved is not opened, so the store stays on what is saved.
@@ -53,7 +56,7 @@ export function createDuelLogStore(storage: Storage): DuelLogStore {
   }
 
   /** Replays `log`, saves it if asked to, and only then opens it. */
-  function put(log: DuelLog, save: boolean): DuelLogResult {
+  function put(log: DuelLog, save: boolean): WholeLogResult {
     let ranking: RankingState
     try {
       ranking = replayLog(log)

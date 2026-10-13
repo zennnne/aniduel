@@ -30,12 +30,14 @@ export function createUnsettledStore(storage: Storage, ranking: RankingKey) {
   return {
     /**
      * Remembers the titles a Keep My Scale Ranking leaves unsettled as its Import ends it (Forgotten ones are not in
-     * its titles); with none, clears the list. Throws SaveError if the browser refuses.
+     * its titles); with none, clears the list. Returns how many it remembered. Throws SaveError if the
+     * browser refuses.
      */
-    remember(ended: RankingState) {
+    remember(ended: RankingState): number {
       const ids = (ended.keepMyScale?.titles ?? []).filter((t) => !t.settled).map((t) => t.id)
       if (ids.length === 0) clear()
       else saveProgressPart(storage, key, JSON.stringify(ids))
+      return ids.length
     },
     /** The remembered titles the Picker can still show: on the list and not Planning. */
     titles(list: readonly ListEntry[]): number[] {
