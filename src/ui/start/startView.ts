@@ -104,10 +104,15 @@ export function startView(input: StartInput): StartView {
 
   const goal = onKeepMyScale ? KEEP_MY_SCALE : ranking ? goalOf(ranking) : newGoal
   const fullPoolDuels = pool ? estimateDuels(pool.titles.length) : null
-  // Keep My Scale: one search per picked title over the Anchor scores (a saved Ranking: its unsettled titles only).
+  // Keep My Scale: one search per picked title over the Anchor scores (a saved Ranking: its unsettled titles only,
+  // under the split rule it was started on, ADR 0013).
   // Before the Picker there is no estimate: the Picker shows one for the picks.
   const keepMyScaleDuels = ranking?.keepMyScale
-    ? estimateKeepMyScaleDuels(ranking.progress.ranked.total - ranking.progress.ranked.done, ranking.keepMyScale.levels.length)
+    ? estimateKeepMyScaleDuels(
+        ranking.progress.ranked.total - ranking.progress.ranked.done,
+        ranking.keepMyScale.levels.length,
+        ranking.keepMyScale.split,
+      )
     : null
   // With a Scores / Full Ranking Ranking saved, Keep My Scale stays clickable: the Picker's Confirm asks to replace it (#64).
   const keepMyScaleReason = eligibility && !eligibility.eligible ? eligibility.reason : null

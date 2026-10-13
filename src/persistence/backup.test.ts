@@ -159,13 +159,16 @@ describe('Backup and Restore', () => {
     expect(loadPoolSettings(elsewhere, anime)).toEqual(backup.settings.pool)
     const state = replay(log)
     expect(state.sortGoal).toBe(KEEP_MY_SCALE)
+    // Its Anchor snapshot names no split rule, so it is still answered under the oldest one; the state said so later.
+    const { split, ...keepMyScale } = state.keepMyScale!
+    expect(split).toBe('closer-to')
     expect({
       sortGoal: state.sortGoal,
       prompt: state.prompt,
       progress: state.progress,
       forgotten: state.forgotten,
       canUndo: state.canUndo,
-      ...state.keepMyScale,
+      ...keepMyScale,
     }).toEqual(replayed)
   })
 

@@ -48,6 +48,8 @@ export type KeepMyScaleState = {
   titles: readonly PickedTitle[]
   /** Suspect Anchors (not Forgotten ones), best score first, then by id. Their scores are never changed. */
   suspect: readonly SuspectAnchor[]
+  /** The split rule the Ranking is answered under, as its Anchor snapshot names it. */
+  split: SplitRule
 }
 
 /** One answered Duel of a picked title: the Anchor, its level index, and how the title did against it. */
@@ -598,5 +600,5 @@ export function keepMyScaleView(state: KeepMyScale): KeepMyScaleState {
       .filter((id) => state.suspect.has(id) && !state.excluded.has(id))
       .map((id): SuspectAnchor => ({ id, level, contradicted: state.suspect.get(id)! })),
   )
-  return { format: state.format, levels: state.levels, anchorCount: state.anchorIds.size, titles, suspect }
+  return { format: state.format, levels: state.levels, anchorCount: state.anchorIds.size, titles, suspect, split: state.split }
 }

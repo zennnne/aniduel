@@ -1,7 +1,8 @@
 // Keep My Scale (ADR 0009, ADR 0011), the list side: which titles are Anchors, whether the user has enough of a scale
 // to compare against, and which titles a saved Keep My Scale Ranking holds. Pure; callable from Start and Catch-up.
 import type { ListEntry, ListStatus, ScoreFormat } from '../anilist/types.ts'
-import type { AnchorScore, NamedSplitRule } from '../ranking/engine.ts'
+import type { AnchorScore } from '../ranking/engine.ts'
+import type { SplitRule } from '../ranking/keepMyScale.ts'
 import { levelOfRaw, type SavedScoring } from '../ranking/scoring.ts'
 import { buildPool, DEFAULT_STATUSES, LIST_STATUSES, type Pool } from './pool.ts'
 
@@ -79,6 +80,6 @@ export function unscoredTitles(list: readonly ListEntry[], format: ScoreFormat):
  * The oracle runs in src/ranking/keepMyScale.test.ts take a little less than this. Under Deciding Duels (ADR 0013)
  * each title takes about one Duel more.
  */
-export function estimateKeepMyScaleDuels(n: number, levels: number, split: NamedSplitRule = 'on-the-score'): number {
+export function estimateKeepMyScaleDuels(n: number, levels: number, split: SplitRule = 'on-the-score'): number {
   return Math.round(2 * n * Math.log2(levels + 1)) + (split === 'deciding-duels' ? n : 0)
 }

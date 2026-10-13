@@ -158,6 +158,16 @@ describe('a saved Ranking', () => {
     expect(start.form.poolDuels).toBeGreaterThan(0)
   })
 
+  it('on Keep My Scale under "More Duels first" counts one more Duel for each title left, as the Picker did (ADR 0013)', () => {
+    const { anchors, fresh, list } = scoredList(3)
+    const start = { ...header, format: 'POINT_10' as const, anchors: anchorsOf(anchors, 'POINT_10'), ids: ids(fresh) }
+    const askMe = view({ list, saved: replayed(startKeepMyScaleLog(start)) }).form.poolDuels
+    const moreDuels = view({ list, saved: replayed(startKeepMyScaleLog({ ...start, split: 'deciding-duels' })) }).form.poolDuels
+    // Three titles over 4 scores: 3 · 2 log2(5) ≈ 13.9.
+    expect(askMe).toBe(14)
+    expect(moreDuels).toBe(17)
+  })
+
   it("that can't be used leaves nothing to start on", () => {
     const start = view({ list: many(40, [90, 80, 70]), savedBroken: true })
     expect(start).toMatchObject({ savedRanking: 'broken', startOrder: null, scoresPlan: null })
