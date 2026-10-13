@@ -1,6 +1,6 @@
 # Score New Titles: a third Sort Goal that scores unscored titles against fixed Anchors
 
-_Amended by [ADR 0011](0011-keep-my-scale-a-hand-picked-pool.md): the goal is now called Keep My Scale, its Pool is picked by hand and can hold scored titles, and sync no longer adds titles._
+_Amended by [ADR 0011](0011-keep-my-scale-a-hand-picked-pool.md): the goal is now called Keep My Scale, its Pool is picked by hand and can hold scored titles (so a Suspect Anchor can be scored again by picking it), a picked title is never an Anchor, and sync no longer adds titles._
 
 _Amended by [ADR 0012](0012-keep-my-scale-a-split-on-a-score-is-not-asked.md): a title that both beat and lost to Anchors of a score, and ends up next to that score, gets it without the Closer-to prompt, and an Anchor is Suspect only when the titles that contradicted it are most of the titles settled against it._
 
@@ -13,8 +13,8 @@ Users who already have their own scoring scale don't want it rescaled; they want
 - **Anchors** are every title in the list with a score, any status. Targets are the unscored titles of the chosen statuses (default Completed + Repeating).
 - **Scores come from Anchors only.** A title gets an existing Anchor score. If it beats every Anchor of one score and loses to every Anchor of the next, the user is asked once which of the two it is closer to. "About the same" with an Anchor gives that Anchor's score. Above every Anchor (or below every one) it gets one human Score Step past the extreme Anchor score, all such titles together, and never beyond the Score Format's ends.
 - **Confirmation.** A boundary is passed only when two different Anchors agree; if they disagree a third decides. A score with a single Anchor is confirmed against the neighbouring score's Anchors instead.
-- **Suspect Anchors.** An Anchor whose results contradict its own score twice stops being used as a reference and is listed at the bottom of Preview. Its score is never changed. Forgotten on an Anchor also just stops using it.
-- **The Anchors are one event.** Their scores are snapshotted into the Duel log when the Ranking starts, as in ADR 0008, so replay never reads AniList. Sync can add new unscored titles but never new Anchors or changed Anchor scores. Engine version is bumped (ADR 0005).
+- **Suspect Anchors.** An Anchor whose results contradict its own score twice stops being used as a reference and is listed in Preview, under the score rows. Its score is never changed. Forgotten on an Anchor also just stops using it.
+- **The Anchors are one event.** Their scores are snapshotted into the Duel log when the Ranking starts, as in ADR 0008, so replay never reads AniList. Sync can add new unscored titles but never new Anchors or changed Anchor scores. Engine version is bumped (ADR 0005). The snapshot is a barrier for Undo, and a Closer-to answer is undone like a Duel answer (ADR 0005).
 - best/worst, Distribution and Score Step settings are hidden under this goal; Preview groups titles by score like Scores.
 
 ## Considered Options

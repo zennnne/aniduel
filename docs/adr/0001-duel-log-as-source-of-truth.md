@@ -5,7 +5,7 @@ We store every Duel answer in order as an append-only log and rebuild the Rankin
 ## Considered Options
 
 - **Elo/Glicko with random pairs**: you can stop at any time and it tolerates inconsistent answers, but it needs far more Duels before the order settles and has no clear end. We rejected it because the target user has 200+ titles and the Duel count is already the main pain point.
-- **Hybrid that starts from existing scores**: we rejected it because our target users are new to AniList and usually have no scores yet.
+- **Hybrid that starts from existing scores**: we rejected it because our target users are new to AniList and usually have no scores yet. _Revisited in ADR 0008 and ADR 0009:_ users who do have scores can now start from them, as a Rough Sort from Scores or as fixed Anchors under Keep My Scale. Both are optional starts on top of this engine, not a replacement for it.
 
 ## Consequences
 
