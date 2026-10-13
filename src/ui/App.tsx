@@ -1,8 +1,8 @@
 // Screens are chosen from app state, not by a router (ADR 0004).
 import { useEffect, useEffectEvent, useMemo, useState, type ReactNode } from 'react'
-import { AniListError, createAniListGateway, trendingCovers, type AniListSession } from '../anilist/gateway.ts'
+import { trendingCovers, type AniListSession } from '../anilist/gateway.ts'
 import type { Cover, ListEntry, ListStatus, MediaType, Viewer } from '../anilist/types.ts'
-import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
+import { authorizeUrl } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
 import type { DuelLogFailure } from '../persistence/duelLogStore.ts'
@@ -12,7 +12,6 @@ import { createUnsettledStore } from '../persistence/unsettledTitles.ts'
 import { browserClock } from '../clock.ts'
 import { importSummary } from '../import/importState.ts'
 import type { DroppedImport, ImportProgress } from '../import/previewImport.ts'
-import { createRequestLimiter } from '../writes/limiter.ts'
 import {
   loadLastMediaType,
   loadPoolSettings,
@@ -20,7 +19,7 @@ import {
   saveLastMediaType,
   type RankingKey,
 } from '../persistence/progress.ts'
-import { DEFAULT_STATUSES, LIST_STATUSES } from '../pool/pool.ts'
+import { DEFAULT_STATUSES } from '../pool/pool.ts'
 import { syncEvents } from '../pool/sync.ts'
 import {
   KEEP_MY_SCALE,
@@ -39,7 +38,6 @@ import { hasHumanStep, type ScoringSettings } from '../ranking/scoring.ts'
 import { goalOf, isKeepMyScale, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { splitOffers } from '../ranking/split.ts'
 import { BAND_UI } from './bands.ts'
-import { aniListCandidateSource } from '../catchup/suggestionCandidates.ts'
 import { createPassedStore } from '../catchup/passed.ts'
 import { BandChoiceScreen } from './bandchoice/BandChoiceScreen.tsx'
 import { isNearEmpty, startSign, watchedCount } from '../catchup/entry.ts'
@@ -91,6 +89,7 @@ import { startingPicks, type PickerStart, type PickerWayIn } from './picker/pick
 import { StartScreen } from './start/StartScreen.tsx'
 import { animeStanding, startView, type StartView } from './start/startView.ts'
 import { useTheme } from './theme.ts'
+import { useAniListSession } from './useAniListSession.ts'
 import { useDuelLog } from './useDuelLog.ts'
 
 type DialogName = 'logout' | 'restore' | 'start-over' | 'full-ranking' | 'clear-passed' | 'replace-with-keep-my-scale' | 'pick-again'
@@ -120,22 +119,12 @@ function droppedMessage(dropped: DroppedImport): string {
   }
 }
 
-const browserFetch: typeof fetch = (...args) => window.fetch(...args)
-
 /**
  * `storage`: where the login and all progress are kept, checked before the app renders (#76).
  * `fake`: dev only (#68), a session on a fake AniList in place of the login and the network.
  */
 export function App({ storage, fake }: { storage: Storage; fake?: AniListSession }) {
   const { theme, toggleTheme } = useTheme(storage)
-  const aniListFetch = fake?.fetch ?? browserFetch
-  // The login of this page load. A token that just arrived may not have been saved: it holds until the page is left.
-  const [session] = useState(() =>
-    fake ? { token: fake.token, saved: true } : restoreSession({ location: window.location, history: window.history, storage }),
-  )
-  const [token, setToken] = useState<string | null>(session.token)
-  const [viewer, setViewer] = useState<Viewer | null>(null)
-  const [lists, setLists] = useState<Partial<Record<MediaType, ListEntry[]>>>({})
   // Covers for Start before login. Left empty on failure: the collage falls back to placeholders.
   const [trending, setTrending] = useState<readonly Cover[]>([])
   const [mediaType, setMediaType] = useState<MediaType>('ANIME')
@@ -146,7 +135,6 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   const [savedBroken, setSavedBroken] = useState(false)
   const [screen, setScreen] = useState<Screen>('start')
   const [notice, setNotice] = useState<Notice | null>(null)
-  const [retries, setRetries] = useState(0)
   const [dialog, setDialog] = useState<DialogName | null>(null)
   // What only makes sense for the open Ranking; leaving it, whichever way, resets it all at once.
   const [rankingUi, setRankingUi] = useState(NO_RANKING_UI)
@@ -164,13 +152,19 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   // What the Picker's Confirm would start, held while the Replace dialog asks about the saved Ranking.
   const [pickedStart, setPickedStart] = useState<PickerStart | null>(null)
 
-  const gateway = useMemo(() => (token ? createAniListGateway({ fetch: aniListFetch, token }) : null), [aniListFetch, token])
-  // The write queue's requests and Catch-up's reads take turns in one limiter, so together they keep to AniList's rate limit.
-  const limiter = useMemo(() => (token ? createRequestLimiter(browserClock) : null), [token])
-  const candidateSource = useMemo(
-    () => (token && limiter ? aniListCandidateSource({ fetch: aniListFetch, token, clock: browserClock, limiter }) : null),
-    [aniListFetch, token, limiter],
-  )
+  // The login, the Viewer and the lists: the selected Media Type's, and in Catch-up the anime list too, where its exit
+  // offer checks the Anchors (#52).
+  const aniList = useAniListSession({
+    storage,
+    fake,
+    mediaType,
+    animeToo: screen === 'catchup',
+    onViewer: openLastRanking,
+    onListRead: syncFetched,
+    onExpired: loginExpired,
+    onUnreachable: aniListUnreachable,
+  })
+  const { token, gateway, limiter, candidateSource, viewer, lists } = aniList
   const viewerId = viewer?.id ?? null
   // One write queue for Import's scores and Catch-up's statuses.
   const writes = useWriteQueue({
@@ -180,7 +174,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     limiter,
     // Not the Duel log, but the same refusal: the same banner says so, and the queue keeps writing.
     onSaveRefused: () => reportFailure({ reason: 'save-refused' }),
-    onError: handleGatewayError,
+    onError: aniList.failed,
   })
   // The open Ranking's user and Media Type: the key everything saved for it lives under.
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
@@ -211,18 +205,13 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     duelLog,
     oldScores,
     name: (id, language) => titleName(entries.get(id), id, language),
-    onViewer: setViewer,
-    onGatewayError: handleGatewayError,
+    onViewer: aniList.viewerChecked,
+    onGatewayError: aniList.failed,
     onDuelLogFailure: (failure) =>
       reportFailure(failure, (why) => `Your Ranking's scoring settings couldn't be brought up to date (${why}). Your progress was left untouched.`),
     onSaveRefused: () => reportFailure({ reason: 'save-refused' }),
-    onWritten: (key, written) =>
-      // Preview should show the scores AniList has now.
-      setLists((prev) => {
-        const current = prev[key.mediaType]
-        if (!current) return prev
-        return { ...prev, [key.mediaType]: current.map((e) => (written.has(e.mediaId) ? { ...e, oldScore100: written.get(e.mediaId)! } : e)) }
-      }),
+    // Preview should show the scores AniList has now.
+    onWritten: (key, written) => aniList.scoresWritten(key.mediaType, written),
     onFinished: endKeepMyScale,
   })
 
@@ -248,22 +237,22 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     viewer,
     clock: browserClock,
     seed: newSeed,
-    onGatewayError: handleGatewayError,
+    onGatewayError: aniList.failed,
     // Titles Catch-up added can join the anime Pool: read the list again, which syncs a saved Ranking.
-    onWritten: () => refreshList('ANIME'),
+    onWritten: () => aniList.refresh('ANIME'),
   })
 
   const needTrending = !token && trending.length === 0
   useEffect(() => {
     if (!needTrending) return
     let cancelled = false
-    trendingCovers({ fetch: aniListFetch }, COLLAGE_TILES)
+    trendingCovers({ fetch: aniList.fetch }, COLLAGE_TILES)
       .then((covers) => !cancelled && setTrending(covers))
       .catch(() => {})
     return () => {
       cancelled = true
     }
-  }, [needTrending, aniListFetch])
+  }, [needTrending, aniList.fetch])
 
   const showToast = (message: ReactNode) => setToast({ message })
   useEffect(() => {
@@ -323,11 +312,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   function endSession(deleteProgress: boolean) {
     writes.stop() // before the user's progress is deleted, so nothing written after is saved again
     catchUp.close()
-    // The fake session has no token of its own: the one in storage is the real login's, and stays.
-    if (!fake) logout(storage, { userId: viewer?.id ?? null, deleteProgress })
-    setToken(null)
-    setViewer(null)
-    setLists({})
+    aniList.end(deleteProgress)
     setStatuses(DEFAULT_STATUSES)
     lifecycle.close()
     setSavedBroken(false)
@@ -336,25 +321,29 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     setScreen('start')
   }
 
-  /** Login expired → back to Start with "Log in again"; anything else → the unreachable banner with Retry. */
-  function handleGatewayError(error: unknown) {
-    if (error instanceof AniListError && error.kind === 'auth') {
-      endSession(false)
-      setNotice({
-        tone: 'error',
-        message: 'Your AniList login expired or was revoked.',
-        action: { label: 'Log in again', onClick: loginRedirect },
-      })
-      return
-    }
+  /** The login expired or was revoked: back to Start with "Log in again". */
+  function loginExpired() {
+    endSession(false)
     setNotice({
       tone: 'error',
-      message: 'AniList is unreachable right now.',
-      action: { label: 'Retry', onClick: () => { setNotice(null); setRetries((n) => n + 1) } },
+      message: 'Your AniList login expired or was revoked.',
+      action: { label: 'Log in again', onClick: loginRedirect },
     })
   }
 
-  const onGatewayError = useEffectEvent(handleGatewayError)
+  /** The unreachable banner, with Retry. */
+  function aniListUnreachable() {
+    setNotice({
+      tone: 'error',
+      message: 'AniList is unreachable right now.',
+      action: { label: 'Retry', onClick: () => { setNotice(null); aniList.retry() } },
+    })
+  }
+
+  /** The Viewer arrived: the Ranking of the Media Type last selected opens, on its Duels when there is one. */
+  function openLastRanking(v: Viewer) {
+    openRanking({ userId: v.id, mediaType: loadLastMediaType(storage, v.id) ?? 'ANIME' }, true)
+  }
 
   // The browser refused to save the login: the banner says so once the user is known, so that its Backup is theirs.
   // Saved progress that can't be used keeps its own banner, which offers the Restore.
@@ -362,25 +351,8 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     if (!savedBroken) reportFailure({ reason: 'save-refused' })
   })
   useEffect(() => {
-    if (viewerId !== null && !session.saved) onUnsavedLogin()
-  }, [viewerId, session.saved])
-
-  const onViewer = useEffectEvent((v: Viewer) => {
-    setViewer(v)
-    openRanking({ userId: v.id, mediaType: loadLastMediaType(storage, v.id) ?? 'ANIME' }, true)
-  })
-
-  useEffect(() => {
-    if (!gateway || viewer) return
-    let cancelled = false
-    gateway.viewer().then(
-      (v) => !cancelled && onViewer(v),
-      (e: unknown) => !cancelled && onGatewayError(e),
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [gateway, viewer, retries])
+    if (viewerId !== null && !aniList.saved) onUnsavedLogin()
+  }, [viewerId, aniList.saved])
 
   /**
    * Sync (#13, ADR 0005): brings the Pool in the log up to date with the fetched list and the chosen statuses.
@@ -406,44 +378,11 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
   }
 
-  // A freshly fetched list is the moment to sync a saved Ranking (resume, also months after an Import).
-  const onListFetched = useEffectEvent((type: MediaType, fetched: ListEntry[]) => {
-    setLists((prev) => ({ ...prev, [type]: fetched }))
+  /** A freshly read list is the moment to sync a saved Ranking (resume, also months after an Import, or after Catch-up). */
+  function syncFetched(type: MediaType, fetched: ListEntry[]) {
     const summary = syncPool(type, fetched, statuses)
     if (summary) showToast(summary)
-  })
-
-  /**
-   * Reads a list again (after Catch-up wrote to it), syncing a saved Ranking like a first fetch. Resolves once it is
-   * read, or couldn't be. A first read still in flight is dropped when this one lands: it may have left before the write.
-   */
-  function refreshList(type: MediaType): Promise<void> {
-    if (!gateway || !viewer) return Promise.resolve()
-    return gateway.mediaList({ userId: viewer.id, type, statuses: LIST_STATUSES }).then(
-      (fetched) => {
-        setLists((prev) => ({ ...prev, [type]: fetched }))
-        const summary = syncPool(type, fetched, statuses)
-        if (summary) showToast(summary)
-      },
-      () => {}, // the next list read catches up
-    )
   }
-
-  // The selected Media Type's list, and in Catch-up the anime list too: its exit offer checks the Anchors there (#52).
-  const listToFetch: MediaType | null = !lists[mediaType] ? mediaType : screen === 'catchup' && !lists.ANIME ? 'ANIME' : null
-  useEffect(() => {
-    if (!gateway || !viewer || !listToFetch) return
-    let cancelled = false
-    // Fetch every status once, so each chip can show its count and toggling needs no refetch. Planning comes too,
-    // for Keep My Scale's Anchors and Pool (LIST_STATUSES); nothing shows or offers those titles.
-    gateway.mediaList({ userId: viewer.id, type: listToFetch, statuses: LIST_STATUSES }).then(
-      (list) => !cancelled && onListFetched(listToFetch, list),
-      (e: unknown) => !cancelled && onGatewayError(e),
-    )
-    return () => {
-      cancelled = true
-    }
-  }, [gateway, viewer, listToFetch, retries])
 
   // Bands that can be split now (ADR 0006): the menu offers them.
   const offers = ranking ? splitOffers(ranking) : []
