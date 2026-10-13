@@ -9,13 +9,14 @@ function systemTheme(): Theme {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function storedTheme(): Theme | null {
-  const value = localStorage.getItem(THEME_KEY)
+function storedTheme(storage: Storage): Theme | null {
+  const value = storage.getItem(THEME_KEY)
   return value === 'light' || value === 'dark' ? value : null
 }
 
-export function useTheme(): { theme: Theme; toggleTheme: () => void } {
-  const [chosen, setChosen] = useState<Theme | null>(storedTheme)
+/** `storage`: where the chosen theme is remembered. */
+export function useTheme(storage: Storage): { theme: Theme; toggleTheme: () => void } {
+  const [chosen, setChosen] = useState<Theme | null>(() => storedTheme(storage))
   const [system, setSystem] = useState<Theme>(systemTheme)
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function useTheme(): { theme: Theme; toggleTheme: () => void } {
     theme,
     toggleTheme: () => {
       const next: Theme = theme === 'dark' ? 'light' : 'dark'
-      localStorage.setItem(THEME_KEY, next)
+      storage.setItem(THEME_KEY, next)
       setChosen(next)
     },
   }

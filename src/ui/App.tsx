@@ -123,12 +123,15 @@ function droppedMessage(dropped: DroppedImport): string {
 
 const browserFetch: typeof fetch = (...args) => window.fetch(...args)
 
-/** `fake`: dev only (#68), a session on a fake AniList in place of the login and the network. */
-export function App({ fake }: { fake?: AniListSession }) {
-  const { theme, toggleTheme } = useTheme()
+/**
+ * `storage`: where the login and all progress are kept, checked before the app renders (#76).
+ * `fake`: dev only (#68), a session on a fake AniList in place of the login and the network.
+ */
+export function App({ storage, fake }: { storage: Storage; fake?: AniListSession }) {
+  const { theme, toggleTheme } = useTheme(storage)
   const aniListFetch = fake?.fetch ?? browserFetch
   const [token, setToken] = useState<string | null>(() =>
-    fake ? fake.token : restoreSession({ location: window.location, history: window.history, storage: localStorage }),
+    fake ? fake.token : restoreSession({ location: window.location, history: window.history, storage }),
   )
   const [viewer, setViewer] = useState<Viewer | null>(null)
   const [lists, setLists] = useState<Partial<Record<MediaType, ListEntry[]>>>({})
@@ -136,7 +139,7 @@ export function App({ fake }: { fake?: AniListSession }) {
   const [trending, setTrending] = useState<readonly Cover[]>([])
   const [mediaType, setMediaType] = useState<MediaType>('ANIME')
   const [statuses, setStatuses] = useState<readonly ListStatus[]>(DEFAULT_STATUSES)
-  const duelLog = useDuelLog(localStorage, { seed: newSeed, discardImport })
+  const duelLog = useDuelLog(storage, { seed: newSeed, discardImport })
   const { log, ranking, lifecycle } = duelLog
   // Saved progress that exists but can't be used. Starting over would overwrite it, so Start is blocked.
   const [savedBroken, setSavedBroken] = useState(false)
@@ -169,7 +172,7 @@ export function App({ fake }: { fake?: AniListSession }) {
   )
   const viewerId = viewer?.id ?? null
   // One write queue for Import's scores and Catch-up's statuses.
-  const writes = useWriteQueue({ storage: localStorage, gateway, userId: viewerId, limiter, onError: handleGatewayError })
+  const writes = useWriteQueue({ storage, gateway, userId: viewerId, limiter, onError: handleGatewayError })
   // The open Ranking's user and Media Type: the key everything saved for it lives under.
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
@@ -192,7 +195,7 @@ export function App({ fake }: { fake?: AniListSession }) {
   const watchedAnime = useMemo(() => lists.ANIME?.filter(isWatched) ?? null, [lists.ANIME])
 
   const imports = usePreviewImport({
-    storage: localStorage,
+    storage,
     gateway,
     queue: writes.queue,
     viewer,
@@ -222,11 +225,11 @@ export function App({ fake }: { fake?: AniListSession }) {
   }
 
   // The titles the last Keep My Scale Ranking left unsettled, for this user and Media Type (#66).
-  const unsettledStore = useMemo(() => (viewerId === null ? null : createUnsettledStore(localStorage, { userId: viewerId, mediaType })), [viewerId, mediaType])
+  const unsettledStore = useMemo(() => (viewerId === null ? null : createUnsettledStore(storage, { userId: viewerId, mediaType })), [storage, viewerId, mediaType])
 
-  const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(localStorage, viewerId)), [viewerId])
+  const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(storage, viewerId)), [storage, viewerId])
   const catchUp = useCatchUp({
-    storage: localStorage,
+    storage,
     passedStore,
     gateway,
     animeList: watchedAnime,
@@ -311,7 +314,7 @@ export function App({ fake }: { fake?: AniListSession }) {
     writes.stop() // before the user's progress is deleted, so nothing written after is saved again
     catchUp.close()
     // The fake session has no token of its own: the one in storage is the real login's, and stays.
-    if (!fake) logout(localStorage, { userId: viewer?.id ?? null, deleteProgress })
+    if (!fake) logout(storage, { userId: viewer?.id ?? null, deleteProgress })
     setToken(null)
     setViewer(null)
     setLists({})
@@ -345,7 +348,7 @@ export function App({ fake }: { fake?: AniListSession }) {
 
   const onViewer = useEffectEvent((v: Viewer) => {
     setViewer(v)
-    openRanking({ userId: v.id, mediaType: loadLastMediaType(localStorage, v.id) ?? 'ANIME' }, true)
+    openRanking({ userId: v.id, mediaType: loadLastMediaType(storage, v.id) ?? 'ANIME' }, true)
   })
 
   useEffect(() => {
@@ -617,7 +620,7 @@ export function App({ fake }: { fake?: AniListSession }) {
     const current = duelLog.latest()
     if (!viewer || !current) return
     const key = { userId: viewer.id, mediaType }
-    const events = switchGoalEvents(current.ranking, loadScoringSettings(localStorage, key), viewer.scoreFormat, goal)
+    const events = switchGoalEvents(current.ranking, loadScoringSettings(storage, key), viewer.scoreFormat, goal)
     if (events.length === 0) return
     const switched = duelLog.append(...events)
     if (!switched.ok) {
@@ -645,7 +648,7 @@ export function App({ fake }: { fake?: AniListSession }) {
   /** Downloads the Backup file for the current user and Media Type. */
   function saveBackup() {
     if (!viewer) return
-    const file = createBackup(localStorage, { userId: viewer.id, mediaType, userName: viewer.name }, new Date())
+    const file = createBackup(storage, { userId: viewer.id, mediaType, userName: viewer.name }, new Date())
     if (!file) {
       showToast(`There is no ${MEDIA_LABEL[mediaType]} Ranking to back up yet.`)
       return
@@ -666,7 +669,7 @@ export function App({ fake }: { fake?: AniListSession }) {
   /** Runs only after the user confirmed in the Restore dialog, which already checked the file for this user and Media Type. */
   function restore(backup: Backup) {
     if (!rankingKey) return
-    restoreBackup(localStorage, backup)
+    restoreBackup(storage, backup)
     setDialog(null)
     setNotice(null)
     const restored = `Restored ${backup.log.events.length} events from Backup`
@@ -675,7 +678,7 @@ export function App({ fake }: { fake?: AniListSession }) {
       return
     }
     // The Backup may be older than the list: bring its Pool up to date under the restored statuses.
-    const chosen = loadPoolSettings(localStorage, rankingKey)?.statuses ?? DEFAULT_STATUSES
+    const chosen = loadPoolSettings(storage, rankingKey)?.statuses ?? DEFAULT_STATUSES
     const summary = syncPool(mediaType, list, chosen)
     goTo('ranking')
     showToast(summary ? `${restored} · ${summary}` : restored)
@@ -688,7 +691,7 @@ export function App({ fake }: { fake?: AniListSession }) {
   function openPicker(wayIn: PickerWayIn, type: MediaType = mediaType) {
     setPickerWayIn(wayIn)
     // Catch-up's exit offer switches to anime in the same click, so the store and list are read for `type`.
-    const remembered = viewerId === null ? [] : createUnsettledStore(localStorage, { userId: viewerId, mediaType: type }).titles(lists[type] ?? [])
+    const remembered = viewerId === null ? [] : createUnsettledStore(storage, { userId: viewerId, mediaType: type }).titles(lists[type] ?? [])
     if (remembered.length > 0) {
       setDialog('pick-again')
       return
@@ -780,7 +783,7 @@ export function App({ fake }: { fake?: AniListSession }) {
 
   function switchMediaType(type: MediaType) {
     if (!viewer || type === mediaType) return
-    saveLastMediaType(localStorage, viewer.id, type)
+    saveLastMediaType(storage, viewer.id, type)
     const inRankingNow = screen === 'ranking'
     if (!openRanking({ userId: viewer.id, mediaType: type }, inRankingNow) && inRankingNow) goTo('start')
   }
@@ -860,7 +863,7 @@ export function App({ fake }: { fake?: AniListSession }) {
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
           const next = statuses.includes(s) ? statuses.filter((x) => x !== s) : [...statuses, s]
-          savePoolSettings(localStorage, { userId: viewer.id, mediaType }, { statuses: next })
+          savePoolSettings(storage, { userId: viewer.id, mediaType }, { statuses: next })
           setStatuses(next)
         },
         onLogout: () => setDialog('logout'),
@@ -955,7 +958,7 @@ export function App({ fake }: { fake?: AniListSession }) {
             titleLanguage={shown.viewer.titleLanguage}
             mediaType={mediaType}
             initialPicks={startingPicks(list ?? [], shown.viewer.scoreFormat, pickerWayIn, pickAgain)}
-            rememberedSplit={createSplitChoiceStore(localStorage, shown.viewer.id).choice()}
+            rememberedSplit={createSplitChoiceStore(storage, shown.viewer.id).choice()}
             onBack={() => window.history.back()}
             onConfirm={confirmPicks}
           />

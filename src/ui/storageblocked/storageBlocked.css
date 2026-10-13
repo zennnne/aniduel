@@ -1,0 +1,25 @@
+/* The blocked-storage screen (#76): one panel in the middle of the page. */
+.blk {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+.blk-panel {
+  max-width: 440px;
+  background: var(--fg);
+  border-radius: 18px;
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 10px 40px var(--shadow);
+}
+.blk-panel h1 {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--tx-strong);
+}
+.blk-panel p {
+  line-height: 1.5;
+}
