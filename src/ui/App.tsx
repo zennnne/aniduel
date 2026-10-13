@@ -26,7 +26,6 @@ import { syncEvents } from '../pool/sync.ts'
 import {
   KEEP_MY_SCALE,
   answeredDuels,
-  promptedTitle,
   withSub,
   type BandIndex,
   type LogEvent,
@@ -36,7 +35,7 @@ import {
   type SwitchableGoal,
 } from '../ranking/engine.ts'
 import { fullRankingExtra } from '../ranking/estimate.ts'
-import { previewOpen, readPreview } from '../ranking/preview.ts'
+import { readPreview } from '../ranking/preview.ts'
 import { hasHumanStep, type ScoringSettings } from '../ranking/scoring.ts'
 import { goalOf, isKeepMyScale, switchGoalEvents } from '../ranking/sortGoal.ts'
 import { splitOffers } from '../ranking/split.ts'
@@ -71,7 +70,19 @@ import { MEDIA_LABEL, count, titleName } from './meta.ts'
 import { PreviewScreen } from './preview/PreviewScreen.tsx'
 import { SCORE_FORMAT_LABEL } from './preview/scoreFormat.ts'
 import { RankingSidebar } from './RankingSidebar.tsx'
-import { NO_RANKING_UI, leftRanking, splitSkipped, titlesAdded, type RankingUi } from './rankingUi.ts'
+import {
+  NO_RANKING_UI,
+  answered,
+  boardOpened,
+  fixStarted,
+  lastCheckLeft,
+  leftRanking,
+  refineStarted,
+  splitSkipped,
+  titlesAdded,
+  type RankingUi,
+  type Transition,
+} from './rankingUi.ts'
 import { RoughSortScreen } from './roughsort/RoughSortScreen.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { SCREENS, rankingShown, shownScreen, splitBandOf, type RankingShown, type Screen, type Shown } from './shownScreen.ts'
@@ -92,14 +103,6 @@ const COLLAGE_TILES = 36
 
 function loginRedirect() {
   window.location.assign(authorizeUrl(aniListClientId({ dev: import.meta.env.DEV })))
-}
-
-/**
- * Whether a fix started from Preview (Re-rank, Move, Bring back) needs no more Duels: the Ranking is finished, or
- * only Refine Duels of other titles are left (on Scores the fixed title is worked on first, until it is settled).
- */
-function fixDone(state: RankingState, id: number): boolean {
-  return previewOpen(state.prompt) && promptedTitle(state.prompt) !== id
 }
 
 function newSeed(): number {
@@ -143,8 +146,13 @@ export function App({ fake }: { fake?: AniListSession }) {
   const [dialog, setDialog] = useState<DialogName | null>(null)
   // What only makes sense for the open Ranking; leaving it, whichever way, resets it all at once.
   const [rankingUi, setRankingUi] = useState(NO_RANKING_UI)
-  const { lastCheckContinued, previewFix, refining, previewMoving } = rankingUi
+  const { lastCheckContinued, previewFix, previewMoving } = rankingUi
   const patchRankingUi = (change: Partial<RankingUi>) => setRankingUi((s) => ({ ...s, ...change }))
+  /** What a transition of the open Ranking's screen state decided: its fields that change, then the screen to go to. */
+  function apply({ change, goTo: next }: Transition) {
+    patchRankingUi(change)
+    if (next) goTo(next)
+  }
   // A new object per toast, so showing the same message twice restarts its timer.
   const [toast, setToast] = useState<{ message: ReactNode } | null>(null)
   // The Sort Goal the user picked on Start for a new Ranking (#28), or null while they haven't touched it and it
@@ -422,15 +430,12 @@ export function App({ fake }: { fake?: AniListSession }) {
 
   /** The Board's entry points (Rough Sort pill, Band choice pill, menu) while it is open: before the first Duel answer. */
   function openBoard() {
-    if (!ranking?.board.open) return
-    if (ranking.prompt.kind === 'rough-sort') goTo('board')
-    else patchRankingUi({ lastCheckContinued: false })
+    apply(boardOpened(ranking))
   }
 
   /** "Continue →" on the last check: the Band choice comes next. */
   function continueFromLastCheck() {
-    patchRankingUi({ lastCheckContinued: true })
-    if (ranking?.prompt.kind === 'duel' && screen !== 'bands') goTo('bands')
+    apply(lastCheckLeft(ranking, screen))
   }
 
   /**
@@ -467,22 +472,16 @@ export function App({ fake }: { fake?: AniListSession }) {
    * it does once the Refine Duels started from Preview are all answered.
    */
   function answer(event: LogEvent): RankingState | null {
-    const answered = duelLog.append(event)
-    if (!answered.ok) {
+    const appended = duelLog.append(event)
+    if (!appended.ok) {
       // An answer that doesn't replay is one for a prompt that is no longer showing (e.g. a double key press).
-      reportFailure(answered, 'ignore')
+      reportFailure(appended, 'ignore')
       return null
     }
-    const state = answered.ranking
-    if (previewFix && fixDone(state, previewFix.id)) {
-      patchRankingUi({ previewFix: null })
-      if (screen !== 'preview') goTo('preview')
-    }
-    if (refining && state.prompt.kind === 'all-complete') {
-      patchRankingUi({ refining: false })
-      if (screen !== 'preview') goTo('preview')
-      showToast(state.keepMyScale ? 'Every title has a score' : 'Every score is settled again')
-    }
+    const state = appended.ranking
+    const after = answered(rankingUi, state, screen)
+    apply(after)
+    if (after.refineEnded) showToast(state.keepMyScale ? 'Every title has a score' : 'Every score is settled again')
     return state
   }
 
@@ -516,28 +515,23 @@ export function App({ fake }: { fake?: AniListSession }) {
    */
   function fixFromPreview(id: number, verb: string, state: RankingState | null) {
     if (!state) return
-    if (fixDone(state, id)) {
-      // A move keeps its own toast (with Undo).
-      if (verb !== 'Moving') {
-        showToast(
-          <>
-            No Duels needed: <b>{nameOf(id)}</b> has its place
-          </>,
-        )
-      }
-      return
+    const started = fixStarted(state, id, verb)
+    apply(started)
+    // A move keeps its own toast (with Undo).
+    if (started.noDuelNeeded && verb !== 'Moving') {
+      showToast(
+        <>
+          No Duels needed: <b>{nameOf(id)}</b> has its place
+        </>,
+      )
     }
-    patchRankingUi({ previewFix: { id, verb } })
-    goTo('ranking')
   }
 
   /** "Go to Duels →" on Preview (#29): the Refine Duels, from the top Band that has some. */
   function refineFromPreview() {
-    const kind = ranking?.prompt.kind
-    if (!ranking || (kind !== 'duel' && kind !== 'anchor-duel' && kind !== 'closer-to')) return
-    patchRankingUi({ refining: true })
-    if (ranking.bandChoice) chooseBand(ranking.bandChoice.next)
-    else goTo('ranking')
+    const started = refineStarted(ranking)
+    apply(started)
+    if (started.bandFirst !== null) chooseBand(started.bandFirst)
   }
 
   /**
