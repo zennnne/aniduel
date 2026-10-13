@@ -31,9 +31,9 @@ export type PickerInput = {
   /**
    * What happens to a title that lands between two scores (ADR 0013), as the user chose it themselves: "Ask me"
    * (`on-the-score`) or "More Duels first" (`deciding-duels`), by touching the control in the dock or remembered from
-   * last time. Left out, the control follows the option recommended for the list.
+   * last time. Left out or null, the control follows the option recommended for the list.
    */
-  split?: NamedSplitRule
+  ownSplit?: NamedSplitRule | null
 }
 
 /** The Picker's filters, search and sort (#65). None of them touches the picks: a hidden pick stays picked. */
@@ -360,7 +360,8 @@ export function pickerView(input: PickerInput): PickerView {
   const anchors = anchorsOf(list, scoreFormat, pickedIds)
   const left = keepMyScaleEligibility(anchors)
   const recommended = recommendedSplit(left)
-  const split = input.split ?? recommended
+  const ownSplit = input.ownSplit ?? null
+  const split = ownSplit ?? recommended
   const summary: PickerSummary = {
     picked: pickedEntries.length,
     anchors: left.anchors,
@@ -403,7 +404,7 @@ export function pickerView(input: PickerInput): PickerView {
   const latest = [...picked].flatMap((id) => byId.get(id) ?? []).reverse()
   const statusCounts = Object.fromEntries(OFFERED_STATUSES.map((status) => [status, 0]))
   for (const e of pickable(list)) if (e.status in statusCounts) statusCounts[e.status]++
-  const confirm = confirmOf(pickedEntries, anchors, left, titleLanguage, split, input.split ?? null)
+  const confirm = confirmOf(pickedEntries, anchors, left, titleLanguage, split, ownSplit)
   const dock: PickerDock = {
     replacing: pickedEntries.filter((e) => hasScore(e, scoreFormat)).length,
     covers: latest.slice(0, DOCK_COVERS),

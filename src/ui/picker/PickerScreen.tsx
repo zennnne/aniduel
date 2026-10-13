@@ -98,7 +98,7 @@ export function PickerScreen(props: {
   const [sheetOpen, setSheetOpen] = useState(false)
   const mobile = useMobile()
   const view = useMemo(
-    () => pickerView({ list, scoreFormat, titleLanguage, picked, filters, split: ownSplit ?? undefined }),
+    () => pickerView({ list, scoreFormat, titleLanguage, picked, filters, ownSplit }),
     [list, scoreFormat, titleLanguage, picked, filters, ownSplit],
   )
   const { summary, confirm, dock } = view

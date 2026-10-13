@@ -529,12 +529,12 @@ describe('the choice for a title that lands between two scores (ADR 0013)', () =
     const picked = new Set(ids(fresh))
     expect(view({ list }).dock.split).toBe('on-the-score')
     expect(started(view({ list, picked })).split).toBe('on-the-score')
-    expect(started(view({ list, picked, split: 'on-the-score' })).split).toBe('on-the-score')
+    expect(started(view({ list, picked, ownSplit: 'on-the-score' })).split).toBe('on-the-score')
   })
 
   it('starts the Ranking under Deciding Duels with "More Duels first"', () => {
     const { fresh, list } = scaleList(2)
-    const v = view({ list, picked: new Set(ids(fresh)), split: 'deciding-duels' })
+    const v = view({ list, picked: new Set(ids(fresh)), ownSplit: 'deciding-duels' })
     expect(v.dock.split).toBe('deciding-duels')
     expect(started(v).split).toBe('deciding-duels')
   })
@@ -543,18 +543,18 @@ describe('the choice for a title that lands between two scores (ADR 0013)', () =
     const { anchors, fresh, list } = scaleList(3)
     const two = new Set(ids(fresh.slice(0, 2)))
     // Two titles over 4 scores: 2 · 2 log2(5) ≈ 9.3.
-    expect(view({ list, picked: two, split: 'on-the-score' }).summary.duels).toBe(9)
-    expect(view({ list, picked: two, split: 'deciding-duels' }).summary.duels).toBe(11)
+    expect(view({ list, picked: two, ownSplit: 'on-the-score' }).summary.duels).toBe(9)
+    expect(view({ list, picked: two, ownSplit: 'deciding-duels' }).summary.duels).toBe(11)
     // A scored pick counts like any other: 4 · 2 log2(5) ≈ 18.6, and four more.
     const four = new Set([...ids(fresh), anchors[0].mediaId])
-    expect(view({ list, picked: four, split: 'on-the-score' }).summary.duels).toBe(19)
-    expect(view({ list, picked: four, split: 'deciding-duels' }).summary.duels).toBe(23)
-    expect(view({ list, split: 'deciding-duels' }).summary.duels).toBe(0)
+    expect(view({ list, picked: four, ownSplit: 'on-the-score' }).summary.duels).toBe(19)
+    expect(view({ list, picked: four, ownSplit: 'deciding-duels' }).summary.duels).toBe(23)
+    expect(view({ list, ownSplit: 'deciding-duels' }).summary.duels).toBe(0)
   })
 
   it('says what the selected option trades, naming the Duels it adds for the picks', () => {
     const { fresh, list } = scaleList(3)
-    const trade = (picks: number, split: NamedSplitRule) => view({ list, picked: new Set(ids(fresh.slice(0, picks))), split }).dock.trade
+    const trade = (picks: number, split: NamedSplitRule) => view({ list, picked: new Set(ids(fresh.slice(0, picks))), ownSplit: split }).dock.trade
     expect(trade(3, 'deciding-duels')).toBe("Fewer 'closer to' questions, about 3 more Duels")
     expect(trade(3, 'on-the-score')).toBe("More 'closer to' questions, about 3 fewer Duels")
     expect(trade(1, 'deciding-duels')).toBe("Fewer 'closer to' questions, about 1 more Duel")
@@ -563,7 +563,7 @@ describe('the choice for a title that lands between two scores (ADR 0013)', () =
 
   it('names no number of Duels while nothing is picked', () => {
     const { list } = scaleList(3)
-    expect(view({ list, split: 'deciding-duels' }).dock.trade).toBe("Fewer 'closer to' questions, more Duels")
+    expect(view({ list, ownSplit: 'deciding-duels' }).dock.trade).toBe("Fewer 'closer to' questions, more Duels")
     expect(view({ list }).dock.trade).toBe("More 'closer to' questions, fewer Duels")
   })
 })
@@ -616,11 +616,11 @@ describe('the choice recommended for the list (ADR 0013)', () => {
 
   it("leaves the user's own choice selected whatever the picks do, and still says which option is recommended", () => {
     const { anchors, fresh, list } = evenList(20)
-    const many = view({ list, picked: new Set(ids(fresh)), split: 'on-the-score' })
+    const many = view({ list, picked: new Set(ids(fresh)), ownSplit: 'on-the-score' })
     expect(many.dock).toMatchObject({ split: 'on-the-score', recommended: 'deciding-duels' })
     expect(started(many).split).toBe('on-the-score')
 
-    const fewer = view({ list, picked: new Set([...ids(fresh), anchors[0].mediaId]), split: 'deciding-duels' })
+    const fewer = view({ list, picked: new Set([...ids(fresh), anchors[0].mediaId]), ownSplit: 'deciding-duels' })
     expect(fewer.dock).toMatchObject({ split: 'deciding-duels', recommended: 'on-the-score' })
     expect(started(fewer).split).toBe('deciding-duels')
   })
@@ -629,8 +629,8 @@ describe('the choice recommended for the list (ADR 0013)', () => {
     const { fresh, list } = evenList(20)
     const picked = new Set(ids(fresh))
     expect(started(view({ list, picked })).ownSplit).toBeNull()
-    expect(started(view({ list, picked, split: 'deciding-duels' })).ownSplit).toBe('deciding-duels')
-    expect(started(view({ list, picked, split: 'on-the-score' })).ownSplit).toBe('on-the-score')
+    expect(started(view({ list, picked, ownSplit: 'deciding-duels' })).ownSplit).toBe('deciding-duels')
+    expect(started(view({ list, picked, ownSplit: 'on-the-score' })).ownSplit).toBe('on-the-score')
   })
 })
 
