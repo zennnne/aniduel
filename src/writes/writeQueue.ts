@@ -57,8 +57,13 @@ export type WriteQueueDeps = {
   userId: number
   /** What was saved for the user, or null. */
   initial: WriteQueueState | null
-  /** Called after every change; null when nothing is left worth keeping. */
+  /** Called after every change; null when nothing is left worth keeping. May throw: the queue takes that as a refused save. */
   save: (state: WriteQueueState | null) => void
+  /**
+   * `save` threw (the browser refused). The queue keeps writing all the same: what reaches AniList is what matters, and the next visit
+   * settles the saved queue against the list. Called once per run, and once for refusals in a row outside a run.
+   */
+  onSaveRefused: () => void
   /** A run ended on an error it doesn't record per write (an expired login, AniList unreachable): writes stay pending. */
   onError: (error: unknown) => void
 }
@@ -192,6 +197,8 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   let run: { stop: AbortController } | null = null
   let done: Promise<void> = Promise.resolve()
   let detached = false
+  /** The last save was refused, and `onSaveRefused` has said so. */
+  let refusalReported = false
   /** Each Media Type's list as read in this run, kept up to date with what the run wrote. */
   const lists = new Map<MediaType, Map<number, ListedTitle>>()
 
@@ -206,7 +213,15 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
   function commit(next: WriteQueueState) {
     if (detached) return
     state = next
-    deps.save(run !== null || state.writes.some(unfinished) ? state : null)
+    try {
+      deps.save(run !== null || state.writes.some(unfinished) ? state : null)
+      refusalReported = false
+    } catch {
+      if (!refusalReported) {
+        refusalReported = true
+        deps.onSaveRefused()
+      }
+    }
     notify()
   }
 
@@ -322,6 +337,7 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
     if (detached || !pick()) return false
     const handle = { stop: new AbortController() }
     run = handle
+    refusalReported = false
     lists.clear()
     done = loop(handle.stop.signal).then(
       () => ended(handle, null),

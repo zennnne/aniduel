@@ -14,10 +14,13 @@ export function useWriteQueue(deps: {
   gateway: AniListGateway | null
   userId: number | null
   limiter: RequestLimiter | null
+  /** The browser refused to save the queue; it keeps writing. */
+  onSaveRefused: () => void
   onError: (error: unknown) => void
 }) {
   const [current, setCurrent] = useState<{ queue: WriteQueue; snapshot: WriteQueueSnapshot } | null>(null)
   const onError = useEffectEvent((error: unknown) => deps.onError(error))
+  const onSaveRefused = useEffectEvent(() => deps.onSaveRefused())
   const { storage, gateway, userId, limiter } = deps
 
   useEffect(() => {
@@ -29,6 +32,7 @@ export function useWriteQueue(deps: {
       userId,
       initial: loadWriteQueue(storage, userId),
       save: (state) => saveWriteQueue(storage, userId, state),
+      onSaveRefused: () => onSaveRefused(),
       onError: (e) => onError(e),
     })
     const unsubscribe = queue.subscribe((snapshot) => setCurrent({ queue, snapshot }))

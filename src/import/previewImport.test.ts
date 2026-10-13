@@ -27,8 +27,9 @@ const CUT_OFF: WriteQueueState = {
  * User 7 on AniList (10 point) with a finished anime Ranking of titles 1 > 2 > 3, none scored yet, and the app around
  * Preview and Import: storage, the write queue, and the open Ranking's Duel log in its store.
  * `scores` are the titles' AniList scores; `inLog` puts the scoring settings in the log (Scores), as a new Ranking has.
+ * `queueUp: false` is the moment after login when the write queue is not up yet.
  */
-function setup(options: { scores?: Record<number, number>; inLog?: boolean; savedQueue?: WriteQueueState } = {}) {
+function setup(options: { scores?: Record<number, number>; inLog?: boolean; savedQueue?: WriteQueueState; queueUp?: boolean } = {}) {
   const clock = fakeClock()
   const scores = options.scores ?? { 1: 0, 2: 0, 3: 0 }
   const aniList = fakeAniList(clock, scores)
@@ -45,12 +46,15 @@ function setup(options: { scores?: Record<number, number>; inLog?: boolean; save
   }
   if (options.savedQueue) saveWriteQueue(storage, USER, options.savedQueue)
   const errors: unknown[] = []
+  /** Counts the times the app was told a save of the write queue was refused. */
+  const saveRefusals = { count: 0 }
   const queue = createWriteQueue({
     gateway,
     clock,
     userId: USER,
     initial: loadWriteQueue(storage, USER),
     save: (state) => saveWriteQueue(storage, USER, state),
+    onSaveRefused: () => saveRefusals.count++,
     onError: (e) => errors.push(e),
   })
 
@@ -64,7 +68,7 @@ function setup(options: { scores?: Record<number, number>; inLog?: boolean; save
   const previewImport = createPreviewImport(() => ({
     storage,
     gateway: viewer && gateway,
-    queue: viewer && queue,
+    queue: viewer && options.queueUp !== false ? queue : null,
     viewer,
     duelLog,
     oldScores: new Map(Object.entries(scores).map(([id, s]) => [Number(id), s])),
@@ -72,6 +76,7 @@ function setup(options: { scores?: Record<number, number>; inLog?: boolean; save
     onViewer: (fresh) => (viewer = fresh),
     onGatewayError: (e) => errors.push(e),
     onDuelLogFailure: (failure) => failures.push(failure),
+    onSaveRefused: () => saveRefusals.count++,
     onWritten: (key, scores) => written.push([key, Object.fromEntries(scores)]),
     onFinished: (key) => finished.push(key),
   }))
@@ -85,6 +90,7 @@ function setup(options: { scores?: Record<number, number>; inLog?: boolean; save
     previewImport,
     errors,
     failures,
+    saveRefusals,
     written,
     finished,
     seen,
@@ -253,6 +259,23 @@ describe('an Import', () => {
     expect(app.finished).toEqual([ANIME])
     expect(app.previewImport.snapshot().unfinished).toBeNull()
     expect(loadWriteQueue(app.storage, USER)).toBeNull()
+  })
+
+  it('is written to the end when the browser refuses to save the write queue, and the app is told so once', async () => {
+    const app = await planned()
+    app.refuseSaves()
+
+    app.previewImport.confirm()
+    await app.queue.idle()
+
+    expect(stage(app)).toBe('done')
+    expect(statuses(app)).toEqual({ 1: 'done', 2: 'done', 3: 'done' })
+    expect(Object.fromEntries(app.aniList.store)).toEqual({ 1: 100, 2: 70, 3: 30 })
+    expect(app.finished).toEqual([ANIME])
+    expect(app.saveRefusals.count).toBe(1)
+    // Never as "AniList is unreachable".
+    expect(app.errors).toEqual([])
+    expect(app.queue.snapshot()).toMatchObject({ running: false, status: null })
   })
 
   it('stopped half-way ends as stopped, stays saved, and is offered for Resume', async () => {
@@ -487,5 +510,19 @@ describe('ticks', () => {
     expect(app.previewImport.snapshot().ticks).toEqual(new Map())
     expect(loadTickOverrides(app.storage, ANIME)).toEqual(new Map())
     expect(loadWriteQueue(app.storage, USER)).toBeNull()
+  })
+
+  it('are discarded before the write queue is up too, and the app is told when the browser refuses to save the queue the Import was taken out of', () => {
+    const waiting = { mediaType: 'ANIME', mediaId: 11, listStatus: 'COMPLETED', status: 'pending' } as const
+    const app = setup({ savedQueue: { ...CUT_OFF, writes: [...CUT_OFF.writes, waiting] }, queueUp: false })
+    app.openRanking('ANIME')
+    app.previewImport.tick(2, false)
+    app.refuseSaves()
+
+    app.previewImport.discard(ANIME)
+
+    expect(app.saveRefusals.count).toBe(1)
+    expect(app.previewImport.snapshot().ticks).toEqual(new Map())
+    expect(loadTickOverrides(app.storage, ANIME)).toEqual(new Map())
   })
 })

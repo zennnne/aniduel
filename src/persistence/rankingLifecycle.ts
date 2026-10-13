@@ -1,7 +1,8 @@
 // How the open Ranking comes into being and ends: opened from what is saved, started, replaced by a Keep My Scale
 // one, ended by its Import (ADR 0010), thrown away by Start over. One function per event, and no state of its own:
 // every call carries the user and Media Type it is about. It is the only caller of the Duel log store's `show`,
-// `save` and `close`; answers go on being appended through the store itself. It knows storage and the store only,
+// `save` and `close`; answers go on being appended through the store itself. The Pool's statuses saved beside the
+// Ranking are read here, so they are saved here too. It knows storage and the store only,
 // and hands every outcome back as a value: nothing here throws because the browser refused to save, a saved log
 // can't be read, or the engine refused a log.
 import type { ListStatus, ScoreFormat } from '../anilist/types.ts'
@@ -19,7 +20,7 @@ import {
 import type { ScoresPlan } from '../ranking/fromScores.ts'
 import { isKeepMyScale, switchGoalEvents } from '../ranking/sortGoal.ts'
 import type { DuelLogStore, ReplayedLog } from './duelLogStore.ts'
-import { deleteDuelLog, loadDuelLog, loadPoolSettings, SaveError, type RankingKey } from './progress.ts'
+import { deleteDuelLog, loadDuelLog, loadPoolSettings, SaveError, savePoolSettings, type RankingKey } from './progress.ts'
 import { createSplitChoiceStore } from './splitChoice.ts'
 import { createUnsettledStore } from './unsettledTitles.ts'
 
@@ -98,6 +99,11 @@ export type RankingLifecycle = {
    * otherwise. Nothing is written.
    */
   open(key: RankingKey): SavedRanking
+  /**
+   * Saves the Pool's statuses the user chose on Start, beside the Ranking. `saved` is false when the browser refused:
+   * the ones saved before are still there.
+   */
+  saveStatuses(key: RankingKey, statuses: readonly ListStatus[]): { saved: boolean }
   /** Saves a new Ranking under Scores or Full Ranking, then opens it. Refused when anything is saved under the key. */
   start(key: RankingKey, scoreFormat: ScoreFormat, ranking: NewRanking): StartResult
   /**
@@ -184,6 +190,15 @@ export function createRankingLifecycle({ storage, duelLog, seed, discardImport }
       duelLog.close()
       const why = shown.reason === 'does-not-replay' ? shown.message : 'unknown error'
       return { statuses: statuses(key), kind: 'unusable', reason: 'does-not-replay', message: why }
+    },
+    saveStatuses(key, chosen) {
+      try {
+        savePoolSettings(storage, key, { statuses: [...chosen] })
+        return { saved: true }
+      } catch (e) {
+        if (!(e instanceof SaveError)) throw e
+        return { saved: false }
+      }
     },
     start(key, scoreFormat, { order, goal, fromScores }) {
       if (load(key).kind !== 'none') return { ok: false, reason: 'in-the-way' }

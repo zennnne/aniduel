@@ -130,6 +130,30 @@ describe('what is saved for a user and Media Type', () => {
   })
 })
 
+describe('choosing the Pool statuses', () => {
+  it('saves them for the user and Media Type, beside the Ranking', () => {
+    const { lifecycle, storage } = setup()
+    saveDuelLog(storage, savedLog)
+
+    expect(lifecycle.saveStatuses(ANIME, ['COMPLETED', 'DROPPED'])).toEqual({ saved: true })
+
+    expect(lifecycle.saved(ANIME)).toMatchObject({ statuses: ['COMPLETED', 'DROPPED'], kind: 'usable', log: savedLog })
+    expect(lifecycle.saved(MANGA).statuses).toEqual(['COMPLETED', 'REPEATING'])
+  })
+
+  it('says so when the browser refuses to save them, and keeps the ones saved before', () => {
+    const { lifecycle, everything, refuseSaves } = setup()
+    lifecycle.saveStatuses(ANIME, ['DROPPED'])
+    const before = everything()
+
+    refuseSaves()
+    expect(lifecycle.saveStatuses(ANIME, ['DROPPED', 'PAUSED'])).toEqual({ saved: false })
+
+    expect(everything()).toEqual(before)
+    expect(lifecycle.saved(ANIME).statuses).toEqual(['DROPPED'])
+  })
+})
+
 describe('opening a Ranking', () => {
   it('shows the saved Ranking in the store and answers with the Pool statuses', () => {
     const { lifecycle, storage, store, everything } = setup()

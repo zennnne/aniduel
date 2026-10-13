@@ -22,14 +22,40 @@ function setup(scores: Record<number, number>, options: FakeOptions & { perMinut
   const limiter = createRequestLimiter(clock, options.perMinute)
   const saved: Array<WriteQueueState | null> = []
   const errors: unknown[] = []
+  let refusing = false
+  /** Each time the queue said a save was refused, with how many writes had reached AniList by then. */
+  const refusals: number[] = []
   const make = (initial: WriteQueueState | null) =>
-    createWriteQueue({ gateway, clock, limiter, userId: 1, initial, save: (s) => saved.push(s), onError: (e) => errors.push(e) })
+    createWriteQueue({
+      gateway,
+      clock,
+      limiter,
+      userId: 1,
+      initial,
+      save: (s) => {
+        if (refusing) throw new DOMException('full', 'QuotaExceededError')
+        saved.push(s)
+      },
+      onSaveRefused: () => refusals.push(aniList.writes.length),
+      onError: (e) => errors.push(e),
+    })
   // Read back through JSON, as storage would.
   const lastSaved = () => {
     const last = saved.at(-1) ?? null
     return last && parseWriteQueueState(JSON.parse(JSON.stringify(last)))
   }
-  return { clock, aniList, queue: make(null), saved, errors, reload: () => make(lastSaved()), lastSaved }
+  return {
+    clock,
+    aniList,
+    queue: make(null),
+    saved,
+    errors,
+    refusals,
+    /** The browser's storage is full from now on, or takes saves again. */
+    refuseSaves: (refuse = true) => void (refusing = refuse),
+    reload: () => make(lastSaved()),
+    lastSaved,
+  }
 }
 
 /** Every status the queue reports, in order, each once. */
@@ -130,6 +156,72 @@ describe('Write queue: failures', () => {
 
     expect(errors).toMatchObject([{ kind: 'auth' }])
     expect(importOf(lastSaved()!, 'ANIME')?.writes.map((w) => w.status)).toEqual(['done', 'pending', 'pending'])
+  })
+})
+
+describe('Write queue: a save the browser refuses', () => {
+  it('keeps writing an Import to the end, and says once that it could not be saved, never as an AniList error', async () => {
+    const { aniList, queue, errors, refusals, refuseSaves } = setup(oldScores)
+    refuseSaves()
+
+    const done = await runImport(queue, planOf(plan))
+
+    expect(aniList.writes.map((w) => [w.mediaId, w.scoreRaw])).toEqual([[1, 90], [2, 70], [3, 30]])
+    expect(done.writes.map((w) => w.status)).toEqual(['done', 'done', 'done'])
+    expect(queue.snapshot()).toMatchObject({ running: false, status: null })
+    expect(refusals).toEqual([0])
+    expect(errors).toEqual([])
+  })
+
+  it('keeps writing Catch-up’s statuses to the end', async () => {
+    const { aniList, queue, errors, refusals, refuseSaves } = setup({})
+    refuseSaves()
+
+    queue.addStatuses(marks, 'ANIME')
+    await queue.idle()
+
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([11, 12, 13])
+    expect(queueProgress(catchUp(queue).state!)).toEqual({ saved: 3, total: 3, left: 0, failed: [] })
+    expect(queue.snapshot().running).toBe(false)
+    expect(refusals).toEqual([0])
+    expect(errors).toEqual([])
+  })
+
+  it('says so again for the next run, and again once a save went through in between', async () => {
+    const { queue, refusals, refuseSaves } = setup({})
+    refuseSaves()
+    queue.addStatuses([mark(11)], 'ANIME')
+    await queue.idle()
+    queue.addStatuses([mark(12)], 'ANIME')
+    await queue.idle()
+    expect(refusals).toEqual([0, 1])
+
+    refuseSaves(false)
+    queue.addStatuses([mark(13)], 'ANIME')
+    await queue.idle()
+    refuseSaves()
+    queue.retryStatuses()
+    queue.retryStatuses()
+
+    expect(refusals).toEqual([0, 1, 3])
+  })
+
+  it('after a reload with storage working again, counts the writes that landed as done and writes none twice', async () => {
+    const { aniList, queue, saved, refusals, refuseSaves, reload } = setup(oldScores)
+    // The queue was saved with the whole plan still to write; every save after that is refused.
+    const unsubscribe = queue.subscribe(() => saved.length > 0 && refuseSaves())
+    await runImport(queue, planOf(plan))
+    unsubscribe()
+    expect(refusals).toHaveLength(1)
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([1, 2, 3])
+
+    refuseSaves(false)
+    const next = reload()
+    expect(importOf(next.snapshot().state, 'ANIME')?.writes.map((w) => w.status)).toEqual(['pending', 'pending', 'pending'])
+    const resumed = await runImport(next, importOf(next.snapshot().state, 'ANIME')!)
+
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([1, 2, 3])
+    expect(importSummary(resumed)).toEqual({ written: 3, skipped: 0, failed: 0, left: 0, total: 3 })
   })
 })
 

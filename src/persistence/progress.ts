@@ -38,13 +38,18 @@ export class SaveError extends Error {
   }
 }
 
-/** Throws SaveError if the browser refuses. */
-export function saveProgressPart(storage: Storage, key: ProgressKey, value: string): void {
+/** Stores a value under a storage key as it is. Throws SaveError if the browser refuses. */
+function save(storage: Storage, storageKey: string, value: string): void {
   try {
-    storage.setItem(progressStorageKey(key), value)
+    storage.setItem(storageKey, value)
   } catch {
     throw new SaveError()
   }
+}
+
+/** Throws SaveError if the browser refuses. */
+export function saveProgressPart(storage: Storage, key: ProgressKey, value: string): void {
+  save(storage, progressStorageKey(key), value)
 }
 
 export function loadProgressPart(storage: Storage, key: ProgressKey): string | null {
@@ -141,10 +146,13 @@ function writeQueueKey(userId: number): string {
   return userStorageKey(userId, 'write-queue')
 }
 
-/** Saves the user's write queue (Import scores and Catch-up statuses), after every write; null deletes it. */
+/**
+ * Saves the user's write queue (Import scores and Catch-up statuses), after every write; null deletes it. Throws
+ * SaveError if the browser refuses.
+ */
 export function saveWriteQueue(storage: Storage, userId: number, state: WriteQueueState | null): void {
   if (state === null) storage.removeItem(writeQueueKey(userId))
-  else storage.setItem(writeQueueKey(userId), JSON.stringify(state))
+  else save(storage, writeQueueKey(userId), JSON.stringify(state))
   for (const mediaType of MEDIA_TYPES) storage.removeItem(progressStorageKey({ userId, mediaType, part: LEGACY_IMPORT_PART }))
 }
 
@@ -206,9 +214,16 @@ function lastMediaTypeKey(userId: number): string {
   return userStorageKey(userId, 'last-media-type')
 }
 
-/** Remembers the Media Type the user last worked on, so a returning user lands back on it. */
+/**
+ * Remembers the Media Type the user last worked on, so a returning user lands back on it. If the browser refuses,
+ * nothing is remembered: the switch has happened all the same, and only where the next visit lands is lost.
+ */
 export function saveLastMediaType(storage: Storage, userId: number, mediaType: MediaType): void {
-  storage.setItem(lastMediaTypeKey(userId), mediaType)
+  try {
+    storage.setItem(lastMediaTypeKey(userId), mediaType)
+  } catch {
+    // Nothing to undo: the last remembered Media Type, if any, is still there.
+  }
 }
 
 export function loadLastMediaType(storage: Storage, userId: number): MediaType | null {

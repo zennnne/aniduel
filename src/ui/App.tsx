@@ -18,7 +18,6 @@ import {
   loadPoolSettings,
   loadScoringSettings,
   saveLastMediaType,
-  savePoolSettings,
   type RankingKey,
 } from '../persistence/progress.ts'
 import { DEFAULT_STATUSES, LIST_STATUSES } from '../pool/pool.ts'
@@ -130,9 +129,11 @@ const browserFetch: typeof fetch = (...args) => window.fetch(...args)
 export function App({ storage, fake }: { storage: Storage; fake?: AniListSession }) {
   const { theme, toggleTheme } = useTheme(storage)
   const aniListFetch = fake?.fetch ?? browserFetch
-  const [token, setToken] = useState<string | null>(() =>
-    fake ? fake.token : restoreSession({ location: window.location, history: window.history, storage }),
+  // The login of this page load. A token that just arrived may not have been saved: it holds until the page is left.
+  const [session] = useState(() =>
+    fake ? { token: fake.token, saved: true } : restoreSession({ location: window.location, history: window.history, storage }),
   )
+  const [token, setToken] = useState<string | null>(session.token)
   const [viewer, setViewer] = useState<Viewer | null>(null)
   const [lists, setLists] = useState<Partial<Record<MediaType, ListEntry[]>>>({})
   // Covers for Start before login. Left empty on failure: the collage falls back to placeholders.
@@ -172,7 +173,15 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   )
   const viewerId = viewer?.id ?? null
   // One write queue for Import's scores and Catch-up's statuses.
-  const writes = useWriteQueue({ storage, gateway, userId: viewerId, limiter, onError: handleGatewayError })
+  const writes = useWriteQueue({
+    storage,
+    gateway,
+    userId: viewerId,
+    limiter,
+    // Not the Duel log, but the same refusal: the same banner says so, and the queue keeps writing.
+    onSaveRefused: () => reportFailure({ reason: 'save-refused' }),
+    onError: handleGatewayError,
+  })
   // The open Ranking's user and Media Type: the key everything saved for it lives under.
   const rankingKey: RankingKey | null = viewer ? { userId: viewer.id, mediaType } : null
 
@@ -206,6 +215,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     onGatewayError: handleGatewayError,
     onDuelLogFailure: (failure) =>
       reportFailure(failure, (why) => `Your Ranking's scoring settings couldn't be brought up to date (${why}). Your progress was left untouched.`),
+    onSaveRefused: () => reportFailure({ reason: 'save-refused' }),
     onWritten: (key, written) =>
       // Preview should show the scores AniList has now.
       setLists((prev) => {
@@ -345,6 +355,15 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   }
 
   const onGatewayError = useEffectEvent(handleGatewayError)
+
+  // The browser refused to save the login: the banner says so once the user is known, so that its Backup is theirs.
+  // Saved progress that can't be used keeps its own banner, which offers the Restore.
+  const onUnsavedLogin = useEffectEvent(() => {
+    if (!savedBroken) reportFailure({ reason: 'save-refused' })
+  })
+  useEffect(() => {
+    if (viewerId !== null && !session.saved) onUnsavedLogin()
+  }, [viewerId, session.saved])
 
   const onViewer = useEffectEvent((v: Viewer) => {
     setViewer(v)
@@ -863,7 +882,8 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
         onMediaType: switchMediaType,
         onToggleStatus: (s: ListStatus) => {
           const next = statuses.includes(s) ? statuses.filter((x) => x !== s) : [...statuses, s]
-          savePoolSettings(storage, { userId: viewer.id, mediaType }, { statuses: next })
+          // The chip changes for this visit either way; the banner says when it couldn't be saved.
+          if (!lifecycle.saveStatuses({ userId: viewer.id, mediaType }, next).saved) reportFailure({ reason: 'save-refused' })
           setStatuses(next)
         },
         onLogout: () => setDialog('logout'),

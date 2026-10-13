@@ -40,12 +40,12 @@ describe('restoreSession', () => {
       'http://localhost:5173/aniduel/#access_token=abc.def&token_type=Bearer&expires_in=31536000',
     )
 
-    const token = restoreSession({ ...browser, storage })
+    const session = restoreSession({ ...browser, storage })
 
-    expect(token).toBe('abc.def')
+    expect(session).toEqual({ token: 'abc.def', saved: true })
     expect(browser.replaced).toEqual(['/aniduel/'])
     // A later load without the fragment still finds the token.
-    expect(restoreSession({ ...fakeBrowser('http://localhost:5173/aniduel/'), storage })).toBe('abc.def')
+    expect(restoreSession({ ...fakeBrowser('http://localhost:5173/aniduel/'), storage }).token).toBe('abc.def')
   })
 
   it('keeps the query string when clearing the fragment', () => {
@@ -59,7 +59,7 @@ describe('restoreSession', () => {
   it('returns no token and leaves the URL alone when the user has never logged in', () => {
     const browser = fakeBrowser('https://zennnne.github.io/aniduel/')
 
-    expect(restoreSession({ ...browser, storage: memoryStorage() })).toBeNull()
+    expect(restoreSession({ ...browser, storage: memoryStorage() }).token).toBeNull()
     expect(browser.replaced).toEqual([])
   })
 
@@ -67,8 +67,25 @@ describe('restoreSession', () => {
     const storage = memoryStorage()
     const browser = fakeBrowser('https://zennnne.github.io/aniduel/#error=access_denied')
 
-    expect(restoreSession({ ...browser, storage })).toBeNull()
+    expect(restoreSession({ ...browser, storage }).token).toBeNull()
     expect(browser.replaced).toEqual(['/aniduel/'])
+  })
+
+  it('logs in for this page load when the browser refuses to save the token, and says it was not saved', () => {
+    const storage = memoryStorage()
+    restoreSession({ ...fakeBrowser('https://x/aniduel/#access_token=old'), storage })
+    const full: Storage = {
+      ...storage,
+      setItem: () => {
+        throw new DOMException('full', 'QuotaExceededError')
+      },
+    }
+    const browser = fakeBrowser('https://x/aniduel/#access_token=new&token_type=Bearer')
+
+    expect(restoreSession({ ...browser, storage: full })).toEqual({ token: 'new', saved: false })
+    expect(browser.replaced).toEqual(['/aniduel/'])
+    // The next page load finds what was saved before.
+    expect(restoreSession({ ...fakeBrowser('https://x/aniduel/'), storage: full })).toEqual({ token: 'old', saved: true })
   })
 })
 
@@ -89,7 +106,7 @@ describe('logout', () => {
 
     logout(storage, { userId: 42, deleteProgress: false })
 
-    expect(restoreSession({ ...noFragment(), storage })).toBeNull()
+    expect(restoreSession({ ...noFragment(), storage }).token).toBeNull()
     expect(storage.length).toBe(4)
   })
 
@@ -98,7 +115,7 @@ describe('logout', () => {
 
     logout(storage, { userId: 42, deleteProgress: true })
 
-    expect(restoreSession({ ...noFragment(), storage })).toBeNull()
+    expect(restoreSession({ ...noFragment(), storage }).token).toBeNull()
     const keys = Array.from({ length: storage.length }, (_, i) => storage.key(i))
     expect(keys).toHaveLength(2)
     expect(storage.getItem('unrelated')).toBe('keep')

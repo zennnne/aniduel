@@ -11,22 +11,36 @@ export type BrowserLocation = { pathname: string; search: string; hash: string }
 export type BrowserHistory = Pick<History, 'replaceState'>
 
 /**
+ * The login of this page load: the token, or null when the user is logged out. `saved` is false when the browser
+ * refused to store a token that just arrived (its storage is full or blocked): the login holds until the page is left.
+ */
+export type RestoredSession = { token: string | null; saved: boolean }
+
+/**
  * Call once on load. If AniList just redirected back with `#access_token=…`, stores the token
- * and clears the fragment with `history.replaceState`. Returns the stored token, or null.
+ * and clears the fragment with `history.replaceState`. Returns the token that arrived, or else the stored one.
  */
 export function restoreSession(deps: {
   location: BrowserLocation
   history: BrowserHistory
   storage: Storage
-}): string | null {
+}): RestoredSession {
   const { location, history, storage } = deps
   const fragment = new URLSearchParams(location.hash.replace(/^#/, ''))
+  let arrived: string | null = null
+  let saved = true
   if (fragment.has('access_token') || fragment.has('error')) {
-    const token = fragment.get('access_token')
-    if (token) storage.setItem(TOKEN_KEY, token)
+    arrived = fragment.get('access_token') || null
+    if (arrived) {
+      try {
+        storage.setItem(TOKEN_KEY, arrived)
+      } catch {
+        saved = false
+      }
+    }
     history.replaceState(null, '', location.pathname + location.search)
   }
-  return storage.getItem(TOKEN_KEY)
+  return { token: arrived ?? storage.getItem(TOKEN_KEY), saved }
 }
 
 /** Clears the token. With `deleteProgress`, also deletes this user's saved progress in this browser. */

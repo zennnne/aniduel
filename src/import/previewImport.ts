@@ -9,6 +9,7 @@ import {
   loadScoringSettings,
   loadTickOverrides,
   loadWriteQueue,
+  SaveError,
   saveTickOverrides,
   saveWriteQueue,
   type RankingKey,
@@ -73,6 +74,11 @@ export type PreviewImportDeps = {
   onGatewayError: (error: unknown) => void
   /** The scoring settings couldn't be appended to the Duel log, so Preview stayed closed and no Import was resumed. */
   onDuelLogFailure: (failure: DuelLogFailure) => void
+  /**
+   * An Import was dropped before the write queue was up, and the browser refused to save the queue it was taken out
+   * of. What goes with the Import (its ticks, the Ranking) is dropped all the same.
+   */
+  onSaveRefused: () => void
   /** Scores AniList has now for titles this Import wrote, so Preview shows them. */
   onWritten: (key: RankingKey, written: ReadonlyMap<number, number>) => void
   /** The Import wrote every score it planned, with none failed: a Keep My Scale Ranking ends here (ADR 0010). */
@@ -162,7 +168,12 @@ export function createPreviewImport(deps: () => PreviewImportDeps): PreviewImpor
     if (!queued) return
     const writes = queued.writes.filter((w) => isStatusWrite(w) || w.mediaType !== from.mediaType)
     const imports = queued.imports.filter((i) => i.mediaType !== from.mediaType)
-    saveWriteQueue(storage, from.userId, writes.length > 0 ? { imports, writes } : null)
+    try {
+      saveWriteQueue(storage, from.userId, writes.length > 0 ? { imports, writes } : null)
+    } catch (e) {
+      if (!(e instanceof SaveError)) throw e
+      deps().onSaveRefused()
+    }
   }
 
   /**

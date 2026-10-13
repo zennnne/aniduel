@@ -4,7 +4,7 @@ import { fakeAniList, fakeClock } from '../anilist/fakeAniList.ts'
 import { AniListError, createAniListGateway, type AniListGateway } from '../anilist/gateway.ts'
 import type { ListEntry, ListStatus, Viewer } from '../anilist/types.ts'
 import { memoryStorage } from '../persistence/memoryStorage.ts'
-import { loadWriteQueue, saveWriteQueue } from '../persistence/progress.ts'
+import { loadWriteQueue, SaveError, saveWriteQueue } from '../persistence/progress.ts'
 import { createWriteQueue, type WriteQueueState } from '../writes/writeQueue.ts'
 import { createPassedStore } from './passed.ts'
 import { createStartingEraStore } from './startingEra.ts'
@@ -113,12 +113,20 @@ function setup(
   const storage = memoryStorage()
   if (options.savedQueue) saveWriteQueue(storage, USER, options.savedQueue)
   const errors: unknown[] = []
+  let refusing = false
+  /** Counts the times the app was told a save of the write queue was refused. */
+  const saveRefusals = { count: 0 }
   const queue = createWriteQueue({
     gateway: real,
     clock,
     userId: USER,
     initial: loadWriteQueue(storage, USER),
-    save: (state) => saveWriteQueue(storage, USER, state),
+    save: (state) => {
+      // Only the write queue's own save: the rest of what Catch-up keeps is saved as before.
+      if (refusing) throw new SaveError()
+      saveWriteQueue(storage, USER, state)
+    },
+    onSaveRefused: () => saveRefusals.count++,
     onError: (e) => errors.push(e),
   })
   const gateway: AniListGateway =
@@ -156,6 +164,9 @@ function setup(
     candidates,
     passedStore,
     errors,
+    saveRefusals,
+    /** The browser refuses to save the write queue from now on. */
+    refuseQueueSaves: () => void (refusing = true),
     seen,
     listReads,
     eraStore: createStartingEraStore(storage, USER),
@@ -578,6 +589,35 @@ describe('the exit offer', () => {
     app.visit.saveAndNext()
 
     expect(app.visit.snapshot()).toMatchObject({ added: 0, listed: true })
+  })
+})
+
+describe('a save of the write queue the browser refuses', () => {
+  it('still writes every marked title, ends the run, and makes the exit offer ready', async () => {
+    const app = setup({ listed: LONG_LIST })
+    await app.visit.open()
+    const [first, second] = idsOf(app.visit)
+    app.visit.cycle(first)
+    app.visit.mark(second, 'DROPPED')
+    app.refuseQueueSaves()
+
+    app.visit.saveAndNext()
+    await app.queue.idle()
+    await settle()
+
+    expect(app.aniList.writes.map(({ mediaId, status }) => ({ mediaId, status }))).toEqual([
+      { mediaId: first, status: 'COMPLETED' },
+      { mediaId: second, status: 'DROPPED' },
+    ])
+    expect(app.visit.snapshot().queue).toMatchObject({ running: false, status: null })
+    expect(app.visit.snapshot().queue.state?.writes.map((w) => w.status)).toEqual(['done', 'done'])
+    expect(app.saveRefusals.count).toBe(1)
+    // Never as "AniList is unreachable".
+    expect(app.errors).toEqual([])
+
+    app.listReads[0].end()
+    await settle()
+    expect(app.visit.snapshot()).toMatchObject({ added: 2, listed: true })
   })
 })
 

@@ -25,6 +25,16 @@ import {
 
 const anime = { userId: 7, mediaType: 'ANIME' as const }
 
+/** The same storage once it is full: what is saved stays, and every further save is refused. */
+function refusing(storage: Storage): Storage {
+  return {
+    ...storage,
+    setItem: () => {
+      throw new DOMException('full', 'QuotaExceededError')
+    },
+  }
+}
+
 describe('Duel log', () => {
   it('comes back as it was saved, so replay resumes at the same point', () => {
     const storage = memoryStorage()
@@ -66,12 +76,7 @@ describe('Duel log', () => {
     const storage = memoryStorage()
     const log = startLog({ ...anime, seed: 1, ids: [1, 2] })
     saveDuelLog(storage, log)
-    const full: Storage = {
-      ...storage,
-      setItem: () => {
-        throw new DOMException('full', 'QuotaExceededError')
-      },
-    }
+    const full = refusing(storage)
     expect(() => saveDuelLog(full, { ...log, events: [...log.events, { type: 'forgotten', id: 1 }] })).toThrow(SaveError)
     expect(loadDuelLog(full, anime)).toEqual(log)
   })
@@ -149,6 +154,18 @@ describe('Write queue', () => {
     saveWriteQueue(storage, 7, queue)
     deleteSavedProgress(storage, 7)
     expect(loadWriteQueue(storage, 7)).toBeNull()
+  })
+
+  it('says so when the browser refuses to save it, and keeps what was saved before', () => {
+    const storage = memoryStorage()
+    saveWriteQueue(storage, 7, queue)
+    const full = refusing(storage)
+
+    expect(() => saveWriteQueue(full, 7, { ...queue, writes: queue.writes.slice(1) })).toThrow(SaveError)
+    expect(loadWriteQueue(full, 7)).toEqual(queue)
+    // Nothing is written to forget it, so that still goes through.
+    saveWriteQueue(full, 7, null)
+    expect(loadWriteQueue(full, 7)).toBeNull()
   })
 
   it('ignores a saved queue it does not understand', () => {
@@ -232,5 +249,14 @@ describe('Pool settings', () => {
     expect(loadLastMediaType(storage, 8)).toBeNull()
     deleteSavedProgress(storage, 7)
     expect(loadLastMediaType(storage, 7)).toBeNull()
+  })
+
+  it('goes on without remembering the Media Type when the browser refuses to save it', () => {
+    const storage = memoryStorage()
+    saveLastMediaType(storage, 7, 'MANGA')
+    const full = refusing(storage)
+
+    expect(() => saveLastMediaType(full, 7, 'ANIME')).not.toThrow()
+    expect(loadLastMediaType(full, 7)).toBe('MANGA')
   })
 })
