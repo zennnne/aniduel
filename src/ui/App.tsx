@@ -5,6 +5,7 @@ import type { Cover, ListEntry, ListStatus, MediaType, Viewer } from '../anilist
 import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
+import type { DuelLogFailure } from '../persistence/duelLogStore.ts'
 import { createSplitChoiceStore } from '../persistence/splitChoice.ts'
 import { createUnsettledStore } from '../persistence/unsettledTitles.ts'
 import { browserClock } from '../clock.ts'
@@ -34,6 +35,7 @@ import {
   startKeepMyScaleLog,
   withSub,
   type BandIndex,
+  type DuelLog,
   type LogEvent,
   type RankingState,
   type SortGoal,
@@ -198,12 +200,13 @@ export function App({ fake }: { fake?: AniListSession }) {
     gateway,
     queue: writes.queue,
     viewer,
-    latestLog: duelLog.latest,
-    append: duelLog.append,
+    duelLog,
     oldScores,
     name: (id, language) => titleName(entries.get(id), id, language),
     onViewer: setViewer,
     onGatewayError: handleGatewayError,
+    onDuelLogFailure: (failure) =>
+      reportFailure(failure, (why) => `Your Ranking's scoring settings couldn't be brought up to date (${why}). Your progress was left untouched.`),
     onWritten: (key, written) =>
       // Preview should show the scores AniList has now.
       setLists((prev) => {
@@ -277,22 +280,31 @@ export function App({ fake }: { fake?: AniListSession }) {
     setRankingUi(leftRanking)
     imports.open(key)
     setStatuses(loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES)
-    try {
-      const saved = loadDuelLog(localStorage, key)
-      duelLog.show(saved) // replays first: a log the engine can't replay throws before anything from it shows
-      setSavedBroken(false)
-      if (saved && resume) goTo('ranking')
-      return saved !== null
-    } catch (e) {
-      duelLog.show(null)
+    /** Saved progress exists but can't be used: nothing of it shows, and Start is blocked so it isn't overwritten. */
+    const unusable = (why: string) => {
+      duelLog.close()
       setSavedBroken(true)
       setNotice({
         tone: 'error',
-        message: `Your saved ${MEDIA_LABEL[key.mediaType]} progress in this browser can't be used (${e instanceof Error ? e.message : 'unknown error'}). It was left untouched.`,
+        message: `Your saved ${MEDIA_LABEL[key.mediaType]} progress in this browser can't be used (${why}). It was left untouched.`,
         action: { label: 'Restore a Backup', onClick: () => setDialog('restore') },
       })
       return false
     }
+    let saved: DuelLog | null
+    try {
+      saved = loadDuelLog(localStorage, key)
+    } catch (e) {
+      return unusable(e instanceof Error ? e.message : 'unknown error')
+    }
+    if (saved) {
+      // Replayed first: nothing shows from a log the engine can't replay.
+      const shown = duelLog.show(saved)
+      if (!shown.ok) return unusable(shown.reason === 'does-not-replay' ? shown.message : 'unknown error')
+    } else duelLog.close()
+    setSavedBroken(false)
+    if (saved && resume) goTo('ranking')
+    return saved !== null
   }
 
   function endSession(deleteProgress: boolean) {
@@ -304,7 +316,7 @@ export function App({ fake }: { fake?: AniListSession }) {
     setViewer(null)
     setLists({})
     setStatuses(DEFAULT_STATUSES)
-    duelLog.show(null)
+    duelLog.close()
     setSavedBroken(false)
     setRankingUi(leftRanking)
     imports.close()
@@ -347,6 +359,30 @@ export function App({ fake }: { fake?: AniListSession }) {
       cancelled = true
     }
   }, [gateway, viewer, retries])
+
+  /**
+   * Sync (#13, ADR 0005): brings the Pool in the log up to date with the fetched list and the chosen statuses.
+   * Added titles go to Rough Sort, removed ones leave the Ranking; both are recorded as events Undo can't cross.
+   * Runs on resume (once the list arrives), on Continue from Start (the statuses may have changed) and after a
+   * Restore. Does nothing without a usable log or a list. Returns what changed, for a toast (null = nothing).
+   */
+  function syncPool(type: MediaType, fetched: readonly ListEntry[] | undefined, chosen: readonly ListStatus[]): string | null {
+    const current = duelLog.latest()
+    if (!viewer || !fetched || !current || current.log.header.mediaType !== type) return null
+    const events = syncEvents(current.log, fetched, chosen, viewer.titleLanguage)
+    if (events.length === 0) return null
+    const synced = duelLog.append(...events)
+    if (!synced.ok) {
+      reportFailure(synced, (why) => `Your ${MEDIA_LABEL[type]} Pool couldn't be brought up to date (${why}). Your progress was left untouched.`)
+      return null
+    }
+    const added = events.reduce((sum, e) => sum + (e.type === 'titles-added' ? e.ids.length : 0), 0)
+    const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
+    if (added > 0) setRankingUi(titlesAdded)
+    // A Keep My Scale Pool never grows (ADR 0011), so only Rough Sort ever gets titles added.
+    const changes = [added > 0 && `${count(added, 'title')} added to Rough Sort`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
+    return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
+  }
 
   // A freshly fetched list is the moment to sync a saved Ranking (resume, also months after an Import).
   const onListFetched = useEffectEvent((type: MediaType, fetched: ListEntry[]) => {
@@ -407,51 +443,27 @@ export function App({ fake }: { fake?: AniListSession }) {
   }
 
   /**
-   * Sync (#13, ADR 0005): brings the Pool in the log up to date with the fetched list and the chosen statuses.
-   * Added titles go to Rough Sort, removed ones leave the Ranking; both are recorded as events Undo can't cross.
-   * Runs on resume (once the list arrives), on Continue from Start (the statuses may have changed) and after a
-   * Restore. Does nothing without a usable log or a list. Returns what changed, for a toast (null = nothing).
+   * What the user sees when the Duel log stayed as it was. The browser refused to save: the screen stays on what is
+   * saved, and the banner offers a Backup of it. The log doesn't replay: the caller's sentence, given the engine's
+   * message, or nothing where the caller says to ignore it. No open log: nothing. Only a refused save on its own
+   * (of something saved beside the log) comes without that choice: nothing was replayed.
    */
-  function syncPool(type: MediaType, fetched: readonly ListEntry[] | undefined, chosen: readonly ListStatus[]): string | null {
-    const current = duelLog.latest()
-    if (!viewer || !fetched || !current || current.header.mediaType !== type) return null
-    const events = syncEvents(current, fetched, chosen, viewer.titleLanguage)
-    if (events.length === 0) return null
-    try {
-      duelLog.append(...events)
-    } catch (e) {
-      setNotice({
-        tone: 'error',
-        message: `Your ${MEDIA_LABEL[type]} Pool couldn't be brought up to date (${e instanceof Error ? e.message : 'unknown error'}). Your progress was left untouched.`,
-      })
-      return null
-    }
-    const added = events.reduce((sum, e) => sum + (e.type === 'titles-added' ? e.ids.length : 0), 0)
-    const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
-    if (added > 0) setRankingUi(titlesAdded)
-    // A Keep My Scale Pool never grows (ADR 0011), so only Rough Sort ever gets titles added.
-    const changes = [added > 0 && `${count(added, 'title')} added to Rough Sort`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
-    return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
-  }
-
-  /** The Duel log couldn't be saved (SaveError): the screen stays on what is saved, and the banner offers a Backup of it. */
-  function saveFailed() {
-    setNotice({
-      tone: 'error',
-      message: "That couldn't be saved: this browser's storage is full or blocked. Save a Backup to keep your progress so far.",
-      action: { label: 'Save Backup', onClick: saveBackup },
-    })
-  }
-
-  /** Runs a step that saves the Duel log. False if the browser refused to save it; the banner says so. */
-  function saved(step: () => void): boolean {
-    try {
-      step()
-      return true
-    } catch (e) {
-      if (!(e instanceof SaveError)) throw e
-      saveFailed()
-      return false
+  function reportFailure(failure: { reason: 'save-refused' }): void
+  function reportFailure(failure: DuelLogFailure, notReplayed: ((why: string) => string) | 'ignore'): void
+  function reportFailure(failure: DuelLogFailure, notReplayed?: ((why: string) => string) | 'ignore') {
+    switch (failure.reason) {
+      case 'save-refused':
+        setNotice({
+          tone: 'error',
+          message: "That couldn't be saved: this browser's storage is full or blocked. Save a Backup to keep your progress so far.",
+          action: { label: 'Save Backup', onClick: saveBackup },
+        })
+        return
+      case 'does-not-replay':
+        if (typeof notReplayed === 'function') setNotice({ tone: 'error', message: notReplayed(failure.message) })
+        return
+      case 'no-open-log':
+        return
     }
   }
 
@@ -461,14 +473,13 @@ export function App({ fake }: { fake?: AniListSession }) {
    * it does once the Refine Duels started from Preview are all answered.
    */
   function answer(event: LogEvent): RankingState | null {
-    let state: RankingState | null
-    try {
-      state = duelLog.append(event)
-    } catch (e) {
-      if (e instanceof SaveError) saveFailed()
-      return null // otherwise an answer for a prompt that is no longer showing (e.g. a double key press)
+    const answered = duelLog.append(event)
+    if (!answered.ok) {
+      // An answer that doesn't replay is one for a prompt that is no longer showing (e.g. a double key press).
+      reportFailure(answered, 'ignore')
+      return null
     }
-    if (!state) return null
+    const state = answered.ranking
     if (previewFix && fixDone(state, previewFix.id)) {
       patchRankingUi({ previewFix: null })
       if (screen !== 'preview') goTo('preview')
@@ -540,14 +551,16 @@ export function App({ fake }: { fake?: AniListSession }) {
    * its own history entry, so Back from the Duel returns to it.
    */
   function chooseBand(band: BandIndex) {
-    const current = duelLog.latest()
-    const state = current ? replay(current) : null
+    const state = duelLog.latest()?.ranking
     if (!state || state.progress.bands[band].done === state.progress.bands[band].total) return
     const alreadyThere = state.prompt.kind === 'duel' && !state.bandChoice && state.prompt.band === band
     if (!alreadyThere) answer({ type: 'band-selected', band })
     if (screen === 'ranking') window.history.replaceState({ screen: 'bands' }, '')
     goTo('ranking')
   }
+
+  /** A new Ranking's log that the engine can't replay: nothing was saved, and the screen stays where it is. */
+  const couldNotStart = (why: string) => `Your ${MEDIA_LABEL[mediaType]} Ranking couldn't be started (${why}).`
 
   /** `fromScores`: the user turned on Rough Sort from Scores (ADR 0008), a new Ranking only. */
   function startOrContinue(fromScores = false) {
@@ -561,7 +574,8 @@ export function App({ fake }: { fake?: AniListSession }) {
       // Full Ranking picked on Start: the same switch as from the menu, before anything is sorted.
       const log = switchGoalEvents(replay(started), null, viewer.scoreFormat, newGoal).reduce(appendEvent, started)
       const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
-      if (!saved(() => duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log))) return
+      const saved = duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
+      if (!saved.ok) return reportFailure(saved, couldNotStart)
     } else {
       // The statuses may have changed on Start: titles that now match join, the rest leave.
       const summary = syncPool(mediaType, list, statuses)
@@ -604,9 +618,11 @@ export function App({ fake }: { fake?: AniListSession }) {
 
   /** Settings changed on Preview go into the Duel log (ADR 0007), so a reload or a Backup gives the same scores. */
   function changeScoring(settings: ScoringSettings) {
-    if (!viewer || !duelLog.latest()) return
-    const { scoreFormat } = viewer
-    saved(() => duelLog.append({ type: 'scoring-set', format: scoreFormat, settings }))
+    if (!viewer) return
+    const changed = duelLog.append({ type: 'scoring-set', format: viewer.scoreFormat, settings })
+    if (!changed.ok) {
+      reportFailure(changed, (why) => `Your Ranking's scoring settings couldn't be changed (${why}). Your progress was left untouched.`)
+    }
   }
 
   /**
@@ -617,16 +633,11 @@ export function App({ fake }: { fake?: AniListSession }) {
     const current = duelLog.latest()
     if (!viewer || !current) return
     const key = { userId: viewer.id, mediaType }
-    const events = switchGoalEvents(replay(current), loadScoringSettings(localStorage, key), viewer.scoreFormat, goal)
+    const events = switchGoalEvents(current.ranking, loadScoringSettings(localStorage, key), viewer.scoreFormat, goal)
     if (events.length === 0) return
-    try {
-      duelLog.append(...events)
-    } catch (e) {
-      setNotice({
-        tone: 'error',
-        message: `Your Ranking couldn't switch its Sort Goal (${e instanceof Error ? e.message : 'unknown error'}). Your progress was left untouched.`,
-      })
-      return
+    const switched = duelLog.append(...events)
+    if (!switched.ok) {
+      return reportFailure(switched, (why) => `Your Ranking couldn't switch its Sort Goal (${why}). Your progress was left untouched.`)
     }
     showToast(
       goal === 'scores' ? (
@@ -729,7 +740,8 @@ export function App({ fake }: { fake?: AniListSession }) {
   function startKeepMyScale({ order, anchors, split, ownSplit }: PickerStart) {
     if (!viewer) return
     const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids: order, split })
-    if (!saved(() => duelLog.save(log))) return
+    const saved = duelLog.save(log)
+    if (!saved.ok) return reportFailure(saved, couldNotStart)
     // The titles left unsettled last time are offered no more, whether or not they were picked again (#66).
     unsettledStore?.clear()
     // Only a choice the user made themselves is remembered, never one that followed the recommendation (ADR 0013).
@@ -761,13 +773,18 @@ export function App({ fake }: { fake?: AniListSession }) {
    * wrote are Anchors for the next Ranking.
    */
   function endKeepMyScale(key: RankingKey) {
-    const current = duelLog.latest()
-    const ended = current && replay(current)
+    const ended = duelLog.latest()?.ranking
     if (!ended || !isKeepMyScale(ended)) return
-    saved(() => createUnsettledStore(localStorage, key).remember(ended))
+    try {
+      createUnsettledStore(localStorage, key).remember(ended)
+    } catch (e) {
+      // Not the Duel log, but the same refusal: the same banner says so.
+      if (!(e instanceof SaveError)) throw e
+      reportFailure({ reason: 'save-refused' })
+    }
     deleteDuelLog(localStorage, key)
     imports.discard(key)
-    duelLog.show(null)
+    duelLog.close()
     setRankingUi(leftRanking)
   }
 

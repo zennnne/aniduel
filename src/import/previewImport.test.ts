@@ -2,16 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { fakeAniList, fakeClock } from '../anilist/fakeAniList.ts'
 import { createAniListGateway } from '../anilist/gateway.ts'
 import type { MediaType, ScoreFormat, Viewer } from '../anilist/types.ts'
+import { createDuelLogStore, type DuelLogFailure } from '../persistence/duelLogStore.ts'
 import { memoryStorage } from '../persistence/memoryStorage.ts'
-import {
-  loadDuelLog,
-  loadTickOverrides,
-  loadWriteQueue,
-  saveDuelLog,
-  saveWriteQueue,
-  type RankingKey,
-} from '../persistence/progress.ts'
-import { appendEvent, replay, type DuelLog, type LogEvent } from '../ranking/engine.ts'
+import { loadDuelLog, loadTickOverrides, loadWriteQueue, saveWriteQueue, type RankingKey } from '../persistence/progress.ts'
 import { rankingLogOf } from '../ranking/testRanking.ts'
 import { createWriteQueue, type WriteQueueState } from '../writes/writeQueue.ts'
 import { importOf } from './importState.ts'
@@ -32,7 +25,7 @@ const CUT_OFF: WriteQueueState = {
 
 /**
  * User 7 on AniList (10 point) with a finished anime Ranking of titles 1 > 2 > 3, none scored yet, and the app around
- * Preview and Import: storage, the write queue, and the Duel log reached through `latestLog` and `append`.
+ * Preview and Import: storage, the write queue, and the open Ranking's Duel log in its store.
  * `scores` are the titles' AniList scores; `inLog` puts the scoring settings in the log (Scores), as a new Ranking has.
  */
 function setup(options: { scores?: Record<number, number>; inLog?: boolean; savedQueue?: WriteQueueState } = {}) {
@@ -41,7 +34,15 @@ function setup(options: { scores?: Record<number, number>; inLog?: boolean; save
   const aniList = fakeAniList(clock, scores)
   aniList.viewer.id = USER
   const gateway = createAniListGateway({ fetch: aniList.fetch, token: 't' })
-  const storage = memoryStorage()
+  const memory = memoryStorage()
+  let refusing = false
+  const storage: Storage = {
+    ...memory,
+    setItem: (key, value) => {
+      if (refusing) throw new DOMException('full', 'QuotaExceededError')
+      memory.setItem(key, value)
+    },
+  }
   if (options.savedQueue) saveWriteQueue(storage, USER, options.savedQueue)
   const errors: unknown[] = []
   const queue = createWriteQueue({
@@ -53,20 +54,9 @@ function setup(options: { scores?: Record<number, number>; inLog?: boolean; save
     onError: (e) => errors.push(e),
   })
 
-  const logs: Partial<Record<MediaType, DuelLog>> = {
-    ANIME: rankingLogOf([[[1]], [[2]], [[3]]], [], options.inLog === false ? undefined : 'POINT_10'),
-  }
-  saveDuelLog(storage, logs.ANIME!)
-  let mediaType: MediaType = 'ANIME'
-  const append = (...events: LogEvent[]) => {
-    const current = logs[mediaType]
-    if (!current) return null
-    const next = events.reduce(appendEvent, current)
-    const state = replay(next)
-    saveDuelLog(storage, next)
-    logs[mediaType] = next
-    return state
-  }
+  const duelLog = createDuelLogStore(storage)
+  duelLog.save(rankingLogOf([[[1]], [[2]], [[3]]], [], options.inLog === false ? undefined : 'POINT_10'))
+  const failures: DuelLogFailure[] = []
 
   let viewer: Viewer | null = { id: USER, name: 'zen', avatarUrl: null, titleLanguage: 'ROMAJI', scoreFormat: 'POINT_10' }
   const written: Array<[RankingKey, Record<number, number>]> = []
@@ -76,12 +66,12 @@ function setup(options: { scores?: Record<number, number>; inLog?: boolean; save
     gateway: viewer && gateway,
     queue: viewer && queue,
     viewer,
-    latestLog: () => logs[mediaType] ?? null,
-    append,
+    duelLog,
     oldScores: new Map(Object.entries(scores).map(([id, s]) => [Number(id), s])),
     name: (id) => `T${id}`,
     onViewer: (fresh) => (viewer = fresh),
     onGatewayError: (e) => errors.push(e),
+    onDuelLogFailure: (failure) => failures.push(failure),
     onWritten: (key, scores) => written.push([key, Object.fromEntries(scores)]),
     onFinished: (key) => finished.push(key),
   }))
@@ -94,17 +84,23 @@ function setup(options: { scores?: Record<number, number>; inLog?: boolean; save
     queue,
     previewImport,
     errors,
+    failures,
     written,
     finished,
     seen,
-    append,
-    log: () => logs[mediaType]!,
+    append: duelLog.append,
+    log: () => duelLog.latest()!.log,
     /** The user changes their Score Format on AniList. */
     changeFormat: (format: ScoreFormat) => (aniList.viewer.scoreFormat = format),
+    /** The browser's storage is full or blocked from now on. */
+    refuseSaves: () => void (refusing = true),
     /** The app opens the user's Ranking of a Media Type, as on login or a Media Type switch. */
     openRanking: (type: MediaType) => {
-      mediaType = type
-      previewImport.open({ userId: USER, mediaType: type })
+      const key: RankingKey = { userId: USER, mediaType: type }
+      const saved = loadDuelLog(storage, key)
+      if (saved) duelLog.show(saved)
+      else duelLog.close()
+      previewImport.open(key)
     },
     logOut: () => {
       queue.stop()
@@ -175,6 +171,38 @@ describe('opening Preview', () => {
 
     expect(await opening).toBeNull()
     expect(app.previewImport.snapshot()).toMatchObject({ openingPreview: false, preview: null })
+  })
+
+  it('stays closed and reports it when the settings cannot be saved to the Duel log', async () => {
+    const app = setup({ inLog: false })
+    app.openRanking('ANIME')
+    const before = app.log()
+    app.refuseSaves()
+
+    expect(await app.previewImport.openPreview()).toBeNull()
+
+    expect(app.failures).toEqual([{ ok: false, reason: 'save-refused' }])
+    expect(app.errors).toEqual([])
+    expect(app.previewImport.snapshot()).toMatchObject({ openingPreview: false, preview: null })
+    expect(app.previewImport.planImport()).toBe(false)
+    expect(app.log()).toBe(before)
+    expect(loadDuelLog(app.storage, ANIME)).toEqual(before)
+  })
+
+  it('keeps a saved Import when the converted settings cannot be saved to the Duel log', async () => {
+    const app = setup({ savedQueue: CUT_OFF })
+    app.openRanking('ANIME')
+    app.changeFormat('POINT_100')
+    app.refuseSaves()
+
+    expect(await app.previewImport.openPreview()).toBeNull()
+
+    expect(app.failures).toEqual([{ ok: false, reason: 'save-refused' }])
+    expect(app.previewImport.snapshot()).toMatchObject({ preview: null, importing: null })
+    expect(app.previewImport.snapshot().unfinished).not.toBeNull()
+    // Resume runs the same check, and resumes nothing.
+    expect(await app.previewImport.resume()).toBeNull()
+    expect(app.failures).toHaveLength(2)
   })
 })
 

@@ -3,6 +3,7 @@
 // It reports its own state and never changes screens: the app around it decides which screen shows.
 import type { AniListGateway } from '../anilist/gateway.ts'
 import type { MediaType, ScoreFormat, TitleLanguage, Viewer } from '../anilist/types.ts'
+import type { DuelLogFailure, DuelLogStore } from '../persistence/duelLogStore.ts'
 import {
   deleteTickOverrides,
   loadScoringSettings,
@@ -12,7 +13,7 @@ import {
   saveWriteQueue,
   type RankingKey,
 } from '../persistence/progress.ts'
-import { replay, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
+import type { RankingState } from '../ranking/engine.ts'
 import { previewOpen, readPreview, type PendingWrite, type TickOverrides } from '../ranking/preview.ts'
 import { scoringFor, type ScoringSettings } from '../ranking/scoring.ts'
 import { isStatusWrite, type RunnerStatus, type WriteQueue } from '../writes/writeQueue.ts'
@@ -61,12 +62,8 @@ export type PreviewImportDeps = {
   /** The user's write queue: the Import's scores are written in line with Catch-up's statuses. */
   queue: WriteQueue | null
   viewer: Viewer | null
-  latestLog: () => DuelLog | null
-  /**
-   * Appends to the open Ranking's Duel log and saves it (its scoring settings, ADR 0007), returning the new state.
-   * Null without a log.
-   */
-  append: (...events: LogEvent[]) => RankingState | null
+  /** The open Ranking's Duel log: read with its replay, and appended to for its scoring settings (ADR 0007). */
+  duelLog: Pick<DuelLogStore, 'latest' | 'append'>
   /** Old AniList score (100-point) of every Pool title, or null while the list is loading. */
   oldScores: ReadonlyMap<number, number> | null
   /** A title's name as Preview shows it in this title language; on Scores it orders the titles on one level (ADR 0007). */
@@ -74,6 +71,8 @@ export type PreviewImportDeps = {
   /** The `Viewer` as AniList reports it now. */
   onViewer: (fresh: Viewer) => void
   onGatewayError: (error: unknown) => void
+  /** The scoring settings couldn't be appended to the Duel log, so Preview stayed closed and no Import was resumed. */
+  onDuelLogFailure: (failure: DuelLogFailure) => void
   /** Scores AniList has now for titles this Import wrote, so Preview shows them. */
   onWritten: (key: RankingKey, written: ReadonlyMap<number, number>) => void
   /** The Import wrote every score it planned, with none failed: a Keep My Scale Ranking ends here (ADR 0010). */
@@ -94,7 +93,8 @@ export type PreviewImport = {
    * Runs `Viewer` again first (spec Auth, ADR 0003): if the Score Format changed since best / worst were chosen, they
    * are converted to the new format, the conversion is appended to the Duel log (ADR 0007), and a saved Import is
    * dropped. An older log without settings of its own gets them appended too, so Preview reads them from the log.
-   * Resolves to the check once Preview may open, or null if it may not.
+   * Resolves to the check once Preview may open, or null if it may not: AniList couldn't be asked (`onGatewayError`)
+   * or the settings couldn't be appended (`onDuelLogFailure`).
    */
   openPreview(): Promise<PreviewCheck | null>
   tick(id: number, ticked: boolean): void
@@ -168,7 +168,8 @@ export function createPreviewImport(deps: () => PreviewImportDeps): PreviewImpor
   /**
    * The fresh `Viewer` check (ADR 0003) before Preview and before a resumed Import: the scoring settings for the Score
    * Format AniList reports now go into the Duel log first (ADR 0007), so Preview and the plan read the same ones from
-   * it. Null if AniList couldn't be asked, or the answer came for a Ranking that is no longer open.
+   * it. Null if AniList couldn't be asked, the answer came for a Ranking that is no longer open, or the settings
+   * couldn't be appended to the log (reported through `onDuelLogFailure`).
    */
   async function checkViewer() {
     const { gateway, viewer } = deps()
@@ -183,14 +184,18 @@ export function createPreviewImport(deps: () => PreviewImportDeps): PreviewImpor
     }
     if (asked !== session || !key) return null
     deps().onViewer(fresh)
-    const before = deps().latestLog()
+    const before = deps().duelLog.latest()
     if (!before) return null
     const checkedKey: RankingKey = { userId: fresh.id, mediaType: key.mediaType }
-    const replayed = replay(before)
     const format = fresh.scoreFormat
-    const { settings, converted, event } = scoringFor(replayed, loadScoringSettings(deps().storage, checkedKey), format)
-    const ranking = (event && deps().append(event)) || replayed
-    return { fresh, key: checkedKey, log: deps().latestLog() ?? before, ranking, settings, check: { format, converted } }
+    const { settings, converted, event } = scoringFor(before.ranking, loadScoringSettings(deps().storage, checkedKey), format)
+    const appended = event ? deps().duelLog.append(event) : null
+    if (appended && !appended.ok) {
+      deps().onDuelLogFailure(appended)
+      return null
+    }
+    const { log, ranking } = appended ?? before
+    return { fresh, key: checkedKey, log, ranking, settings, check: { format, converted } }
   }
 
   /**
@@ -327,10 +332,10 @@ export function createPreviewImport(deps: () => PreviewImportDeps): PreviewImpor
       set({ ticks: next })
     },
     planImport() {
-      const { viewer, latestLog } = deps()
-      const log = latestLog()
-      if (!viewer || !log || !state.preview || state.importing?.stage === 'running') return false
-      const ranking = replay(log)
+      const { viewer, duelLog } = deps()
+      const open = duelLog.latest()
+      if (!viewer || !open || !state.preview || state.importing?.stage === 'running') return false
+      const { log, ranking } = open
       const format = viewer.scoreFormat
       // Preview shows the log's own settings (ADR 0007), on the Score Format AniList reports.
       if (ranking.scoring?.format !== format) return false

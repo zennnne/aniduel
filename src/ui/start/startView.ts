@@ -18,7 +18,7 @@ import { duelsFromBands, fullRankingExtra } from '../../ranking/estimate.ts'
 import { planFromScores, type ScoresPlan } from '../../ranking/fromScores.ts'
 import { defaultSettings } from '../../ranking/scoring.ts'
 import { defaultSortGoal, goalOf } from '../../ranking/sortGoal.ts'
-import type { ReplayedLog } from '../useDuelLog.ts'
+import type { ReplayedLog } from '../../persistence/duelLogStore.ts'
 import type { PoolForm } from './StartScreen.tsx'
 
 export type StartInput = {
