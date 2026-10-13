@@ -83,17 +83,16 @@ Progress is saved in your browser. Use **Backup** / **Restore** to move a Rankin
 
 ### Scores or Full Ranking?
 
+You don't have to choose: Start picks one for you, Full Ranking for a list under 100 titles and Scores from 100 titles up.
+
 | | **Scores** | **Full Ranking** |
 | --- | --- | --- |
-| Default | from 100 titles, and at any size on the 10 point, 5 star and 3 smiley formats | under 100 titles, on the 100 point and 10 point decimal formats |
 | Titles with the same score | grouped, no order among them | each in its own place, or a Tier if you called them equal |
-| Score Step | whole points only (every 1 on 10 points with decimals, every 10 on 100 points) | fine (every level) or human (every 0.5 / every 5) |
-| Duels needed | about 30–40% fewer (200 titles, whole points) | about 1,000 for 200 titles |
+| Score Step | whole points only (every 1 / every 10) | fine, or human steps like every 0.5 / every 5 |
+| Duels needed | about 30–40% fewer | about 1,000 for 200 titles |
 | Changing best/worst or Distribution later | costs **Refine Duels** (roughly 50–120) before the affected titles can be imported | free: the order is already complete |
 
-- The 10 point, 5 star and 3 smiley formats have only one Score Step, so both Sort Goals give the same scores there and Full Ranking only adds the order.
-- Under Scores, anything that moves a score boundary (settings, sync, Forgotten, a Band move, Re-rank) asks a few Refine Duels to settle the titles it affected, and only settled titles can be ticked on Preview.
-- Switching to Full Ranking first shows about how many more Duels it will take.
+The 10 point, 5 star and 3 smiley formats have only one Score Step, so both Sort Goals give the same scores there and Full Ranking only adds the order. On those formats Start picks Scores at any size.
 
 ## Keep My Scale
 
