@@ -53,7 +53,7 @@ A title the user can no longer remember well enough to judge, marked during Roug
 _Avoid_: Skipped, excluded
 
 **Undo**:
-Cancelling the user's most recent answer or change. It is recorded as an event in the Duel log, not by deleting anything, and it can't reach back past a sync.
+Cancelling the user's most recent answer or change. It is recorded as an event in the Duel log, not by deleting anything, and it can't reach back past a sync or the start of a Keep My Scale Ranking.
 _Avoid_: Revert, back
 
 **Re-rank**:

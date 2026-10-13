@@ -1,5 +1,7 @@
 # The Duel log is the source of truth, and the Ranking is built by binary insertion
 
+_Amended by [ADR 0007](0007-sort-goal-scores-with-settings-in-the-duel-log.md): binary insertion is how the Full Ranking Sort Goal chooses the next pair. Under Scores each Duel aims at a boundary between score levels, and a title's Duels stop once its level is settled. The Duel log and replay are the same for both._
+
 We store every Duel answer in order as an append-only log and rebuild the Ranking by replaying it through binary insertion sort. We do not store sort state, and we do not use Elo or Glicko ratings. Replaying the log is what lets us undo several steps, resume after closing the tab, Re-rank a title, move it to another Band, and add new titles after an Import, all with one mechanism. Binary insertion also needs close to the fewest comparisons possible and has a clear end, so we can show progress.
 
 ## Considered Options

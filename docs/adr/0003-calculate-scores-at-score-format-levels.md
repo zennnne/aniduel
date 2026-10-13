@@ -1,5 +1,7 @@
 # Calculate scores at the user's Score Format levels, not as continuous 0-100
 
+_Amended by [ADR 0009](0009-score-new-titles-against-anchors.md): a Keep My Scale Ranking writes each score as the `scoreRaw` of a level of the Score Format its Anchor snapshot was taken in, the raw its Anchors already have. If the user changes their Score Format during the Ranking, nothing is recalculated; Preview only shows those scores at the new format._
+
 The obvious approach is to send `scoreRaw` (0-100) and let AniList convert it to the user's Score Format. We don't do that. We read the user's `scoreFormat`, calculate each score at the levels of that format, and send a `scoreRaw` that matches one of those levels exactly. We tested AniList's conversion on 2026-10-05: POINT_10 always rounds down (raw 79 shows as 7), POINT_5 rounds to the nearest star, and POINT_3 uses thresholds that aren't documented (spike #3 found them: raw 1-35 is 1, 36-60 is 2, 61-100 is 3). Any of these would make the preview show different scores from what ends up on AniList.
 
 For each level we send the same `scoreRaw` that AniList itself stores when that level is set in that format (spike #3):

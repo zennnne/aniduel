@@ -1,5 +1,7 @@
 # Keep My Scale: a title split on a score gets that score instead of the Closer-to prompt
 
+_Amended by [ADR 0013](0013-keep-my-scale-deciding-duels-before-the-closer-to-prompt.md): under "More Duels first", which the user can choose per Ranking, a title split on neither score meets up to four more Anchors of the two scores before the Closer-to prompt, and "about the same" beside a win or a loss counts as a split too. "Ask me" is this ADR as it is._
+
 ADR 0009 confirms every boundary between scores with two Anchors, and when two Anchors of one score disagree a third decides. A win and a loss against two Anchors of the same score count as such a disagreement, so the third Anchor moves the title off that score, into the gap above or below it, and the Closer-to prompt followed. A user who never answers "about the same" could therefore never land on an Anchor's score through Duels: every title ended in the Closer-to prompt unless it beat or lost to every Anchor, even one that beat every Anchor of the score below, lost to every Anchor of the score above, and both beat and lost to the Anchors of the score between.
 
 So a title that the Duels leave between two scores, and that both beat and lost to Anchors of **one** of them, now gets that score without being asked. We call such a title **split** on the score.

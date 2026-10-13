@@ -173,12 +173,13 @@ Key design decisions:
 - [ADR 0004](docs/adr/0004-no-router-on-github-pages.md) — No client-side router; screens are driven by app state.
 - [ADR 0005](docs/adr/0005-duel-log-is-never-rewritten.md) — The Duel log is never rewritten.
 - [ADR 0006](docs/adr/0006-split-oversized-bands-into-sub-bands.md) — Oversized Bands split into three Sub-bands.
-- [ADR 0007](docs/adr/0007-sort-goal-scores-with-settings-in-the-duel-log.md) — Sort Goal: Scores or Full Ranking (the default follows the Pool size), with scoring settings in the Duel log.
+- [ADR 0007](docs/adr/0007-sort-goal-scores-with-settings-in-the-duel-log.md) — Sort Goal: Scores or Full Ranking (the default follows the Pool size and the Score Format), with scoring settings in the Duel log.
 - [ADR 0008](docs/adr/0008-rough-sort-from-scores-as-one-event.md) — Rough Sort from Scores is one event that carries every Band choice.
 - [ADR 0009](docs/adr/0009-score-new-titles-against-anchors.md) — Keep My Scale: a third Sort Goal that scores titles against fixed Anchors.
 - [ADR 0010](docs/adr/0010-score-new-titles-ends-with-its-import.md) — A Keep My Scale Ranking ends with its Import.
 - [ADR 0011](docs/adr/0011-keep-my-scale-a-hand-picked-pool.md) — Keep My Scale: the name of the third Sort Goal, and a Pool picked by hand.
 - [ADR 0012](docs/adr/0012-keep-my-scale-a-split-on-a-score-is-not-asked.md) — Keep My Scale: a title split on a score gets that score instead of the Closer-to prompt.
+- [ADR 0013](docs/adr/0013-keep-my-scale-deciding-duels-before-the-closer-to-prompt.md) — Keep My Scale: Deciding Duels before the Closer-to prompt, as the user's choice.
 
 ## Deployment
 
