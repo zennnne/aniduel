@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { ListEntry, ListStatus, MediaType, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
+import type { NamedSplitRule } from '../../ranking/engine.ts'
 import { OFFERED_STATUSES } from '../../pool/pool.ts'
 import { count } from '../meta.ts'
 import { Select } from '../Select.tsx'
@@ -27,6 +28,12 @@ const SORT_LABEL: Record<PickerSort, string> = {
   title: 'Title',
   score: 'Score',
   year: 'Release year',
+}
+
+/** The two choices for a title that lands between two scores (ADR 0013), as the dock names them. */
+const SPLIT_LABEL: Record<NamedSplitRule, string> = {
+  'on-the-score': 'Ask me',
+  'deciding-duels': 'More Duels first',
 }
 
 /** How a way out of "nothing matches" reads, naming what it undoes. */
@@ -74,20 +81,22 @@ export function PickerScreen(props: {
   /** The picks it opens with (`startingPicks`). */
   initialPicks: ReadonlySet<number>
   onBack: () => void
-  /** Confirm: start the Ranking on these titles, in this order, against this Anchor snapshot. */
+  /** Confirm: start the Ranking on these titles, in this order, against this Anchor snapshot, under this split rule. */
   onConfirm: (start: PickerStart) => void
 }) {
   const { list, scoreFormat, titleLanguage, mediaType } = props
   const [picked, setPicked] = useState<ReadonlySet<number>>(props.initialPicks)
   const [filters, setFilters] = useState<PickerFilters>(DEFAULT_PICKER_FILTERS)
+  // What happens to a title that lands between two scores (ADR 0013): "Ask me" until the user chooses otherwise.
+  const [split, setSplit] = useState<NamedSplitRule>('on-the-score')
   // Layout only (#67): the rail open or closed, the genres and tags dialog, the phone's bottom sheet.
   const [railOpen, setRailOpen] = useState(true)
   const [genresOpen, setGenresOpen] = useState(false)
   const [sheetOpen, setSheetOpen] = useState(false)
   const mobile = useMobile()
   const view = useMemo(
-    () => pickerView({ list, scoreFormat, titleLanguage, picked, filters }),
-    [list, scoreFormat, titleLanguage, picked, filters],
+    () => pickerView({ list, scoreFormat, titleLanguage, picked, filters, split }),
+    [list, scoreFormat, titleLanguage, picked, filters, split],
   )
   const { summary, confirm, dock } = view
   const patch = (more: Partial<PickerFilters>) => setFilters((current) => ({ ...current, ...more }))
@@ -269,11 +278,28 @@ export function PickerScreen(props: {
                   : `${count(summary.anchors, 'Anchor')} left on ${count(summary.scores, 'score')} · ≈ ${count(summary.duels, 'Duel')}`}
               </span>
             </div>
+            <div className="pk-split">
+              <span id="pk-split-lab">When a title lands between two scores</span>
+              <div className="pk-split-seg" role="radiogroup" aria-labelledby="pk-split-lab" aria-describedby="pk-split-trade">
+                {(Object.keys(SPLIT_LABEL) as NamedSplitRule[]).map((rule) => (
+                  <button
+                    key={rule}
+                    role="radio"
+                    aria-checked={dock.split === rule}
+                    className={dock.split === rule ? 'on' : undefined}
+                    onClick={() => setSplit(rule)}
+                  >
+                    {SPLIT_LABEL[rule]}
+                  </button>
+                ))}
+              </div>
+              <span id="pk-split-trade">{dock.trade}</span>
+            </div>
             <button
               className="go"
               disabled={!confirm.allowed}
               title={confirm.allowed ? undefined : confirm.reason}
-              onClick={() => confirm.allowed && props.onConfirm({ order: confirm.order, anchors: confirm.anchors })}
+              onClick={() => confirm.allowed && props.onConfirm({ order: confirm.order, anchors: confirm.anchors, split: confirm.split })}
             >
               Start Duels
             </button>

@@ -15,9 +15,9 @@ import {
   type KeepMyScaleEligibility,
 } from '../../pool/anchors.ts'
 import { DEFAULT_STATUSES, displayTitle, OFFERED_STATUSES, roughSortOrder } from '../../pool/pool.ts'
-import type { AnchorScore } from '../../ranking/engine.ts'
+import type { AnchorScore, NamedSplitRule } from '../../ranking/engine.ts'
 import { formatLevel, levelOfRaw } from '../../ranking/scoring.ts'
-import { count } from '../meta.ts'
+import { count, pluralWord } from '../meta.ts'
 
 export type PickerInput = {
   /** The Media Type's list, as read in `LIST_STATUSES`: its Planning titles are Anchors, never rows. */
@@ -28,6 +28,11 @@ export type PickerInput = {
   picked: ReadonlySet<number>
   /** What narrows and orders the rows (#65); `DEFAULT_PICKER_FILTERS` when left out. In memory only, like the picks. */
   filters?: PickerFilters
+  /**
+   * What happens to a title that lands between two scores (ADR 0013), chosen in the dock: "Ask me" (`on-the-score`,
+   * when left out) or "More Duels first" (`deciding-duels`). In memory only, like the picks.
+   */
+  split?: NamedSplitRule
 }
 
 /** The Picker's filters, search and sort (#65). None of them touches the picks: a hidden pick stays picked. */
@@ -92,15 +97,16 @@ export type PickerSummary = {
   /** Anchors left after the picks (ADR 0011), and on how many distinct scores. */
   anchors: number
   scores: number
-  /** About how many Duels the picks take against those scores. */
+  /** About how many Duels the picks take against those scores, under the chosen split rule. */
   duels: number
 }
 
 /**
  * What Confirm starts a Keep My Scale Ranking on: the picked titles in the order its Duels meet them (most recently
- * completed first, then by title) and the Anchor snapshot, which never holds a picked title.
+ * completed first, then by title), the Anchor snapshot, which never holds a picked title, and the split rule chosen
+ * in the dock (ADR 0013).
  */
-export type PickerStart = { order: number[]; anchors: AnchorScore[] }
+export type PickerStart = { order: number[]; anchors: AnchorScore[]; split: NamedSplitRule }
 
 /** Whether Confirm may start a Keep My Scale Ranking, and on what. When it may not, the reason as the Picker shows it. */
 export type PickerConfirm = ({ allowed: true } & PickerStart) | { allowed: false; reason: string }
@@ -161,6 +167,10 @@ export type PickerDock = {
    * plain with nothing picked, a warning when the picks leave too few Anchors or scores.
    */
   blocked: { text: string; warn: boolean } | null
+  /** The split rule selected in the control (ADR 0013). */
+  split: NamedSplitRule
+  /** The line under the control: what the selected rule trades, naming the Duels "More Duels first" adds for the picks. */
+  trade: string
 }
 
 /** How many covers the dock stacks. */
@@ -316,7 +326,7 @@ function sorted(entries: readonly ListEntry[], sort: PickerSort, format: ScoreFo
 }
 
 export function pickerView(input: PickerInput): PickerView {
-  const { list, scoreFormat, titleLanguage, picked, filters = DEFAULT_PICKER_FILTERS } = input
+  const { list, scoreFormat, titleLanguage, picked, filters = DEFAULT_PICKER_FILTERS, split = 'on-the-score' } = input
   const shown = pickable(list).filter((e) => matches(e, filters, titleLanguage, picked))
   const rows = sorted(shown, filters.sort, scoreFormat, titleLanguage).map((entry): PickerRow => {
     return {
@@ -337,7 +347,7 @@ export function pickerView(input: PickerInput): PickerView {
     picked: pickedEntries.length,
     anchors: left.anchors,
     scores: left.scores,
-    duels: estimateKeepMyScaleDuels(pickedEntries.length, left.scores),
+    duels: estimateKeepMyScaleDuels(pickedEntries.length, left.scores, split),
   }
   const shownWith = (next: PickerFilters) => pickable(list).filter((e) => matches(e, next, titleLanguage, picked)).length
   // Choosing one more genre or tag only narrows, so its count is how many titles shown now have it: one pass, not one
@@ -375,11 +385,14 @@ export function pickerView(input: PickerInput): PickerView {
   const latest = [...picked].flatMap((id) => byId.get(id) ?? []).reverse()
   const statusCounts = Object.fromEntries(OFFERED_STATUSES.map((status) => [status, 0]))
   for (const e of pickable(list)) if (e.status in statusCounts) statusCounts[e.status]++
-  const confirm = confirmOf(pickedEntries, anchors, left, titleLanguage)
+  const confirm = confirmOf(pickedEntries, anchors, left, titleLanguage, split)
   const dock: PickerDock = {
     replacing: pickedEntries.filter((e) => hasScore(e, scoreFormat)).length,
     covers: latest.slice(0, DOCK_COVERS),
     blocked: confirm.allowed ? null : { text: confirm.reason, warn: pickedEntries.length > 0 },
+    split,
+    // One more Duel per picked title, as `estimateKeepMyScaleDuels` counts them.
+    trade: tradeOf(split, pickedEntries.length),
   }
   return {
     rows,
@@ -400,7 +413,23 @@ export function pickerView(input: PickerInput): PickerView {
   }
 }
 
-function confirmOf(picked: readonly ListEntry[], anchors: AnchorScore[], left: KeepMyScaleEligibility, language: TitleLanguage): PickerConfirm {
+/**
+ * What a split rule trades against the other (ADR 0013): `added` is how many Duels "More Duels first" adds for the
+ * picks. No number of Closer-to prompts is promised: how many a list takes depends on the user's answers.
+ */
+function tradeOf(split: NamedSplitRule, added: number): string {
+  const more = split === 'deciding-duels'
+  const duels = added > 0 ? `about ${added} ${more ? 'more' : 'fewer'} ${pluralWord(added, 'Duel')}` : `${more ? 'more' : 'fewer'} Duels`
+  return `${more ? 'Fewer' : 'More'} 'closer to' questions, ${duels}`
+}
+
+function confirmOf(
+  picked: readonly ListEntry[],
+  anchors: AnchorScore[],
+  left: KeepMyScaleEligibility,
+  language: TitleLanguage,
+  split: NamedSplitRule,
+): PickerConfirm {
   if (picked.length === 0) return { allowed: false, reason: 'Pick at least one title.' }
   if (!left.eligible) {
     return {
@@ -410,5 +439,5 @@ function confirmOf(picked: readonly ListEntry[], anchors: AnchorScore[], left: K
         `at least ${MIN_ANCHORS} on ${MIN_ANCHOR_SCORES} are needed. Untick some titles that have a score.`,
     }
   }
-  return { allowed: true, order: newestCompletedFirst(picked, language), anchors }
+  return { allowed: true, order: newestCompletedFirst(picked, language), anchors, split }
 }

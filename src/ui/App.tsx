@@ -722,11 +722,12 @@ export function App({ fake }: { fake?: AniListSession }) {
 
   /**
    * Keep My Scale (ADR 0009, ADR 0011): the Picker's Anchor snapshot (every scored title but the picks) goes into a
-   * new log now; Duels start straight away. The Picker leaves the history, so Back from the Duels goes to Start.
+   * new log now, naming the split rule chosen in the Picker (ADR 0013); Duels start straight away. The Picker leaves
+   * the history, so Back from the Duels goes to Start.
    */
-  function startKeepMyScale({ order, anchors }: PickerStart) {
+  function startKeepMyScale({ order, anchors, split }: PickerStart) {
     if (!viewer) return
-    const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids: order })
+    const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids: order, split })
     if (!saved(() => duelLog.save(log))) return
     // The titles left unsettled last time are offered no more, whether or not they were picked again (#66).
     unsettledStore?.clear()

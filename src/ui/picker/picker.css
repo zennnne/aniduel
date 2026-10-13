@@ -251,6 +251,8 @@
   min-height: 0;
   position: relative;
   display: flex;
+  /* The dock lays itself out by the wall's width, not the window's: the rail takes room beside it. */
+  container: pk-ww / inline-size;
 }
 .pk-wall {
   /* The gaps between covers, read by the wall to place its rows (PickerScreen's Wall). */
@@ -259,7 +261,7 @@
   flex: 1;
   overflow: auto;
   min-height: 0;
-  padding: 12px 20px 120px;
+  padding: 12px 20px 150px;
   display: flex;
   flex-direction: column;
 }
@@ -451,9 +453,60 @@
   color: var(--warn);
   font-weight: 700;
 }
+/* The choice for a title that lands between two scores (ADR 0013): a heading, two options, the line on what they trade */
+.pk-split {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #fffc;
+  text-align: left;
+  min-width: 0;
+}
+.pk-split-seg {
+  display: flex;
+  background: #ffffff1f;
+  border-radius: 9px;
+  padding: 2px;
+}
+.pk-split-seg button {
+  flex: 1;
+  padding: 5px 12px;
+  border-radius: 7px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+  white-space: nowrap;
+}
+.pk-split-seg button.on {
+  background: var(--blue);
+  color: var(--on-accent);
+}
+.pk-split-seg button:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
 .pk-dock .go {
   align-self: center;
   white-space: nowrap;
+}
+/* A wall too narrow for one row (a phone, or a small window beside the rail): the choice goes under the summary and
+   Start Duels, across the dock's whole width. */
+@container pk-ww (max-width: 860px) {
+  .pk-wall {
+    padding-bottom: 220px;
+  }
+  .pk-dock {
+    flex-wrap: wrap;
+    width: min(520px, 100% - 40px);
+  }
+  .pk-dtx {
+    flex: 1;
+  }
+  .pk-split {
+    order: 1;
+    flex-basis: 100%;
+  }
 }
 
 /* Genres and tags: one dialog, rounded on every corner, its content scrolling inside */
@@ -612,7 +665,7 @@
   .pk-wall {
     --pk-gap-x: 8px;
     --pk-gap-y: 10px;
-    padding: 10px 12px 130px;
+    padding: 10px 12px 220px;
   }
   .pk-dock {
     left: 8px;

@@ -1,6 +1,7 @@
 // The Picker's view (#64, ADR 0011): the rows it lists, what the picks cost in Anchors, and what Confirm starts.
 import { describe, expect, it } from 'vitest'
 import type { ListEntry, ListStatus } from '../../anilist/types.ts'
+import type { NamedSplitRule } from '../../ranking/engine.ts'
 import {
   addPicks,
   DEFAULT_PICKER_FILTERS,
@@ -514,6 +515,56 @@ describe("the Picker's dock", () => {
       warn: true,
     })
     expect(tooFew.confirm).toEqual({ allowed: false, reason: tooFew.dock.blocked?.text })
+  })
+})
+
+describe('the choice for a title that lands between two scores (ADR 0013)', () => {
+  const started = (v: ReturnType<typeof view>) => {
+    if (!v.confirm.allowed) throw new Error(v.confirm.reason)
+    return v.confirm
+  }
+
+  it('starts the Ranking under the rule of ADR 0012 with "Ask me", the choice the Picker opens on', () => {
+    const { fresh, list } = scaleList(2)
+    const picked = new Set(ids(fresh))
+    expect(view({ list }).dock.split).toBe('on-the-score')
+    expect(started(view({ list, picked })).split).toBe('on-the-score')
+    expect(started(view({ list, picked, split: 'on-the-score' })).split).toBe('on-the-score')
+  })
+
+  it('starts the Ranking under Deciding Duels with "More Duels first"', () => {
+    const { fresh, list } = scaleList(2)
+    const v = view({ list, picked: new Set(ids(fresh)), split: 'deciding-duels' })
+    expect(v.dock.split).toBe('deciding-duels')
+    expect(started(v).split).toBe('deciding-duels')
+  })
+
+  it('adds one Duel per picked title to the estimate under "More Duels first", and none under "Ask me"', () => {
+    const { anchors, fresh, list } = scaleList(3)
+    const two = new Set(ids(fresh.slice(0, 2)))
+    // Two titles over 4 scores: 2 · 2 log2(5) ≈ 9.3.
+    expect(view({ list, picked: two, split: 'on-the-score' }).summary.duels).toBe(9)
+    expect(view({ list, picked: two, split: 'deciding-duels' }).summary.duels).toBe(11)
+    // A scored pick counts like any other: 4 · 2 log2(5) ≈ 18.6, and four more.
+    const four = new Set([...ids(fresh), anchors[0].mediaId])
+    expect(view({ list, picked: four, split: 'on-the-score' }).summary.duels).toBe(19)
+    expect(view({ list, picked: four, split: 'deciding-duels' }).summary.duels).toBe(23)
+    expect(view({ list, split: 'deciding-duels' }).summary.duels).toBe(0)
+  })
+
+  it('says what the selected option trades, naming the Duels it adds for the picks', () => {
+    const { fresh, list } = scaleList(3)
+    const trade = (picks: number, split: NamedSplitRule) => view({ list, picked: new Set(ids(fresh.slice(0, picks))), split }).dock.trade
+    expect(trade(3, 'deciding-duels')).toBe("Fewer 'closer to' questions, about 3 more Duels")
+    expect(trade(3, 'on-the-score')).toBe("More 'closer to' questions, about 3 fewer Duels")
+    expect(trade(1, 'deciding-duels')).toBe("Fewer 'closer to' questions, about 1 more Duel")
+    expect(trade(1, 'on-the-score')).toBe("More 'closer to' questions, about 1 fewer Duel")
+  })
+
+  it('names no number of Duels while nothing is picked', () => {
+    const { list } = scaleList(3)
+    expect(view({ list, split: 'deciding-duels' }).dock.trade).toBe("Fewer 'closer to' questions, more Duels")
+    expect(view({ list }).dock.trade).toBe("More 'closer to' questions, fewer Duels")
   })
 })
 
