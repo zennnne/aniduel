@@ -360,6 +360,30 @@ export function App({ fake }: { fake?: AniListSession }) {
     }
   }, [gateway, viewer, retries])
 
+  /**
+   * Sync (#13, ADR 0005): brings the Pool in the log up to date with the fetched list and the chosen statuses.
+   * Added titles go to Rough Sort, removed ones leave the Ranking; both are recorded as events Undo can't cross.
+   * Runs on resume (once the list arrives), on Continue from Start (the statuses may have changed) and after a
+   * Restore. Does nothing without a usable log or a list. Returns what changed, for a toast (null = nothing).
+   */
+  function syncPool(type: MediaType, fetched: readonly ListEntry[] | undefined, chosen: readonly ListStatus[]): string | null {
+    const current = duelLog.latest()
+    if (!viewer || !fetched || !current || current.log.header.mediaType !== type) return null
+    const events = syncEvents(current.log, fetched, chosen, viewer.titleLanguage)
+    if (events.length === 0) return null
+    const synced = duelLog.append(...events)
+    if (!synced.ok) {
+      reportFailure(synced, (why) => `Your ${MEDIA_LABEL[type]} Pool couldn't be brought up to date (${why}). Your progress was left untouched.`)
+      return null
+    }
+    const added = events.reduce((sum, e) => sum + (e.type === 'titles-added' ? e.ids.length : 0), 0)
+    const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
+    if (added > 0) setRankingUi(titlesAdded)
+    // A Keep My Scale Pool never grows (ADR 0011), so only Rough Sort ever gets titles added.
+    const changes = [added > 0 && `${count(added, 'title')} added to Rough Sort`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
+    return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
+  }
+
   // A freshly fetched list is the moment to sync a saved Ranking (resume, also months after an Import).
   const onListFetched = useEffectEvent((type: MediaType, fetched: ListEntry[]) => {
     setLists((prev) => ({ ...prev, [type]: fetched }))
@@ -419,34 +443,10 @@ export function App({ fake }: { fake?: AniListSession }) {
   }
 
   /**
-   * Sync (#13, ADR 0005): brings the Pool in the log up to date with the fetched list and the chosen statuses.
-   * Added titles go to Rough Sort, removed ones leave the Ranking; both are recorded as events Undo can't cross.
-   * Runs on resume (once the list arrives), on Continue from Start (the statuses may have changed) and after a
-   * Restore. Does nothing without a usable log or a list. Returns what changed, for a toast (null = nothing).
-   */
-  function syncPool(type: MediaType, fetched: readonly ListEntry[] | undefined, chosen: readonly ListStatus[]): string | null {
-    const current = duelLog.latest()
-    if (!viewer || !fetched || !current || current.log.header.mediaType !== type) return null
-    const events = syncEvents(current.log, fetched, chosen, viewer.titleLanguage)
-    if (events.length === 0) return null
-    const synced = duelLog.append(...events)
-    if (!synced.ok) {
-      reportFailure(synced, (why) => `Your ${MEDIA_LABEL[type]} Pool couldn't be brought up to date (${why}). Your progress was left untouched.`)
-      return null
-    }
-    const added = events.reduce((sum, e) => sum + (e.type === 'titles-added' ? e.ids.length : 0), 0)
-    const removed = events.reduce((sum, e) => sum + (e.type === 'titles-removed' ? e.ids.length : 0), 0)
-    if (added > 0) setRankingUi(titlesAdded)
-    // A Keep My Scale Pool never grows (ADR 0011), so only Rough Sort ever gets titles added.
-    const changes = [added > 0 && `${count(added, 'title')} added to Rough Sort`, removed > 0 && `${count(removed, 'title')} left the Ranking`]
-    return `Pool updated: ${changes.filter(Boolean).join(' · ')}`
-  }
-
-  /**
    * What the user sees when the Duel log stayed as it was. The browser refused to save: the screen stays on what is
    * saved, and the banner offers a Backup of it. The log doesn't replay: the caller's sentence, given the engine's
-   * message, or nothing where the caller says to ignore it. No open log: nothing. A refused save
-   * alone (of something saved beside the log) needs no such answer: there is nothing to replay.
+   * message, or nothing where the caller says to ignore it. No open log: nothing. Only a refused save on its own
+   * (of something saved beside the log) comes without that choice: nothing was replayed.
    */
   function reportFailure(failure: { reason: 'save-refused' }): void
   function reportFailure(failure: DuelLogFailure, notReplayed: ((why: string) => string) | 'ignore'): void
