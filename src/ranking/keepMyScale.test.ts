@@ -104,17 +104,16 @@ describe('a Keep My Scale Ranking', () => {
 })
 
 describe('placing picked titles against Anchor score levels', () => {
-  it('settles every picked title on its true Anchor score when a consistent oracle answers, in every Score Format', () => {
-    const random = rng(7)
-    const formats: [ScoreFormat, number[]][] = [
-      ['POINT_10', [10, 9, 8, 7, 6, 5, 4, 3]],
-      ['POINT_100', [95, 90, 85, 80, 72, 60, 45]],
-      ['POINT_10_DECIMAL', [9.5, 9, 8.5, 8, 7, 6.3]],
-      ['POINT_5', [5, 4, 3, 2, 1]],
-      ['POINT_3', [3, 2, 1]],
-    ]
-    for (let trial = 0; trial < 60; trial++) {
-      const [format, scale] = formats[trial % formats.length]
+  // One test per Score Format, each with its own seed: the same Rankings whether it runs alone or with the others.
+  it.each<[format: ScoreFormat, scale: number[], seed: number]>([
+    ['POINT_10', [10, 9, 8, 7, 6, 5, 4, 3], 7],
+    ['POINT_100', [95, 90, 85, 80, 72, 60, 45], 8],
+    ['POINT_10_DECIMAL', [9.5, 9, 8.5, 8, 7, 6.3], 9],
+    ['POINT_5', [5, 4, 3, 2, 1], 10],
+    ['POINT_3', [3, 2, 1], 11],
+  ])('settles every picked title on its true Anchor score when a consistent oracle answers, in %s', (format, scale, seed) => {
+    const random = rng(seed)
+    for (let trial = 0; trial < 12; trial++) {
       const used = scale.filter(() => random() < 0.7)
       if (used.length === 0) used.push(scale[0])
       const anchors = Array.from({ length: used.length + Math.floor(random() * 40) }, (_, i) => ({
