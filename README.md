@@ -79,7 +79,7 @@ See [GLOSSARY.md](GLOSSARY.md) for the exact meaning of each term.
 ![Preview: new scores grouped by score level, each cover showing its old score](docs/screenshots/preview.png)
 *Preview: every title under its new score, with the old score on its cover, before anything is written.*
 
-Progress is saved in your browser. Use **Backup** / **Restore** to move a Ranking to another browser. The Pool syncs with AniList when you come back, so added or removed titles are picked up.
+Progress is saved in your browser. Use **Backup** / **Restore** to move a Ranking to another browser. If the browser blocks site storage, AniDuel! says so in place of the app; if its storage is full, a banner tells you to save a Backup. The Pool syncs with AniList when you come back, so added or removed titles are picked up.
 
 ### Scores or Full Ranking?
 
@@ -162,15 +162,16 @@ Every push runs CI (lint, test, build). Pushes to `main` also deploy `dist/` to 
 ```
 src/
   anilist/      AniList GraphQL gateway and types, and the fake AniList used by tests and `?fake-anilist`
-  auth/         OAuth token handling
+  auth/         OAuth token handling, and the AniList session (token, Viewer, lists)
   pool/         Building the Pool, picking Anchors, and syncing with AniList
   ranking/      Ranking engine (replays the Duel log), Sort Goal, scoring, Sub-band split,
                 Rough Sort from Scores, Keep My Scale, Refine Duel estimates, Preview
   catchup/      Catch-up suggestions, batches, Passed titles, starting era, exit offer
   import/       Import plan and state
   writes/       Write queue and rate limiter shared by Import (scores) and Catch-up (list statuses)
-  persistence/  Saved progress, the Duel log store, the Ranking lifecycle, Backup files, and what
-                Keep My Scale remembers (unsettled titles, the "between two scores" choice)
+  persistence/  Saved progress, the Duel log store, the Ranking lifecycle, Backup files, the check that
+                the browser's storage can be used, and what Keep My Scale remembers (unsettled
+                titles, the "between two scores" choice)
   dev/          Dev-only fake AniList session (`?fake-anilist`)
   ui/           React screens (Start, Picker, Rough Sort, Board, Band choice, Duel, Split, Preview, Import, Catch-up)
 scripts/        Catch-up holdout eval, Keep My Scale simulated-user eval, replay benchmark
