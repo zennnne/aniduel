@@ -18,6 +18,7 @@ import {
   type AnchorScore,
   type KeepMyScale,
   type KeepMyScaleState,
+  type SplitRule,
 } from './keepMyScale.ts'
 import { defaultSettings, levelAt, parseSavedScoring, type SavedScoring, type ScoringSettings } from './scoring.ts'
 
@@ -29,9 +30,10 @@ export const LOG_FORMAT_VERSION = 1
  * replay differently (ADR 0005). Adding an event kind or changing replay means bumping this and, for a new kind,
  * adding its row to `EVENT_RULES`. 2 also allowed `sub` on `band-assigned` (ADR 0006). 9 added the closer-to prompt
  * and the scores past the extreme Anchors to Keep My Scale (#48); 8 was never released, so no log replays differently.
- * 10 lets `anchors-set` name the split rule (ADR 0012); a snapshot without one replays as before.
+ * 10 lets `anchors-set` name the split rule (ADR 0012); a snapshot without one replays as before. 11 adds the split
+ * rule 'deciding-duels' (ADR 0013); every other snapshot replays as before.
  */
-export const ENGINE_VERSION = 10
+export const ENGINE_VERSION = 11
 const KNOWN_ENGINE_VERSIONS: readonly number[] = Array.from({ length: ENGINE_VERSION }, (_, i) => i + 1)
 
 /** Band index: 0 = Loved (top) … 4 = Hated (bottom). There are always five Bands. */
@@ -62,10 +64,15 @@ export type DuelResult = 'a' | 'b' | 'tie'
 export const KEEP_MY_SCALE = 'score-new-titles'
 /**
  * Sort Goal (ADR 0007): stop a title's Duels once its score level is settled, or give every title its own place.
- * Keep My Scale (ADR 0009) scores only unscored titles against Anchors; only `anchors-set` starts it, and a Ranking
+ * Keep My Scale (ADR 0009, ADR 0011) scores only the picked titles against Anchors; only `anchors-set` starts it, and a Ranking
  * on it never switches.
  */
 export type SortGoal = 'scores' | 'full-ranking' | typeof KEEP_MY_SCALE
+/**
+ * A split rule an Anchor snapshot can name (ADR 0012, ADR 0013). The oldest rule has no name here: a snapshot on it
+ * names none.
+ */
+export type NamedSplitRule = Exclude<SplitRule, 'closer-to'>
 /** The Sort Goals `sort-goal-set` can switch between (ADR 0007). */
 export type SwitchableGoal = Exclude<SortGoal, typeof KEEP_MY_SCALE>
 const SWITCHABLE_GOALS: readonly SwitchableGoal[] = ['scores', 'full-ranking']
@@ -133,7 +140,7 @@ export type LogEvent =
    * level of `format` at that time. Only before any title and any Sort Goal; replay never reads AniList scores. Titles
    * added after it are the picked titles, never an Anchor. Undo never reaches past it.
    */
-  | { type: 'anchors-set'; format: ScoreFormat; anchors: AnchorScore[]; split?: 'on-the-score' }
+  | { type: 'anchors-set'; format: ScoreFormat; anchors: AnchorScore[]; split?: NamedSplitRule }
   /**
    * The answer to the closer-to prompt (GLOSSARY, ADR 0009): picked title `id` takes `level`, one of the two Anchor scores
    * it sits strictly between. Refused unless that prompt is asked now.
@@ -395,6 +402,8 @@ export function startLog(options: {
 /**
  * A new Keep My Scale log (ADR 0009): the header, the default scoring settings (unused by this Sort Goal, but
  * Preview and Import read the Score Format from them as on every other log), the Anchor snapshot, then the picked titles.
+ * The snapshot names the split rule the Ranking is answered under: `split`, or the rule of ADR 0012 when none is
+ * chosen.
  */
 export function startKeepMyScaleLog(options: {
   seed: number
@@ -403,13 +412,14 @@ export function startKeepMyScaleLog(options: {
   format: ScoreFormat
   anchors: readonly AnchorScore[]
   ids: readonly number[]
+  split?: NamedSplitRule
 }): DuelLog {
-  const { seed, userId, mediaType, format, anchors, ids } = options
+  const { seed, userId, mediaType, format, anchors, ids, split = 'on-the-score' } = options
   return {
     header: { format: LOG_FORMAT_VERSION, engine: ENGINE_VERSION, seed, userId, mediaType },
     events: [
       { type: 'scoring-set', format, settings: defaultSettings(format, 'whole') },
-      { type: 'anchors-set', format, anchors: anchors.map(({ id, level }) => ({ id, level })), split: 'on-the-score' },
+      { type: 'anchors-set', format, anchors: anchors.map(({ id, level }) => ({ id, level })), split },
       { type: 'titles-added', ids: [...ids] },
     ],
   }
@@ -732,7 +742,8 @@ function apply(machine: Machine, event: RecordedEvent): void {
       }
       if (event.split !== undefined) {
         requireEngine(machine, 10, 'The split rule on Anchors set')
-        if (event.split !== 'on-the-score') throw new ReplayError(`Unknown split rule ${String(event.split)}`)
+        if (event.split === 'deciding-duels') requireEngine(machine, 11, 'Deciding Duels on Anchors set')
+        else if (event.split !== 'on-the-score') throw new ReplayError(`Unknown split rule ${String(event.split)}`)
       }
       const started = startKeepMyScale(event.format, event.anchors, machine.seed, event.split)
       if (typeof started === 'string') throw new ReplayError(started)

@@ -116,6 +116,37 @@ describe('Backup and Restore', () => {
     expect(restored.keepMyScale!.levels.flatMap((l) => l.anchors)).toEqual([101, 102, 103, 104, 105])
   })
 
+  it('a Keep My Scale Ranking under Deciding Duels restores and continues under them (ADR 0013)', () => {
+    const anchors = [9, 9, 9, 9, 8, 8, 8, 8, 7, 7, 7, 7].map((level, i) => ({ id: 101 + i, level }))
+    const levelOf = (id: number) => anchors.find((a) => a.id === id)!.level
+    // Title 1 loses to every 9 and beats every 8, for `duels` Duels at most or until the closer-to prompt.
+    const answer = (log: DuelLog, duels: number) => {
+      const met: number[] = []
+      for (let p = replay(log).prompt; met.length < duels && p.kind === 'anchor-duel'; p = replay(log).prompt) {
+        met.push(levelOf(p.b))
+        log = appendEvent(log, { type: 'duel-answered', a: p.a, b: p.b, result: levelOf(p.b) > 8 ? 'b' : 'a' })
+      }
+      return { log, met }
+    }
+    const start = (split?: 'deciding-duels') => startKeepMyScaleLog({ ...anime, seed: 42, format: 'POINT_10', anchors, ids: [1], split })
+    // Under the rule of ADR 0012 the closer-to prompt comes after these Duels; here two Deciding Duels are answered too.
+    const before = answer(start(), Infinity).met
+    const { log } = answer(start('deciding-duels'), before.length + 2)
+
+    const here = memoryStorage()
+    saveDuelLog(here, log)
+    const elsewhere = memoryStorage()
+    restoreBackup(elsewhere, readBackup(createBackup(here, { ...anime, userName: 'zen' }, now)!.json, anime))
+    const restored = loadDuelLog(elsewhere, anime)!
+    expect(restored).toEqual(log)
+    expect(restored.events).toContainEqual({ type: 'anchors-set', format: 'POINT_10', anchors, split: 'deciding-duels' })
+    expect(replay(restored)).toEqual(replay(log))
+    // The two Deciding Duels left, then the closer-to prompt.
+    const rest = answer(restored, Infinity)
+    expect(rest.met).toEqual([9, 8])
+    expect(replay(rest.log).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+  })
+
   it('a Backup written before the goal was renamed Keep My Scale restores with every answer intact (ADR 0011)', () => {
     // The fixture: a Backup file as the app wrote it before the rename (#62), and what its log replayed to then.
     // Duels, an Undo, a Forgotten title and Anchor, two closer-to answers, a Re-rank and a Suspect Anchor are in it.

@@ -105,8 +105,12 @@ An Anchor whose own score was contradicted by at least two of the titles settled
 _Avoid_: Wrong anchor, outlier
 
 **Closer-to prompt**:
-The one-off question asked when a title being scored under Keep My Scale beats every Anchor of one score and loses to every Anchor of the next: which of the two scores is it closer to. Its answer settles the title.
+The one-off question asked when the Duels leave a title being scored under Keep My Scale between two scores without settling it on either: which of the two scores is it closer to. Its answer settles the title.
 _Avoid_: Tie-break, rounding question
+
+**Deciding Duel**:
+A Duel asked under Keep My Scale when a title is left between two scores, against one more Anchor of one of them, to settle the title without the Closer-to prompt. It is an ordinary Duel; the name only says why it is asked.
+_Avoid_: Extra Duel, tie-break Duel, split Duel
 
 **Catch-up**:
 The screen where a user adds titles to their AniList list, a batch of suggestions at a time, by marking each one Completed, Dropped, Planning or Paused. Most are titles they have already seen; one they haven't seen but want to watch is marked Planning.

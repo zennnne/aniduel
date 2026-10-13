@@ -1064,3 +1064,290 @@ describe('a split on a score (ADR 0012)', () => {
     expect(() => replay(unknown as DuelLog)).toThrow(ReplayError)
   })
 })
+
+describe('Deciding Duels (ADR 0013)', () => {
+  // Six Anchors a score: two of each confirm a boundary, and four are left for the Deciding Duels of either score.
+  const anchors = anchorsOn(9, 9, 9, 9, 9, 9, 8, 8, 8, 8, 8, 8, 7, 7, 7, 7, 7, 7)
+  type Result = 'win' | 'loss' | 'tie'
+  type Answer = (level: number, nth: number) => Result
+  const SIDE = { win: 'a', loss: 'b', tie: 'tie' } as const
+
+  const decidingLogOf = (all: AnchorScore[], ids: number[], seed = header.seed) =>
+    startKeepMyScaleLog({ ...header, seed, format: 'POINT_10', anchors: all, ids, split: 'deciding-duels' })
+
+  /** Between 9 and 8, split on neither: loses to every 9, beats every 8 and 7. */
+  const between: Answer = (level) => (level > 8 ? 'loss' : 'win')
+
+  /**
+   * Title `id` answers its Duels by `answer` (the Anchor's score, and how many Anchors of that score it met before),
+   * for `most` Duels at most, until a prompt that isn't its Duel. Returns the log and every Anchor met, with its score.
+   */
+  function meet(log: DuelLog, id: number, answer: Answer, most = Infinity, all = anchors) {
+    const met: AnchorScore[] = []
+    for (let state = replay(log); met.length < most && state.prompt.kind === 'anchor-duel' && state.prompt.a === id; state = replay(log)) {
+      const p = state.prompt
+      const level = levelOf(all, p.b)!
+      const result = answer(level, met.filter((m) => m.level === level).length)
+      met.push({ id: p.b, level })
+      log = plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: SIDE[result] })
+    }
+    return { log, met, levels: met.map((m) => m.level) }
+  }
+
+  /** How many Duels the boundaries take before the title is left between 9 and 8: the same under either rule. */
+  const confirmed = meet(logOf(anchors, [1]), 1, between).levels.length
+
+  it('is named in the Anchor snapshot of a log started under it, with engine 11 in the header', () => {
+    const log = decidingLogOf(anchors, [1])
+    expect(log.events).toContainEqual({ type: 'anchors-set', format: 'POINT_10', anchors, split: 'deciding-duels' })
+    expect(log.header.engine).toBe(11)
+    expect(replay(log).sortGoal).toBe(KEEP_MY_SCALE)
+  })
+
+  it('is not the rule of a log started without choosing one: that log only has the newer engine version', () => {
+    const log = logOf(anchors, [1])
+    expect(log).toEqual({
+      header: { format: 1, engine: 11, ...header },
+      events: [
+        { type: 'scoring-set', format: 'POINT_10', settings: expect.anything() },
+        { type: 'anchors-set', format: 'POINT_10', anchors, split: 'on-the-score' },
+        { type: 'titles-added', ids: [1] },
+      ],
+    })
+    expect(startKeepMyScaleLog({ ...header, format: 'POINT_10', anchors, ids: [1], split: 'on-the-score' })).toEqual(log)
+  })
+
+  it('is refused on a header below engine 11, and so is a rule the engine does not know', () => {
+    const log = decidingLogOf(anchors, [1])
+    expect(() => replay({ ...log, header: { ...log.header, engine: 10 } })).toThrow(ReplayError)
+    const onTheScore = logOf(anchors, [1])
+    expect(replay({ ...onTheScore, header: { ...onTheScore.header, engine: 10 } }).prompt).toEqual(replay(onTheScore).prompt)
+    const unknown = { ...log, events: log.events.map((e) => (e.type === 'anchors-set' ? { ...e, split: 'majority' } : e)) }
+    expect(() => replay(unknown as DuelLog)).toThrow(ReplayError)
+  })
+
+  it('asks four more Duels where the closer-to prompt would be asked, the two scores taking turns, then the prompt', () => {
+    for (const start of [logOf, oldLogOf]) {
+      const asked = meet(start(anchors, [1]), 1, between)
+      expect(asked.levels).toHaveLength(confirmed)
+      expect(replay(asked.log).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+    }
+    const { log, met, levels } = meet(decidingLogOf(anchors, [1]), 1, between)
+    // The same Duels first, so every boundary is confirmed as before; then the upper score, the lower, and again.
+    expect(levels).toEqual([...meet(logOf(anchors, [1]), 1, between).levels, 9, 8, 9, 8])
+    expect(new Set(met.map((m) => m.id)).size).toBe(met.length)
+    expect(replay(log).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+    expect(replay(log).keepMyScale!.titles).toEqual([{ id: 1, settled: false, levels: [9, 8] }])
+    for (const level of [9, 8]) {
+      const answered = replay(plus(log, { type: 'closer-to-answered', id: 1, level }))
+      expect(answered.prompt).toEqual({ kind: 'all-complete' })
+      expect(answered.keepMyScale!.titles).toEqual([{ id: 1, settled: true, levels: [level] }])
+    }
+  })
+
+  it('is an ordinary Duel in the log and on screen', () => {
+    const { log } = meet(decidingLogOf(anchors, [1]), 1, between, confirmed)
+    const p = replay(log).prompt
+    if (p.kind !== 'anchor-duel') throw new Error(p.kind)
+    expect(Object.keys(p).sort()).toEqual(Object.keys(replay(decidingLogOf(anchors, [1])).prompt).sort())
+    expect(p.a).toBe(1)
+    expect(levelOf(anchors, p.b)).toBe(9)
+    // Forgotten on its Anchor has another Anchor of that score asked instead.
+    const other = replay(plus(log, { type: 'forgotten', id: p.b })).prompt
+    if (other.kind !== 'anchor-duel') throw new Error(other.kind)
+    expect(other.b).not.toBe(p.b)
+    expect(levelOf(anchors, other.b)).toBe(9)
+  })
+
+  it('asks the score the title has answered least first', () => {
+    const { log, met } = meet(decidingLogOf(anchors, [1]), 1, between, confirmed)
+    // An 8 it met is Forgotten, so its answer no longer counts: one 8 against two 9s.
+    const forgotten = plus(log, { type: 'forgotten', id: met.find((m) => m.level === 8)!.id })
+    expect(meet(forgotten, 1, between).levels).toEqual([8, 9, 8, 9])
+  })
+
+  it('settles the title on the first score it is split on, with no closer-to prompt', () => {
+    const cases: [answer: Answer, score: number, decidingDuels: number][] = [
+      // The first Deciding Duel is against a 9, its third: a win beside two losses.
+      [(level, nth) => (level === 9 && nth === 2 ? 'win' : between(level, nth)), 9, 1],
+      // The second is against an 8, its third: a loss beside two wins.
+      [(level, nth) => (level === 8 && nth === 2 ? 'loss' : between(level, nth)), 8, 2],
+      // The fourth, the last one.
+      [(level, nth) => (level === 8 && nth === 3 ? 'loss' : between(level, nth)), 8, 4],
+    ]
+    for (const [answer, score, decidingDuels] of cases) {
+      const { log, levels } = meet(decidingLogOf(anchors, [1]), 1, answer)
+      expect(levels).toHaveLength(confirmed + decidingDuels)
+      expect(replay(log).prompt).toEqual({ kind: 'all-complete' })
+      expect(replay(log).keepMyScale!.titles).toEqual([{ id: 1, settled: true, levels: [score] }])
+    }
+  })
+
+  it('counts "about the same" beside a win or a loss as a split', () => {
+    for (const score of [9, 8]) {
+      const answer: Answer = (level, nth) => (level === score && nth === 2 ? 'tie' : between(level, nth))
+      const { log } = meet(decidingLogOf(anchors, [1]), 1, answer)
+      expect(replay(log).prompt).toEqual({ kind: 'all-complete' })
+      expect(replay(log).keepMyScale!.titles).toEqual([{ id: 1, settled: true, levels: [score] }])
+    }
+  })
+
+  it('asks the closer-to prompt sooner once the title has met every Anchor of both scores', () => {
+    const three = anchorsOn(9, 9, 9, 8, 8, 8, 7, 7, 7)
+    const before = meet(logOf(three, [1]), 1, between, Infinity, three).levels
+    const { log, levels } = meet(decidingLogOf(three, [1]), 1, between, Infinity, three)
+    expect(levels).toEqual([...before, 9, 8])
+    expect(replay(log).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+    // Only one of the two scores has Anchors left: they are asked, up to four.
+    const lopsided = anchorsOn(9, 9, 8, 8, 8, 8, 8, 8, 8, 7, 7, 7)
+    const lone = meet(decidingLogOf(lopsided, [1]), 1, between, Infinity, lopsided)
+    expect(lone.levels).toEqual([...meet(logOf(lopsided, [1]), 1, between, Infinity, lopsided).levels, 8, 8, 8, 8])
+    expect(replay(lone.log).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+  })
+
+  it('asks no Deciding Duel of a title past the top or bottom Anchor score, or on a score', () => {
+    const cases: [answer: Answer, score: number][] = [
+      [() => 'win', 10],
+      [() => 'loss', 6],
+      [(level) => (level === 8 ? 'tie' : between(level, 0)), 8],
+    ]
+    for (const [answer, score] of cases) {
+      const { log, levels } = meet(decidingLogOf(anchors, [1]), 1, answer)
+      expect(levels).toEqual(meet(logOf(anchors, [1]), 1, answer).levels)
+      expect(replay(log).prompt).toEqual({ kind: 'all-complete' })
+      expect(replay(log).keepMyScale!.titles).toEqual([{ id: 1, settled: true, levels: [score] }])
+    }
+  })
+
+  it('Undo takes back a Deciding Duel, and the same Duel is asked again', () => {
+    for (const decidingDuels of [0, 1, 3]) {
+      const { log } = meet(decidingLogOf(anchors, [1]), 1, between, confirmed + decidingDuels)
+      const asked = replay(log)
+      const answered = meet(log, 1, between, 1).log
+      expect(replay(answered).prompt).not.toEqual(asked.prompt)
+      expect(replay(plus(answered, { type: 'undo' }))).toEqual(asked)
+    }
+    // After the fourth: Undo of the closer-to answer comes back to the prompt, and one more to the fourth Duel.
+    const { log } = meet(decidingLogOf(anchors, [1]), 1, between)
+    const chosen = plus(log, { type: 'closer-to-answered', id: 1, level: 9 })
+    expect(replay(plus(chosen, { type: 'undo' })).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+    const again = meet(plus(chosen, { type: 'undo' }, { type: 'undo' }), 1, between)
+    expect(again.levels).toEqual([8])
+    expect(replay(again.log).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+  })
+
+  it('asks a Re-ranked title four Deciding Duels again', () => {
+    const first = meet(decidingLogOf(anchors, [1]), 1, between)
+    for (const log of [first.log, plus(first.log, { type: 'closer-to-answered', id: 1, level: 8 })]) {
+      const again = meet(plus(log, { type: 'rerank-requested', id: 1 }), 1, between)
+      expect(again.levels).toEqual(first.levels)
+      expect(replay(again.log).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+    }
+  })
+
+  it('asks a title brought back from Forgotten four Deciding Duels again', () => {
+    const first = meet(decidingLogOf(anchors, [1]), 1, between)
+    const back = plus(first.log, { type: 'forgotten', id: 1 }, { type: 'unforgotten', id: 1 })
+    expect(meet(back, 1, between).levels).toEqual(first.levels)
+  })
+
+  it('asks no Deciding Duel of a title split on both scores: the closer-to prompt, as before', () => {
+    const both: Answer = (level, nth) => (level === 9 ? (nth === 1 ? 'win' : 'loss') : level === 8 && nth === 1 ? 'loss' : 'win')
+    const { log, levels } = meet(decidingLogOf(anchors, [1]), 1, both)
+    expect(levels.filter((level) => level === 9)).toHaveLength(3)
+    expect(levels.filter((level) => level === 8)).toHaveLength(3)
+    expect(levels).toEqual(meet(logOf(anchors, [1]), 1, both).levels)
+    expect(replay(log).prompt).toEqual({ kind: 'closer-to', id: 1, upper: 9, lower: 8 })
+  })
+
+  it('counts "about the same" as a split past the top and bottom Anchor scores too', () => {
+    const cases: [answer: Answer, score: number, before: number][] = [
+      // Beats two of the three 9s and is about the same as the other: past the 9s by the third Anchor.
+      [(level, nth) => (level === 9 && nth === 1 ? 'tie' : 'win'), 9, 10],
+      [(level, nth) => (level === 7 && nth === 1 ? 'tie' : 'loss'), 7, 6],
+    ]
+    for (const [answer, score, before] of cases) {
+      const { log, levels } = meet(decidingLogOf(anchors, [1]), 1, answer)
+      expect(replay(log).keepMyScale!.titles).toEqual([{ id: 1, settled: true, levels: [score] }])
+      // Under the rule of ADR 0012 the same Duels leave it past the end.
+      const onTheScore = meet(logOf(anchors, [1]), 1, answer)
+      expect(onTheScore.levels).toEqual(levels)
+      expect(replay(onTheScore.log).keepMyScale!.titles).toEqual([{ id: 1, settled: true, levels: [before] }])
+    }
+  })
+
+  it('confirms every boundary as before and asks at most four Duels more, only where the closer-to prompt would be asked', () => {
+    const random = rng(13)
+    let more = 0
+    for (let trial = 0; trial < 300; trial++) {
+      const all = [10, 9, 8, 7, 6, 5, 4]
+      const scale = all.filter(() => random() < 0.7)
+      while (scale.length < 3) scale.push(all.find((l) => !scale.includes(l))!)
+      const list = scale.flatMap((level, i) =>
+        Array.from({ length: 1 + Math.floor(random() * 7) }, (_, n) => ({ id: 1000 + 10 * i + n, level })),
+      )
+      // Every Anchor has one answer for the title, mostly the one its worth gives, so both rules hear the same.
+      const worth = 3.5 + 7 * random()
+      const ties = random() < 0.5
+      const results = new Map(
+        list.map(({ id, level }): [number, Result] => {
+          if (ties && Math.abs(worth - level) < 0.25) return [id, 'tie']
+          return [id, random() < 0.15 ? (random() < 0.5 ? 'win' : 'loss') : worth > level ? 'win' : 'loss']
+        }),
+      )
+      const seed = Math.floor(random() * 2 ** 32)
+      const run = (log: DuelLog) => {
+        const met: number[] = []
+        for (let state = replay(log); state.prompt.kind === 'anchor-duel'; state = replay(log)) {
+          const p = state.prompt
+          met.push(p.b)
+          log = plus(log, { type: 'duel-answered', a: p.a, b: p.b, result: SIDE[results.get(p.b)!] })
+        }
+        return { met, state: replay(log) }
+      }
+      const before = run(startKeepMyScaleLog({ ...header, seed, format: 'POINT_10', anchors: list, ids: [1] }))
+      const after = run(decidingLogOf(list, [1], seed))
+      const deciding = after.met.slice(before.met.length)
+      expect(after.met.slice(0, before.met.length)).toEqual(before.met)
+      expect(deciding.length).toBeLessThanOrEqual(4)
+      if (deciding.length === 0) continue
+      more++
+      // Only between two scores, against Anchors of those two.
+      const prompt = before.state.prompt
+      if (prompt.kind !== 'closer-to') throw new Error(`${deciding.length} more Duels after ${prompt.kind}`)
+      for (const anchor of deciding) expect([prompt.upper, prompt.lower]).toContain(levelOf(list, anchor))
+      if (after.state.prompt.kind === 'closer-to') {
+        expect(after.state.prompt).toEqual(prompt)
+      } else {
+        expect(after.state.prompt).toEqual({ kind: 'all-complete' })
+        expect([prompt.upper, prompt.lower]).toContain(after.state.keepMyScale!.titles[0].levels[0])
+      }
+    }
+    expect(more).toBeGreaterThan(30)
+  })
+
+  it('settles every title, on its own Anchor score when a consistent oracle answers', () => {
+    const random = rng(29)
+    for (let trial = 0; trial < 20; trial++) {
+      const scale = [10, 9, 8, 7, 6, 5].filter(() => random() < 0.8)
+      while (scale.length < 3) scale.push([10, 9, 8, 7, 6, 5].find((l) => !scale.includes(l))!)
+      scale.sort((x, y) => y - x)
+      const list = scale.flatMap((level, i) =>
+        Array.from({ length: 1 + Math.floor(random() * 8) }, (_, n) => ({ id: 1000 + 10 * i + n, level })),
+      )
+      const ids = Array.from({ length: 10 }, (_, i) => 1 + i)
+      const truth = new Map(ids.map((id) => [id, scale[Math.floor(random() * scale.length)] + (random() < 0.5 ? 0.4 : 0)]))
+      const { state, closer } = play(decidingLogOf(list, ids, Math.floor(random() * 2 ** 32)), list, truth, random)
+      const inside = (t: number) => !scale.includes(t) && t < scale[0] && t > scale[scale.length - 1]
+      expect(state.keepMyScale!.titles.every((t) => t.settled)).toBe(true)
+      expect(state.keepMyScale!.suspect).toEqual([])
+      // A title between two scores is still asked, after its Deciding Duels: a consistent oracle never splits.
+      expect(closer.map((c) => c.title).sort((x, y) => x - y)).toEqual(ids.filter((id) => inside(truth.get(id)!)))
+      for (const [id, score] of settledScores(state)) {
+        const t = truth.get(id)!
+        if (scale.includes(t)) expect(score).toBe(t)
+        else if (inside(t)) expect(score).toBe(Math.max(...scale.filter((l) => l < t)))
+      }
+    }
+  })
+})
