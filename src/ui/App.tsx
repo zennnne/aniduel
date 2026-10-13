@@ -6,6 +6,7 @@ import { authorizeUrl, logout, restoreSession } from '../auth/session.ts'
 import { aniListClientId } from '../config.ts'
 import { createBackup, restoreBackup, type Backup } from '../persistence/backup.ts'
 import type { DuelLogFailure } from '../persistence/duelLogStore.ts'
+import type { StartFailure } from '../persistence/rankingLifecycle.ts'
 import { createSplitChoiceStore } from '../persistence/splitChoice.ts'
 import { createUnsettledStore } from '../persistence/unsettledTitles.ts'
 import { browserClock } from '../clock.ts'
@@ -13,12 +14,9 @@ import { importSummary } from '../import/importState.ts'
 import type { DroppedImport, ImportProgress } from '../import/previewImport.ts'
 import { createRequestLimiter } from '../writes/limiter.ts'
 import {
-  deleteDuelLog,
-  loadDuelLog,
   loadLastMediaType,
   loadPoolSettings,
   loadScoringSettings,
-  SaveError,
   saveLastMediaType,
   savePoolSettings,
   type RankingKey,
@@ -28,14 +26,9 @@ import { syncEvents } from '../pool/sync.ts'
 import {
   KEEP_MY_SCALE,
   answeredDuels,
-  appendEvent,
   promptedTitle,
-  replay,
-  startLog,
-  startKeepMyScaleLog,
   withSub,
   type BandIndex,
-  type DuelLog,
   type LogEvent,
   type RankingState,
   type SortGoal,
@@ -140,8 +133,8 @@ export function App({ fake }: { fake?: AniListSession }) {
   const [trending, setTrending] = useState<readonly Cover[]>([])
   const [mediaType, setMediaType] = useState<MediaType>('ANIME')
   const [statuses, setStatuses] = useState<readonly ListStatus[]>(DEFAULT_STATUSES)
-  const duelLog = useDuelLog(localStorage)
-  const { log, ranking } = duelLog
+  const duelLog = useDuelLog(localStorage, { seed: newSeed, discardImport })
+  const { log, ranking, lifecycle } = duelLog
   // Saved progress that exists but can't be used. Starting over would overwrite it, so Start is blocked.
   const [savedBroken, setSavedBroken] = useState(false)
   const [screen, setScreen] = useState<Screen>('start')
@@ -217,6 +210,14 @@ export function App({ fake }: { fake?: AniListSession }) {
     onFinished: endKeepMyScale,
   })
 
+  /**
+   * The Ranking's lifecycle throws away a Ranking's Import state through here. Declared as a function, read only when
+   * a Ranking is replaced, ended or thrown away: `imports` is made after the Duel log it reads.
+   */
+  function discardImport(key: RankingKey) {
+    imports.discard(key)
+  }
+
   // The titles the last Keep My Scale Ranking left unsettled, for this user and Media Type (#66).
   const unsettledStore = useMemo(() => (viewerId === null ? null : createUnsettledStore(localStorage, { userId: viewerId, mediaType })), [viewerId, mediaType])
 
@@ -279,32 +280,22 @@ export function App({ fake }: { fake?: AniListSession }) {
     setMediaType(key.mediaType)
     setRankingUi(leftRanking)
     imports.open(key)
-    setStatuses(loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES)
-    /** Saved progress exists but can't be used: nothing of it shows, and Start is blocked so it isn't overwritten. */
-    const unusable = (why: string) => {
-      duelLog.close()
+    const opened = lifecycle.open(key)
+    setStatuses(opened.statuses)
+    // Saved progress exists but can't be used: nothing of it shows, and Start is blocked so it isn't overwritten.
+    if (opened.kind === 'unusable') {
       setSavedBroken(true)
       setNotice({
         tone: 'error',
-        message: `Your saved ${MEDIA_LABEL[key.mediaType]} progress in this browser can't be used (${why}). It was left untouched.`,
+        message: `Your saved ${MEDIA_LABEL[key.mediaType]} progress in this browser can't be used (${opened.message}). It was left untouched.`,
         action: { label: 'Restore a Backup', onClick: () => setDialog('restore') },
       })
       return false
     }
-    let saved: DuelLog | null
-    try {
-      saved = loadDuelLog(localStorage, key)
-    } catch (e) {
-      return unusable(e instanceof Error ? e.message : 'unknown error')
-    }
-    if (saved) {
-      // Replayed first: nothing shows from a log the engine can't replay.
-      const shown = duelLog.show(saved)
-      if (!shown.ok) return unusable(shown.reason === 'does-not-replay' ? shown.message : 'unknown error')
-    } else duelLog.close()
     setSavedBroken(false)
-    if (saved && resume) goTo('ranking')
-    return saved !== null
+    const usable = opened.kind === 'usable'
+    if (usable && resume) goTo('ranking')
+    return usable
   }
 
   function endSession(deleteProgress: boolean) {
@@ -316,7 +307,7 @@ export function App({ fake }: { fake?: AniListSession }) {
     setViewer(null)
     setLists({})
     setStatuses(DEFAULT_STATUSES)
-    duelLog.close()
+    lifecycle.close()
     setSavedBroken(false)
     setRankingUi(leftRanking)
     imports.close()
@@ -443,14 +434,15 @@ export function App({ fake }: { fake?: AniListSession }) {
   }
 
   /**
-   * What the user sees when the Duel log stayed as it was. The browser refused to save: the screen stays on what is
-   * saved, and the banner offers a Backup of it. The log doesn't replay: the caller's sentence, given the engine's
-   * message, or nothing where the caller says to ignore it. No open log: nothing. Only a refused save on its own
-   * (of something saved beside the log) comes without that choice: nothing was replayed.
+   * What the user sees when the Duel log stayed as it was, or a Ranking was not started. The browser refused to save:
+   * the screen stays on what is saved, and the banner offers a Backup of it. The log doesn't replay: the caller's
+   * sentence, given the engine's message, or nothing where the caller says to ignore it. No open log, something in
+   * the way of a new Ranking, nothing to replace: nothing, the screens already prevent them. Only a refused save on
+   * its own (of something saved beside the log) comes without that choice: nothing was replayed.
    */
   function reportFailure(failure: { reason: 'save-refused' }): void
-  function reportFailure(failure: DuelLogFailure, notReplayed: ((why: string) => string) | 'ignore'): void
-  function reportFailure(failure: DuelLogFailure, notReplayed?: ((why: string) => string) | 'ignore') {
+  function reportFailure(failure: DuelLogFailure | StartFailure, notReplayed: ((why: string) => string) | 'ignore'): void
+  function reportFailure(failure: DuelLogFailure | StartFailure, notReplayed?: ((why: string) => string) | 'ignore') {
     switch (failure.reason) {
       case 'save-refused':
         setNotice({
@@ -463,6 +455,8 @@ export function App({ fake }: { fake?: AniListSession }) {
         if (typeof notReplayed === 'function') setNotice({ tone: 'error', message: notReplayed(failure.message) })
         return
       case 'no-open-log':
+      case 'in-the-way':
+      case 'nothing-to-replace':
         return
     }
   }
@@ -564,18 +558,13 @@ export function App({ fake }: { fake?: AniListSession }) {
 
   /** `fromScores`: the user turned on Rough Sort from Scores (ADR 0008), a new Ranking only. */
   function startOrContinue(fromScores = false) {
-    if (!viewer) return
+    if (!viewer || !rankingKey) return
     if (!duelLog.latest()) {
       // Keep My Scale starts from the Picker instead (#64), so a new Ranking here always starts with Rough Sort.
       if (!start?.startOrder || start.newGoal === KEEP_MY_SCALE) return
       const { startOrder, newGoal, scoresPlan } = start
-      // The new log carries its own Sort Goal and default scoring settings (ADR 0007).
-      const started = startLog({ seed: newSeed(), userId: viewer.id, mediaType, ids: startOrder, scoreFormat: viewer.scoreFormat })
-      // Full Ranking picked on Start: the same switch as from the menu, before anything is sorted.
-      const log = switchGoalEvents(replay(started), null, viewer.scoreFormat, newGoal).reduce(appendEvent, started)
-      const plan = fromScores && scoresPlan?.offerable ? scoresPlan : null
-      const saved = duelLog.save(plan ? appendEvent(log, { type: 'bands-from-scores', bands: plan.bands }) : log)
-      if (!saved.ok) return reportFailure(saved, couldNotStart)
+      const started = lifecycle.start(rankingKey, viewer.scoreFormat, { order: startOrder, goal: newGoal, fromScores: fromScores ? scoresPlan : null })
+      if (!started.ok) return reportFailure(started, couldNotStart)
     } else {
       // The statuses may have changed on Start: titles that now match join, the rest leave.
       const summary = syncPool(mediaType, list, statuses)
@@ -737,33 +726,36 @@ export function App({ fake }: { fake?: AniListSession }) {
    * new log now, naming the split rule chosen in the Picker (ADR 0013); Duels start straight away. The Picker leaves
    * the history, so Back from the Duels goes to Start.
    */
-  function startKeepMyScale({ order, anchors, split, ownSplit }: PickerStart) {
-    if (!viewer) return
-    const log = startKeepMyScaleLog({ seed: newSeed(), userId: viewer.id, mediaType, format: viewer.scoreFormat, anchors, ids: order, split })
-    const saved = duelLog.save(log)
-    if (!saved.ok) return reportFailure(saved, couldNotStart)
-    // The titles left unsettled last time are offered no more, whether or not they were picked again (#66).
-    unsettledStore?.clear()
-    // Only a choice the user made themselves is remembered, never one that followed the recommendation (ADR 0013).
-    if (ownSplit) createSplitChoiceStore(localStorage, viewer.id).remember(ownSplit)
+  function startKeepMyScale(picks: PickerStart) {
+    if (!viewer || !rankingKey) return
+    const started = lifecycle.startKeepMyScale(rankingKey, viewer.scoreFormat, picks)
+    if (!started.ok) return reportFailure(started, couldNotStart)
+    showKeepMyScaleDuels()
+  }
+
+  /** A Keep My Scale Ranking just started: on to its Duels, with the Picker out of the history. */
+  function showKeepMyScaleDuels() {
     window.history.replaceState({ screen: 'start' }, '')
     goTo('ranking')
   }
 
   /**
-   * Runs only after the user confirmed in the Replace dialog (#46): the saved Scores / Full Ranking Ranking is thrown
-   * away and a Keep My Scale one starts on the titles picked in the Picker.
+   * Runs only after the user confirmed in the Replace dialog (#46): a Keep My Scale Ranking on the titles picked in
+   * the Picker is saved over the saved Scores / Full Ranking Ranking. If the browser refuses, that one is still saved
+   * and open, and the banner says so.
    */
   function replaceWithKeepMyScale() {
-    if (!rankingKey || !pickedStart) return
-    deleteDuelLog(localStorage, rankingKey)
-    imports.discard(rankingKey)
+    if (!viewer || !rankingKey || !pickedStart) return
     setDialog(null)
-    setNotice(null)
-    openRanking(rankingKey, false)
-    setPickedGoal(KEEP_MY_SCALE)
     setPickedStart(null)
-    startKeepMyScale(pickedStart)
+    const replaced = lifecycle.replaceWithKeepMyScale(rankingKey, viewer.scoreFormat, pickedStart)
+    if (!replaced.ok) return reportFailure(replaced, couldNotStart)
+    setNotice(null)
+    // What only made sense for the old Ranking goes with it; its unfinished Import, if any, is no longer offered.
+    setRankingUi(leftRanking)
+    imports.open(rankingKey)
+    setPickedGoal(KEEP_MY_SCALE)
+    showKeepMyScaleDuels()
     showToast(`Your ${MEDIA_LABEL[mediaType]} Ranking was replaced by Keep My Scale.`)
   }
 
@@ -773,26 +765,17 @@ export function App({ fake }: { fake?: AniListSession }) {
    * wrote are Anchors for the next Ranking.
    */
   function endKeepMyScale(key: RankingKey) {
-    const ended = duelLog.latest()?.ranking
-    if (!ended || !isKeepMyScale(ended)) return
-    try {
-      createUnsettledStore(localStorage, key).remember(ended)
-    } catch (e) {
-      // Not the Duel log, but the same refusal: the same banner says so.
-      if (!(e instanceof SaveError)) throw e
-      reportFailure({ reason: 'save-refused' })
-    }
-    deleteDuelLog(localStorage, key)
-    imports.discard(key)
-    duelLog.close()
+    const end = lifecycle.endKeepMyScale(key)
+    if (!end.ended) return
+    // Not the Duel log, but the same refusal: the same banner says so.
+    if (end.unsettled === 'lost') reportFailure({ reason: 'save-refused' })
     setRankingUi(leftRanking)
   }
 
   /** Runs only after the user confirmed in the Start over dialog. */
   function startOver() {
     if (!rankingKey) return
-    deleteDuelLog(localStorage, rankingKey)
-    imports.discard(rankingKey)
+    lifecycle.startOver(rankingKey)
     setDialog(null)
     setNotice(null)
     openRanking(rankingKey, false)
@@ -902,16 +885,17 @@ export function App({ fake }: { fake?: AniListSession }) {
   const animeList = lists.ANIME
   const savedAnimeStart = useMemo((): StartView | null => {
     if (mediaType === 'ANIME' || viewerId === null || !viewerFormat || !titleLanguage) return null
-    const key: RankingKey = { userId: viewerId, mediaType: 'ANIME' }
-    const statuses = loadPoolSettings(localStorage, key)?.statuses ?? DEFAULT_STATUSES
-    const anime = { list: animeList ?? null, statuses, scoreFormat: viewerFormat, titleLanguage, picked: null }
-    try {
-      const saved = loadDuelLog(localStorage, key)
-      return startView({ ...anime, saved: saved && { log: saved, ranking: replay(saved) }, savedBroken: false })
-    } catch {
-      return startView({ ...anime, saved: null, savedBroken: true })
-    }
-  }, [mediaType, viewerId, viewerFormat, titleLanguage, animeList])
+    const saved = lifecycle.saved({ userId: viewerId, mediaType: 'ANIME' })
+    return startView({
+      list: animeList ?? null,
+      statuses: saved.statuses,
+      scoreFormat: viewerFormat,
+      titleLanguage,
+      picked: null,
+      saved: saved.kind === 'usable' ? { log: saved.log, ranking: saved.ranking } : null,
+      savedBroken: saved.kind === 'unusable',
+    })
+  }, [lifecycle, mediaType, viewerId, viewerFormat, titleLanguage, animeList])
   const animeStart = mediaType === 'ANIME' ? start : savedAnimeStart
   // The offer waits until the saves are written and the list read again, so it counts the titles just added.
   const offer = exitOffer({ added: catchUp.added, anime: catchUp.listed && animeStart ? animeStanding(animeStart) : null })
