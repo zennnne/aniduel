@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { saveDuelLog } from '../persistence/progress.ts'
-import { appendEvent, replay, type DuelLog, type LogEvent, type RankingState } from '../ranking/engine.ts'
+import { appendEvent, replay, replayer, type DuelLog, type LogEvent, type RankingState, type Replayer } from '../ranking/engine.ts'
 
 export type DuelLogStore = {
   /** The log on screen; null when this Media Type has no usable Ranking. */
@@ -23,16 +23,21 @@ export type DuelLogStore = {
 /** A log and its replay, kept together so each log is replayed once. */
 export type ReplayedLog = { log: DuelLog; ranking: RankingState }
 
-/** `log` with `events` appended (ADR 0005), replayed. Throws (ReplayError) if it doesn't replay. */
-export function appendAndReplay(log: DuelLog, events: LogEvent[]): ReplayedLog {
+/**
+ * `log` with `events` appended (ADR 0005), replayed. Throws (ReplayError) if it doesn't replay. Given the `replayer`
+ * that replayed `log`, only the new events are applied.
+ */
+export function appendAndReplay(log: DuelLog, events: LogEvent[], replayLog: Replayer = replay): ReplayedLog {
   const next = events.reduce(appendEvent, log)
-  return { log: next, ranking: replay(next) }
+  return { log: next, ranking: replayLog(next) }
 }
 
 /** The Duel log of the open Ranking: appended to, replayed and saved after every answer (ADR 0001, ADR 0005). */
 export function useDuelLog(storage: Storage): DuelLogStore {
   const [shown, setShown] = useState<ReplayedLog | null>(null)
   const latestRef = useRef<DuelLog | null>(null)
+  // One replayer for the open Ranking: an answer applies its own event instead of replaying the whole log.
+  const [replayLog] = useState(replayer)
 
   function showReplayed(next: ReplayedLog | null) {
     latestRef.current = next?.log ?? null
@@ -40,7 +45,7 @@ export function useDuelLog(storage: Storage): DuelLogStore {
   }
 
   function show(next: DuelLog | null) {
-    showReplayed(next ? appendAndReplay(next, []) : null)
+    showReplayed(next ? appendAndReplay(next, [], replayLog) : null)
   }
 
   function save(next: DuelLog) {
@@ -51,7 +56,7 @@ export function useDuelLog(storage: Storage): DuelLogStore {
   function append(...events: LogEvent[]): RankingState | null {
     const current = latestRef.current
     if (!current) return null
-    const next = appendAndReplay(current, events)
+    const next = appendAndReplay(current, events, replayLog)
     saveDuelLog(storage, next.log)
     showReplayed(next)
     return next.ranking

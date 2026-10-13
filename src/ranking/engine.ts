@@ -1035,7 +1035,9 @@ function bandsFromScores(machine: Machine, event: Extract<LogEvent, { type: 'ban
  */
 function leaveRoughSort(machine: Machine, id: number, place: Place, returning: 'fix' | 'in-order'): void {
   const segment = destination(machine, place.band, place.sub)
-  takeOut(machine, id)
+  // A title waiting in Rough Sort is in no Band, so the queue is the only place to take it out of.
+  if (machine.roughSortQueue[0] === id) machine.roughSortQueue.shift()
+  else machine.roughSortQueue.splice(machine.roughSortQueue.indexOf(id), 1)
   machine.lastPlace.set(id, place)
   machine.placedAt.set(id, machine.step)
   const resume = machine.returning.get(id)
@@ -1147,11 +1149,65 @@ function standingNow(machine: Machine, layout: ScoresLayout): Standing {
 
 /** Rebuilds the derived state from the log. Throws ReplayError if the log can't be trusted. */
 export function replay(log: DuelLog): RankingState {
-  const { format, engine, seed } = log.header
+  const machine = startMachine(log.header)
+  const { effective, canUndo } = resolveUndo(log.events)
+  for (let step = 0; step < effective.length; step++) applyStep(machine, effective[step], step)
+  return stateOf(machine, effective, canUndo)
+}
+
+/** `replay`, for one log as it grows. */
+export type Replayer = (log: DuelLog) => RankingState
+
+/**
+ * A `replay` that remembers the last log it replayed: a log that is that one with events appended (ADR 0005) only
+ * has the new events applied, so an answer costs the same however long the log is. Any other log is replayed from
+ * the start, and so is one that appends an Undo (it cancels an event already applied). It always returns what
+ * `replay` returns and throws what `replay` throws; the log stays the source of truth (ADR 0001).
+ */
+export function replayer(): Replayer {
+  let last: { log: DuelLog; machine: Machine; steps: number } | null = null
+  return (log) => {
+    const from = last
+    // A refused event may leave the machine half changed, so it is only kept once the log has replayed.
+    last = null
+    const { effective, canUndo } = resolveUndo(log.events)
+    let machine: Machine
+    if (from && continues(from.log, log)) {
+      machine = from.machine
+      machine.engine = log.header.engine
+      for (let step = from.steps; step < effective.length; step++) applyStep(machine, effective[step], step)
+    } else {
+      machine = startMachine(log.header)
+      for (let step = 0; step < effective.length; step++) applyStep(machine, effective[step], step)
+    }
+    const state = stateOf(machine, effective, canUndo)
+    last = { log, machine, steps: effective.length }
+    return state
+  }
+}
+
+/**
+ * Whether `log` is `before` with events appended and no Undo among them, so that replaying `log` is replaying
+ * `before` and then the new events. The header may only differ by a newer engine version (`appendEvent` stamps it):
+ * that never changes how the earlier events replay.
+ */
+function continues(before: DuelLog, log: DuelLog): boolean {
+  const { header, events } = log
+  if (header.format !== before.header.format || header.seed !== before.header.seed) return false
+  if (header.engine < before.header.engine || !KNOWN_ENGINE_VERSIONS.includes(header.engine)) return false
+  if (events.length < before.events.length) return false
+  for (let i = 0; i < before.events.length; i++) if (events[i] !== before.events[i]) return false
+  for (let i = before.events.length; i < events.length; i++) if (events[i].type === 'undo') return false
+  return true
+}
+
+/** The machine before any event. Throws ReplayError if the header's versions are unknown. */
+function startMachine(header: LogHeader): Machine {
+  const { format, engine, seed } = header
   if (format !== LOG_FORMAT_VERSION) throw new ReplayError(`Unknown log format version ${format}`)
   if (!KNOWN_ENGINE_VERSIONS.includes(engine)) throw new ReplayError(`Unknown engine version ${engine}`)
   const bandSegments: Segment[][] = BANDS.map(() => [{ tiers: [], queue: [] }])
-  const machine: Machine = {
+  return {
     engine,
     roughSortQueue: [],
     bands: bandSegments,
@@ -1175,28 +1231,35 @@ export function replay(log: DuelLog): RankingState {
     settledOnce: false,
     keepMyScale: null,
   }
-  const { effective, canUndo } = resolveUndo(log.events)
-  for (let step = 0; step < effective.length; step++) {
-    machine.step = step
-    const event = effective[step]
-    machine.answeredIn = null
-    apply(machine, event)
-    const answeredIn = machine.answeredIn
-    if (!onScores(machine)) machine.segments.forEach(placeEmptyFronts)
-    else if (answeredIn) {
-      placeEmptyIntervals(answeredIn)
-      // A Duel answer changes only its own Segment: no title joins or leaves, so the layout still holds.
-      machine.scoresCache.knowledge.delete(answeredIn)
-    } else {
-      machine.segments.forEach(placeEmptyIntervals)
-      machine.scoresCache = { knowledge: new Map() }
-    }
-    refocus(machine)
-    // A focused Band always has work, so only a Ranking with no focus can be all settled. An empty one doesn't count.
-    if (!machine.settledOnce && onScores(machine) && machine.roughSortQueue.length === 0 && machine.focus === null) {
-      machine.settledOnce = scoresLayout(machine)!.size > 0 && BANDS.every((band) => !hasWork(machine, band))
-    }
+}
+
+/** Applies the event at position `step` (among the events that still count), then everything that follows from it. */
+function applyStep(machine: Machine, event: RecordedEvent, step: number): void {
+  machine.step = step
+  machine.answeredIn = null
+  apply(machine, event)
+  const answeredIn = machine.answeredIn
+  if (!onScores(machine)) machine.segments.forEach(placeEmptyFronts)
+  else if (answeredIn) {
+    placeEmptyIntervals(answeredIn)
+    // A Duel answer changes only its own Segment: no title joins or leaves, so the layout still holds.
+    machine.scoresCache.knowledge.delete(answeredIn)
+  } else {
+    machine.segments.forEach(placeEmptyIntervals)
+    machine.scoresCache = { knowledge: new Map() }
   }
+  refocus(machine)
+  // A focused Band always has work, so only a Ranking with no focus can be all settled. An empty one doesn't count.
+  if (!machine.settledOnce && onScores(machine) && machine.roughSortQueue.length === 0 && machine.focus === null) {
+    machine.settledOnce = scoresLayout(machine)!.size > 0 && BANDS.every((band) => !hasWork(machine, band))
+  }
+}
+
+/**
+ * The derived state of a machine after `effective`. It shares nothing the machine changes later, so a state stays
+ * as it is while a `replayer` applies more events.
+ */
+function stateOf(machine: Machine, effective: readonly RecordedEvent[], canUndo: boolean): RankingState {
   const layout = scoresLayout(machine)
   const standing = layout ? standingNow(machine, layout) : null
   const bands = machine.bands.map((segments): BandState => {
@@ -1221,7 +1284,7 @@ export function replay(log: DuelLog): RankingState {
   return {
     prompt: nextPrompt(machine),
     bands,
-    forgotten: machine.forgotten,
+    forgotten: [...machine.forgotten],
     progress: {
       roughSort: { done: machine.total - machine.roughSortQueue.length, total: machine.total },
       bands: bandProgress,
@@ -1230,7 +1293,7 @@ export function replay(log: DuelLog): RankingState {
     bandChoice,
     canUndo,
     // No Board under Keep My Scale: it has no Bands (ADR 0009).
-    board: new LazyBoard(!keepMyScale && !effective.some((event) => event.type === 'duel-answered'), machine.bands, machine.placedAt),
+    board: new LazyBoard(!keepMyScale && !effective.some((event) => event.type === 'duel-answered'), bands, new Map(machine.placedAt)),
     ...(machine.sortGoal && { sortGoal: machine.sortGoal }),
     ...(machine.scoring && { scoring: machine.scoring }),
     ...(standing && { standing }),
@@ -1244,27 +1307,28 @@ export function replay(log: DuelLog): RankingState {
  */
 class LazyBoard implements BoardView {
   readonly open: boolean
-  #segments: readonly (readonly Segment[])[]
+  #state: readonly BandState[]
   #placedAt: ReadonlyMap<number, number>
   #bands: BoardView['bands'] | undefined
 
-  constructor(open: boolean, segments: readonly (readonly Segment[])[], placedAt: ReadonlyMap<number, number>) {
+  constructor(open: boolean, state: readonly BandState[], placedAt: ReadonlyMap<number, number>) {
     this.open = open
-    this.#segments = segments
+    this.#state = state
     this.#placedAt = placedAt
   }
 
   get bands(): BoardView['bands'] {
-    this.#bands ??= this.#segments.map((segments) => ({ titles: boardTitles(segments, this.#placedAt) }))
+    this.#bands ??= this.#state.map((band) => ({ titles: boardTitles(band, this.#placedAt) }))
     return this.#bands
   }
 }
 
 /** A Band's titles in Board order: latest `at` first, then by id. */
-function boardTitles(segments: readonly Segment[], placedAt: ReadonlyMap<number, number>): BoardTitle[] {
-  const titles = segments.flatMap((segment, s) => {
-    const ids = [...segment.tiers.flatMap((tier) => tier.members), ...segment.queue.map((insertion) => insertion.id)]
-    return ids.map((id) => withSub({ id, at: placedAt.get(id) ?? 0 }, subOfSegment(segments, s)))
+function boardTitles(band: BandState, placedAt: ReadonlyMap<number, number>): BoardTitle[] {
+  const parts: readonly SubBandState[] = band.subBands ?? [band]
+  const titles = parts.flatMap((part, s) => {
+    const ids = [...part.tiers.flat(), ...part.unplaced]
+    return ids.map((id) => withSub({ id, at: placedAt.get(id) ?? 0 }, band.subBands ? (s as SubBandIndex) : undefined))
   })
   return titles.sort((x, y) => y.at - x.at || x.id - y.id)
 }

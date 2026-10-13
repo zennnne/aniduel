@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "eval:catchup": "node scripts/catchup-eval.ts",
-    "eval:keep-my-scale": "node scripts/keep-my-scale-eval.ts"
+    "eval:keep-my-scale": "node scripts/keep-my-scale-eval.ts",
+    "bench:replay": "node scripts/replay-bench.ts"
   },
   "dependencies": {
     "react": "^19.2.8",
