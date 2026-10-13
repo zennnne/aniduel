@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { appendEvent, replay, startLog, type BandIndex, type DuelLog, type LogEvent, type SubBandIndex } from '../../ranking/engine.ts'
 import {
+  askFirst,
   keepSorting,
   moveDivider,
   moveTitle,
@@ -241,7 +242,7 @@ describe('what the split saves', () => {
     const view = columnsOf(input)
     expect(view.columns.map((cards) => cards.length)).toEqual([24, 47, 24])
     expect(view).toMatchObject({ savings: 0, lowSavings: true, duelsAsOneBand: 0 })
-    const asked = columnsOf(withChoices(input, view.done.ask ? view.done.choices : input.choices))
+    const asked = columnsOf(withChoices(input, view.done.ask ? askFirst(input.choices) : input.choices))
     expect(asked.warning?.event.unplaced.map((ids) => ids.length)).toEqual([24, 46, 24])
   })
 })
@@ -260,9 +261,9 @@ describe('pressing Done', () => {
     const input = moved(sorting(oversized()), [[2, 0]])
     const { done } = columnsOf(input)
     if (!done.ask) throw new Error('expected the warning')
-    expect(done.choices).toEqual({ ...input.choices, warning: true })
+    expect(askFirst(input.choices)).toEqual({ ...input.choices, warning: true })
     // Middle holds the ranked title and 93 others; a quarter each way would save 141, not 7.
-    const asked = columnsOf(withChoices(input, done.choices))
+    const asked = columnsOf(withChoices(input, askFirst(input.choices)))
     expect(asked).toMatchObject({ savings: 7, warning: { middle: 94, quarterSavings: 141 } })
   })
 
@@ -270,7 +271,7 @@ describe('pressing Done', () => {
     const input = moved(sorting(oversized()), [[2, 0]])
     const { done } = columnsOf(input)
     if (!done.ask) throw new Error('expected the warning')
-    expect(columnsOf(withChoices(input, done.choices)).warning?.event).toEqual({
+    expect(columnsOf(withChoices(input, askFirst(input.choices))).warning?.event).toEqual({
       type: 'band-split',
       band: 0,
       cuts: [0, 1],
@@ -282,15 +283,15 @@ describe('pressing Done', () => {
     const input = moved(sorting(oversized()), [[2, 0]])
     const { done } = columnsOf(input)
     if (!done.ask) throw new Error('expected the warning')
-    expect(keepSorting(done.choices)).toEqual(input.choices)
-    expect(columnsOf(withChoices(input, keepSorting(done.choices))).warning).toBeNull()
+    expect(keepSorting(askFirst(input.choices))).toEqual(input.choices)
+    expect(columnsOf(withChoices(input, keepSorting(askFirst(input.choices)))).warning).toBeNull()
   })
 
   it('asks again while the warning is up, so Enter behind it records nothing', () => {
     const input = moved(sorting(oversized()), [[2, 0]])
     const { done } = columnsOf(input)
     if (!done.ask) throw new Error('expected the warning')
-    expect(columnsOf(withChoices(input, done.choices)).done).toEqual({ ask: true, choices: done.choices })
+    expect(columnsOf(withChoices(input, askFirst(input.choices))).done).toEqual({ ask: true })
   })
 })
 
@@ -298,7 +299,7 @@ describe('the `band-split` event', () => {
   /** The event the columns would record now, whether or not Done asks first. */
   const eventOf = (input: SplitInput) => {
     const { done } = columnsOf(input)
-    return done.ask ? columnsOf(withChoices(input, done.choices)).warning!.event : done.event
+    return done.ask ? columnsOf(withChoices(input, askFirst(input.choices))).warning!.event : done.event
   }
   const sortedFresh = () =>
     moved(sorting(freshLoved()), [
@@ -363,7 +364,7 @@ describe('once the Band is split', () => {
   function afterSplit(log: DuelLog, moves: readonly (readonly [number, SubBandIndex])[]) {
     const input = moved(sorting(log), moves)
     const view = columnsOf(input)
-    const event = view.done.ask ? columnsOf(withChoices(input, view.done.choices)).warning!.event : view.done.event
+    const event = view.done.ask ? columnsOf(withChoices(input, askFirst(input.choices))).warning!.event : view.done.event
     return splitView({ ...input, state: replay(appendEvent(log, event)) })
   }
 

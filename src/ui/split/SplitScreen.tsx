@@ -6,6 +6,7 @@ import { Dialog } from '../Dialog.tsx'
 import { Kao, SubPill } from '../Kao.tsx'
 import { titleName } from '../meta.ts'
 import {
+  askFirst,
   keepSorting,
   moveDivider,
   moveTitle,
@@ -198,7 +199,7 @@ export function SplitScreen(props: {
 
   function done() {
     if (view.step !== 'columns') return
-    if (view.done.ask) setChoices(view.done.choices)
+    if (view.done.ask) setChoices(askFirst)
     else onSplit(view.done.event)
   }
 

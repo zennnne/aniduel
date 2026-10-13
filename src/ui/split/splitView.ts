@@ -76,9 +76,9 @@ export type SplitStrip = {
 
 /**
  * What pressing Done does: record `event`, or, when the split saves fewer than `LOW_SAVINGS` Duels, ask first by
- * putting the warning up (`choices` are the choices with it up).
+ * putting the warning up (`askFirst`).
  */
-export type SplitDone = { ask: false; event: BandSplitEvent } | { ask: true; choices: SplitChoices }
+export type SplitDone = { ask: false; event: BandSplitEvent } | { ask: true }
 
 export type SplitView =
   | {
@@ -198,6 +198,11 @@ export function moveDivider(input: SplitInput, divider: 0 | 1, edge: number): Sp
   return { ...choices, cuts }
 }
 
+/** The choices after Done on a split that saves too little: the warning is up. */
+export function askFirst(choices: SplitChoices): SplitChoices {
+  return { ...choices, warning: true }
+}
+
 /** The choices after "Keep sorting": the warning is down. */
 export function keepSorting(choices: SplitChoices): SplitChoices {
   return { ...choices, warning: false }
@@ -248,7 +253,7 @@ export function splitView(input: SplitInput): SplitView {
     savings,
     lowSavings,
     duelsAsOneBand: bandWorstCase(state, b),
-    done: lowSavings ? { ask: true, choices: { ...choices, warning: true } } : { ask: false, event },
+    done: lowSavings ? { ask: true } : { ask: false, event },
     warning: choices.warning
       ? { middle: columns[1].length, quarterSavings: splitSavings(whole, parts(quarterSplit(toSort.size))), event }
       : null,
