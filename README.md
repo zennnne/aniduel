@@ -24,6 +24,27 @@ Already have a long list with scores you like? Skip straight to Keep My Scale. C
 ![Start: Anime chosen, with Keep My Scale selected as the Sort Goal](docs/screenshots/start.png)
 *Start: pick a Media Type and a Sort Goal. Catch-up opens from the mascot on the card.*
 
+## Catch-up
+
+**Catch-up** shows anime you have probably already watched and lets you add them to your list quickly. Anime only, opened from Start or the menu.
+
+It is not only for a new account. Use it to:
+
+- fill in a list that is too thin to rank
+- bring back titles you watched years ago and forgot to add
+- record the ones you started and never finished, as Paused or Dropped
+- find something to watch next and mark it Planning
+
+How it works:
+
+- **What it suggests:** 20 anime at a time, picked from the sequels, prequels and community recommendations of what is on your list, plus popular titles from the years and formats you watch. With a near-empty list, it first asks roughly when you started watching anime.
+- **What you do:** tap each cover to mark it Completed, Dropped, Planning or Paused, then save to get the next batch. Saves are written to AniList in the background.
+- **Titles you leave unmarked** are **Passed** and aren't suggested again for 30 days.
+- **When you are done**, it offers the next step of the loop: [Keep My Scale](#keep-my-scale) if you qualify, with every unscored Completed and Repeating title already picked in the Picker, or your default Sort Goal if not.
+
+![Catch-up: a batch of 20 suggested anime, some marked Completed, Dropped, Planning or Paused](docs/screenshots/catch-up.png)
+*Catch-up: tap a cover to mark it; unmarked titles are Passed for 30 days.*
+
 ## Sort Goals
 
 You pick a **Sort Goal** when a Ranking starts.
@@ -101,35 +122,13 @@ It is offered on Start when your list has at least 20 titles with a score, on at
 ### How it differs from Scores and Full Ranking
 
 - No Rough Sort, Board or Bands: Duels start straight away, always a picked title against an Anchor.
-- A score boundary is passed only when two different Anchors agree.
-- A title that beats one Anchor of a score and loses to another meets one more. If it then ends up next to that score, it gets that score without being asked.
-- An Anchor whose own score is contradicted by at least two titles, and by most of the titles settled against it, becomes a **Suspect Anchor**. It stops being used as a reference and is listed on Preview.
 - Preview opens as soon as one title is settled, so you can import some scores without finishing the rest.
 - The Ranking ends with its Import. Picked titles not yet settled can be picked again next time and start fresh, against Anchors that now include the ones just imported.
 
+The exact rules for placing a title among the Anchors are in [ADR 0009](docs/adr/0009-score-new-titles-against-anchors.md), [ADR 0012](docs/adr/0012-keep-my-scale-a-split-on-a-score-is-not-asked.md) and [ADR 0013](docs/adr/0013-keep-my-scale-deciding-duels-before-the-closer-to-prompt.md).
+
 ![A Keep My Scale Duel: a picked title against an Anchor, with the Anchors by score in the sidebar](docs/screenshots/keep-my-scale.png)
 *Keep My Scale: each Duel puts a picked title against an Anchor. The sidebar shows the Anchors by score and where the title can still land.*
-
-## Catch-up
-
-**Catch-up** shows anime you have probably already watched and lets you add them to your list quickly. Anime only, opened from Start or the menu.
-
-It is not only for a new account. Use it to:
-
-- fill in a list that is too thin to rank
-- bring back titles you watched years ago and forgot to add
-- record the ones you started and never finished, as Paused or Dropped
-- find something to watch next and mark it Planning
-
-How it works:
-
-- **What it suggests:** 20 anime at a time, picked from the sequels, prequels and community recommendations of what is on your list, plus popular titles from the years and formats you watch. With a near-empty list, it first asks roughly when you started watching anime.
-- **What you do:** tap each cover to mark it Completed, Dropped, Planning or Paused, then save to get the next batch. Saves are written to AniList in the background.
-- **Titles you leave unmarked** are **Passed** and aren't suggested again for 30 days.
-- **When you are done**, it offers the next step of the loop: Keep My Scale if you qualify, with every unscored Completed and Repeating title already picked in the Picker, or your default Sort Goal if not.
-
-![Catch-up: a batch of 20 suggested anime, some marked Completed, Dropped, Planning or Paused](docs/screenshots/catch-up.png)
-*Catch-up: tap a cover to mark it; unmarked titles are Passed for 30 days.*
 
 ## Development
 
