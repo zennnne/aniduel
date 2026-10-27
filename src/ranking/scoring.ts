@@ -198,6 +198,35 @@ export function withStep(settings: ScoringSettings, format: ScoreFormat, step: S
   return onStep(format, { ...settings, step }, settings.best, settings.worst)
 }
 
+/** A point of the scale the user picks a level for. */
+export type ScorePoint = 'best' | 'worst'
+
+/**
+ * The levels each point may be set to on the settings' Score Step, highest first: best only above worst, worst only
+ * below best, so the scale never rises down the Ranking. Preview disables every other level.
+ */
+export function allowedLevels(settings: ScoringSettings, format: ScoreFormat): Record<ScorePoint, number[]> {
+  const all = levels(format, settings.step)
+  return { best: all.filter((l) => l > settings.worst), worst: all.filter((l) => l < settings.best) }
+}
+
+/** One change the user makes to the scoring settings on Preview. */
+export type SettingsChange = { best: number } | { worst: number } | { distribution: Distribution } | { step: ScoreStep }
+
+/**
+ * The settings after one change (Preview's pickers and buttons all go through here). A level for a point must be one
+ * of its `allowedLevels`, or the change is rejected and the same `settings` object comes back unchanged. A new Score
+ * Step moves best and worst to the nearest levels on it (`withStep`).
+ */
+export function changeSettings(settings: ScoringSettings, format: ScoreFormat, change: SettingsChange): ScoringSettings {
+  if ('step' in change) return withStep(settings, format, change.step)
+  if ('distribution' in change) return { ...settings, distribution: change.distribution }
+  const point: ScorePoint = 'best' in change ? 'best' : 'worst'
+  const level = 'best' in change ? change.best : change.worst
+  if (!allowedLevels(settings, format)[point].includes(level)) return settings
+  return { ...settings, [point]: level }
+}
+
 /**
  * Best and worst carried over to a new Score Format (the user changed it on AniList, ADR 0003): each goes
  * through its raw score and is read the way AniList would show it. Worst never becomes 0 and stays below best.

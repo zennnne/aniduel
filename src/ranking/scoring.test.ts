@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RankingState } from './engine.ts'
-import { convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, parseSavedScoring, score, settingsFor, stepLabel, withStep } from './scoring.ts'
+import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, parseSavedScoring, score, settingsFor, stepLabel, withStep } from './scoring.ts'
 import { rankingOf as ranking } from './testRanking.ts'
 
 const levelsOf = (state: RankingState, ...args: Parameters<typeof score> extends [unknown, ...infer R] ? R : never) => {
@@ -301,5 +301,70 @@ describe('Whole Score Step (the Scores Sort Goal, ADR 0007)', () => {
   it('stays whole when the Score Format changes', () => {
     expect(convertSettings(whole(9, 3), 'POINT_10_DECIMAL', 'POINT_100')).toEqual(whole(90, 30))
     expect(convertSettings(whole(90, 30), 'POINT_100', 'POINT_5')).toEqual(whole(5, 2))
+  })
+})
+
+describe('Changing the scoring settings', () => {
+  it('offers best only above worst and worst only below best', () => {
+    const settings = { distribution: 'linear' as const, step: 'fine' as const, best: 5, worst: 2 }
+    expect(allowedLevels(settings, 'POINT_5')).toEqual({ best: [5, 4, 3], worst: [4, 3, 2, 1] })
+    const human = { distribution: 'bell' as const, step: 'human' as const, best: 8, worst: 6.5 }
+    expect(allowedLevels(human, 'POINT_10_DECIMAL').best).toEqual([10, 9.5, 9, 8.5, 8, 7.5, 7])
+    expect(allowedLevels(human, 'POINT_10_DECIMAL').worst).toEqual([7.5, 7, 6.5, 6, 5.5, 5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5])
+  })
+
+  it('sets best or worst to an allowed level', () => {
+    const settings = { distribution: 'bell' as const, step: 'fine' as const, best: 9, worst: 3 }
+    expect(changeSettings(settings, 'POINT_10', { best: 7 })).toEqual({ ...settings, best: 7 })
+    expect(changeSettings(settings, 'POINT_10', { worst: 8 })).toEqual({ ...settings, worst: 8 })
+  })
+
+  it('rejects a worst at or above best, and a best at or below worst, leaving the settings as they were', () => {
+    const settings = { distribution: 'linear' as const, step: 'fine' as const, best: 9, worst: 3 }
+    expect(changeSettings(settings, 'POINT_10', { worst: 9 })).toBe(settings)
+    expect(changeSettings(settings, 'POINT_10', { worst: 10 })).toBe(settings)
+    expect(changeSettings(settings, 'POINT_10', { best: 3 })).toBe(settings)
+    expect(changeSettings(settings, 'POINT_10', { best: 2 })).toBe(settings)
+  })
+
+  it('rejects a level off the Score Step', () => {
+    const settings = { distribution: 'linear' as const, step: 'human' as const, best: 9, worst: 3 }
+    expect(changeSettings(settings, 'POINT_10_DECIMAL', { best: 9.7 })).toBe(settings)
+    expect(changeSettings(settings, 'POINT_10_DECIMAL', { worst: 0 })).toBe(settings)
+  })
+
+  it('switches the Distribution and keeps best and worst', () => {
+    const settings = { distribution: 'linear' as const, step: 'human' as const, best: 9.5, worst: 3 }
+    expect(changeSettings(settings, 'POINT_10_DECIMAL', { distribution: 'bell' })).toEqual({ ...settings, distribution: 'bell' })
+  })
+
+  it('moves best and worst to the nearest levels on a new Score Step, worst still below best', () => {
+    const fine = { distribution: 'bell' as const, step: 'fine' as const }
+    expect(changeSettings({ ...fine, best: 9.7, worst: 3.2 }, 'POINT_10_DECIMAL', { step: 'human' })).toEqual({ ...fine, step: 'human', best: 9.5, worst: 3 })
+    expect(changeSettings({ ...fine, best: 9.4, worst: 9.3 }, 'POINT_10_DECIMAL', { step: 'human' })).toEqual({ ...fine, step: 'human', best: 9.5, worst: 9 })
+    expect(changeSettings({ ...fine, step: 'human', best: 95, worst: 30 }, 'POINT_100', { step: 'fine' })).toEqual({ ...fine, best: 95, worst: 30 })
+  })
+
+  it('on every Score Format and Score Step, offers every level on the step that keeps worst below best, and only those', () => {
+    const formats = ['POINT_100', 'POINT_10_DECIMAL', 'POINT_10', 'POINT_5', 'POINT_3'] as const
+    for (const format of formats) {
+      for (const step of ['fine', 'human', 'whole'] as const) {
+        const all = levels(format, step)
+        // About 12 best / worst picks per step, from the top level down, with best and worst on neighbouring levels too.
+        const stride = Math.max(1, Math.floor(all.length / 12))
+        for (let b = 0; b < all.length; b += stride) {
+          for (let w = b + 1; w < all.length; w += stride) {
+            const settings = { distribution: 'linear' as const, step, best: all[b], worst: all[w] }
+            const allowed = allowedLevels(settings, format)
+            expect(allowed.best).toEqual(all.slice(0, w))
+            expect(allowed.worst).toEqual(all.slice(b + 1))
+            for (const level of all) {
+              expect(changeSettings(settings, format, { best: level }).best).toBe(level > settings.worst ? level : settings.best)
+              expect(changeSettings(settings, format, { worst: level }).worst).toBe(level < settings.best ? level : settings.worst)
+            }
+          }
+        }
+      }
+    }
   })
 })

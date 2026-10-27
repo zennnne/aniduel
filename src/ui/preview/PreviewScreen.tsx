@@ -13,7 +13,18 @@ import {
   type UnsettledRow,
 } from '../../ranking/preview.ts'
 import { goalOf, isKeepMyScale, isScores } from '../../ranking/sortGoal.ts'
-import { formatLevel, hasHumanStep, levelOfRaw, levels, stepLabel, withStep, type ScoringSettings } from '../../ranking/scoring.ts'
+import {
+  allowedLevels,
+  changeSettings,
+  formatLevel,
+  hasHumanStep,
+  levelOfRaw,
+  levels,
+  stepLabel,
+  type ScorePoint,
+  type ScoringSettings,
+  type SettingsChange,
+} from '../../ranking/scoring.ts'
 import { MOVE_ICON } from '../icons.tsx'
 import { Kao } from '../Kao.tsx'
 import { Select } from '../Select.tsx'
@@ -88,11 +99,12 @@ export function PreviewScreen(props: {
   const scoreRows = [...byLevel.entries()].sort((a, b) => b[0] - a[0])
 
   const options = levels(format, settings.step)
-  const pick = (key: 'best' | 'worst', value: number) => {
-    const next = { ...settings, [key]: value }
-    if (next.worst >= next.best) return // rejected: the select snaps back to the saved value
-    onSettings(next)
+  const allowed = allowedLevels(settings, format)
+  const change = (c: SettingsChange) => {
+    const next = changeSettings(settings, format, c)
+    if (next !== settings) onSettings(next) // rejected: the select snaps back to the saved value
   }
+  const choices = (point: ScorePoint) => options.map((l) => ({ value: l, label: label(l), disabled: !allowed[point].includes(l) }))
 
   const cover = (row: PreviewRow) => {
     const entry = entries.get(row.id)
@@ -194,8 +206,8 @@ export function PreviewScreen(props: {
             <Select
               label="Best"
               value={settings.best}
-              options={options.map((l) => ({ value: l, label: label(l), disabled: l <= settings.worst }))}
-              onChange={(l) => pick('best', l)}
+              options={choices('best')}
+              onChange={(l) => change({ best: l })}
             />
           </span>
           <span className="pv-lab">
@@ -203,13 +215,13 @@ export function PreviewScreen(props: {
             <Select
               label="Worst"
               value={settings.worst}
-              options={options.map((l) => ({ value: l, label: label(l), disabled: l >= settings.best }))}
-              onChange={(l) => pick('worst', l)}
+              options={choices('worst')}
+              onChange={(l) => change({ worst: l })}
             />
           </span>
           <div className="seg">
             {(['linear', 'bell'] as const).map((d) => (
-              <button key={d} className={settings.distribution === d ? 'on' : ''} onClick={() => onSettings({ ...settings, distribution: d })}>
+              <button key={d} className={settings.distribution === d ? 'on' : ''} onClick={() => change({ distribution: d })}>
                 {d === 'linear' ? 'Linear' : 'Bell'}
               </button>
             ))}
@@ -236,7 +248,7 @@ export function PreviewScreen(props: {
           {hasHumanStep(format) && !isScores(state) && (
             <div className="seg" title="Score Step">
               {(['fine', 'human'] as const).map((s) => (
-                <button key={s} className={settings.step === s ? 'on' : ''} onClick={() => onSettings(withStep(settings, format, s))}>
+                <button key={s} className={settings.step === s ? 'on' : ''} onClick={() => change({ step: s })}>
                   {stepLabel(format, s)}
                 </button>
               ))}
