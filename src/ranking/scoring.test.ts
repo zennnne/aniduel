@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RankingState } from './engine.ts'
-import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, movedTitles, parseSavedScoring, score, settingsFor, stepLabel, withStep, type ScoreStep, type ScoringSettings, type SettingsChange } from './scoring.ts'
+import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, isFirstCustomPick, levels, movedTitles, parseSavedScoring, score, settingsFor, stepLabel, withStep, type ScoreStep, type ScoringSettings, type SettingsChange } from './scoring.ts'
 import { rankingOf as ranking } from './testRanking.ts'
 
 const levelsOf = (state: RankingState, ...args: Parameters<typeof score> extends [unknown, ...infer R] ? R : never) => {
@@ -605,5 +605,27 @@ describe('Titles moved by a settings change (the first pick of Custom, #85)', ()
     }
     const linear = { distribution: 'linear' as const, step: 'fine' as const, best: 10, worst: 2 }
     expect(movedTitles(state, 'POINT_10', linear, custom(10, 9, 8, 5, 2))).toBe(2)
+  })
+})
+
+describe('The first pick of Custom (#85)', () => {
+  const linear = { distribution: 'linear' as const, step: 'fine' as const, best: 10, worst: 2 }
+  const bell = { ...linear, distribution: 'bell' as const }
+
+  it('is a switch to Custom from Linear or Bell before any Quartile scores exist', () => {
+    expect(isFirstCustomPick(linear, { distribution: 'custom' })).toBe(true)
+    expect(isFirstCustomPick(bell, { distribution: 'custom' })).toBe(true)
+  })
+
+  it('is not a switch back to Custom once its Quartile scores exist', () => {
+    const away = { ...custom(10, 8, 6, 4, 2), distribution: 'bell' as const }
+    expect(isFirstCustomPick(away, { distribution: 'custom' })).toBe(false)
+  })
+
+  it('is not any other change', () => {
+    expect(isFirstCustomPick(linear, { distribution: 'bell' })).toBe(false)
+    expect(isFirstCustomPick(linear, { step: 'human' })).toBe(false)
+    expect(isFirstCustomPick(linear, { best: 9 })).toBe(false)
+    expect(isFirstCustomPick(custom(10, 8, 6, 4, 2), { distribution: 'custom' })).toBe(false)
   })
 })

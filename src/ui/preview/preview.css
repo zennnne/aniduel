@@ -28,7 +28,8 @@
   gap: 14px;
   margin-bottom: 14px;
 }
-.pv-set .pv-lab {
+.pv-set .pv-lab,
+.pv-quart .pv-lab {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -47,14 +48,6 @@
   padding: 8px 12px;
   box-shadow: inset 3px 0 0 var(--blue);
   margin: -6px 0 14px;
-}
-.pv-quart .pv-lab {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  font-weight: 700;
-  color: var(--tx-strong);
-  font-size: 13px;
 }
 .pv-quart-how {
   opacity: 0.6;

@@ -434,6 +434,14 @@ export function score(ranking: RankingState, format: ScoreFormat, settings: Scor
 }
 
 /**
+ * Whether `change` is the first pick of Custom: a switch to it from Linear or Bell before any Quartile scores exist,
+ * so `changeSettings` fills them in from the current Distribution (Preview's notice, #85). Never true again after.
+ */
+export function isFirstCustomPick(settings: ScoringSettings, change: SettingsChange): boolean {
+  return 'distribution' in change && change.distribution === 'custom' && !settings.quartiles && settings.distribution !== 'custom'
+}
+
+/**
  * How many titles get another level under `after` than under `before` (Preview's notice the first time Custom is
  * picked, #85). Only titles with a level under both count: on Scores, one a change leaves unsettled is not a move.
  */

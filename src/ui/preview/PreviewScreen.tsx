@@ -18,6 +18,7 @@ import {
   changeSettings,
   formatLevel,
   hasHumanStep,
+  isFirstCustomPick,
   levelOfRaw,
   levels,
   movedTitles,
@@ -43,18 +44,19 @@ type Filter = 'changing' | 'all'
 const DISTRIBUTION_LABEL: Record<Distribution, string> = { linear: 'Linear', bell: 'Bell', custom: 'Custom' }
 
 /** The Quartile score selects under Custom, top of the scale first (#84: no "Quartile" in the UI). */
-const QUARTILE_LABEL: readonly (readonly [QuartilePoint, string, (level: number) => SettingsChange])[] = [
+const QUARTILE_SELECTS: readonly (readonly [QuartilePoint, string, (level: number) => SettingsChange])[] = [
   ['p25', 'Top 25%', (p25) => ({ p25 })],
   ['p50', 'Middle', (p50) => ({ p50 })],
   ['p75', 'Top 75%', (p75) => ({ p75 })],
 ]
 
 /** The first pick of Custom (#81, story 2 vs 9): the Distribution it started from and how many titles moved. */
-type FirstPick = { from: string; moved: number }
+type FirstPick = { from: Distribution; moved: number }
 
-/** The first-pick bubble's width and its room from the screen's edges (#84). */
+/** The first-pick bubble's width, its room from the screen's edges, and its gap under Custom for the arrow (#84). */
 const BUBBLE_WIDTH = 280
 const BUBBLE_EDGE = 8
+const BUBBLE_GAP = 10
 
 /**
  * Preview ("score rows", issue #4): best / worst / Distribution (Custom adds a row with its three Quartile scores,
@@ -123,16 +125,20 @@ export function PreviewScreen(props: {
   // The first-pick bubble: open from the first switch to Custom (Quartile scores filled in from the current
   // Distribution) until Got it, a click anywhere else, or any settings change, leaving Custom included.
   const [firstPick, setFirstPick] = useState<FirstPick | null>(null)
+  const [bubblePlace, setBubblePlace] = useState<{ box: CSSProperties; arrow: number } | null>(null)
+  /** Opens or closes the bubble; its place is measured again each time it opens, so a closed one keeps none. */
+  const showFirstPick = (pick: FirstPick | null) => {
+    setFirstPick(pick)
+    setBubblePlace(null)
+  }
   const change = (c: SettingsChange) => {
     const next = changeSettings(settings, format, c)
-    const first = 'distribution' in c && c.distribution === 'custom' && !settings.quartiles && settings.distribution !== 'custom'
-    setFirstPick(first ? { from: DISTRIBUTION_LABEL[settings.distribution], moved: movedTitles(state, format, settings, next) } : null)
+    showFirstPick(isFirstCustomPick(settings, c) ? { from: settings.distribution, moved: movedTitles(state, format, settings, next) } : null)
     if (next !== settings) onSettings(next) // rejected: the select snaps back to the saved value
   }
   const pv = useRef<HTMLDivElement>(null)
   const customButton = useRef<HTMLButtonElement>(null)
   const bubble = useRef<HTMLDivElement>(null)
-  const [bubblePlace, setBubblePlace] = useState<{ box: CSSProperties; arrow: number } | null>(null)
   useLayoutEffect(() => {
     if (!firstPick) return
     const place = () => {
@@ -144,7 +150,7 @@ export function PreviewScreen(props: {
       const middle = at.left + at.width / 2
       const left = Math.min(window.innerWidth - BUBBLE_EDGE - width, Math.max(BUBBLE_EDGE, middle - width / 2))
       setBubblePlace({
-        box: { width, left: left - box.left + pv.current.scrollLeft, top: at.bottom - box.top + pv.current.scrollTop + 10 },
+        box: { width, left: left - box.left + pv.current.scrollLeft, top: at.bottom - box.top + pv.current.scrollTop + BUBBLE_GAP },
         arrow: middle - left,
       })
     }
@@ -155,10 +161,15 @@ export function PreviewScreen(props: {
   useEffect(() => {
     if (!firstPick) return
     const onDown = (e: PointerEvent) => {
-      if (!(e.target instanceof Node && bubble.current?.contains(e.target))) setFirstPick(null)
+      if (!(e.target instanceof Node && bubble.current?.contains(e.target))) showFirstPick(null)
     }
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && showFirstPick(null)
     document.addEventListener('pointerdown', onDown)
-    return () => document.removeEventListener('pointerdown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [firstPick])
   /** The Quartile scores, shown only under Custom. */
   const quartiles = settings.distribution === 'custom' ? settings.quartiles : undefined
@@ -324,7 +335,7 @@ export function PreviewScreen(props: {
       {!onKeepMyScale && quartiles && (
         // Custom's second row (#84): hidden under Linear and Bell.
         <div className="pv-quart">
-          {QUARTILE_LABEL.map(([point, text, pick]) => (
+          {QUARTILE_SELECTS.map(([point, text, pick]) => (
             <span key={point} className="pv-lab">
               {text}
               <Select label={text} value={quartiles[point]} options={choices(point)} onChange={(l) => change(pick(l))} />
@@ -339,17 +350,19 @@ export function PreviewScreen(props: {
           ref={bubble}
           className="pv-bubble"
           role="dialog"
-          aria-label={`Custom starts where ${firstPick.from} was`}
+          aria-label={`Custom starts where ${DISTRIBUTION_LABEL[firstPick.from]} was`}
           style={bubblePlace?.box ?? { visibility: 'hidden' }}
         >
           <i className="pv-bubble-arrow" aria-hidden="true" style={{ left: bubblePlace?.arrow }} />
-          <b>Custom starts where {firstPick.from} was</b>
+          <b>Custom starts where {DISTRIBUTION_LABEL[firstPick.from]} was</b>
           <span>
             {firstPick.moved > 0 &&
-              `Its three points sit on your Score Step, so ${count(firstPick.moved, 'title')} moved by one step. `}
+              (firstPick.from === 'bell'
+                ? `Custom uses straight lines between its points, which can't follow Bell's curve, so ${count(firstPick.moved, 'title')} moved. `
+                : `Its three points sit on your Score Step, so ${count(firstPick.moved, 'title')} moved by one step. `)}
             Change Top 25%, Middle or Top 75% to shape your scores.
           </span>
-          <button className="go sm" onClick={() => setFirstPick(null)}>
+          <button className="go sm" onClick={() => showFirstPick(null)}>
             Got it
           </button>
         </div>
