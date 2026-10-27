@@ -69,7 +69,7 @@ See [GLOSSARY.md](GLOSSARY.md) for the exact meaning of each term.
 4. **Duel**: pick the better of two titles from the same Band, call them equal (they share a **Tier**), or mark one **Forgotten**. Every answer can be undone.
 5. **Preview**: see every title's old and new score, move or **Re-rank** titles, and tick which ones to write. Three settings shape the scores:
    - the best and worst score
-   - the **Distribution**: Linear or Bell
+   - the **Distribution**: Linear, Bell, or Custom (pick the scores at the top 25%, the middle and the top 75% of the Ranking, with straight lines between them)
    - the **Score Step**: fine, or human steps like every 0.5 / every 5
 6. **Import**: write the chosen scores back to your AniList list (throttled, resumable, retries on rate limits).
 
@@ -194,3 +194,4 @@ Key design decisions:
 - [ADR 0011](docs/adr/0011-keep-my-scale-a-hand-picked-pool.md): Keep My Scale as the name of the third Sort Goal, and a Pool picked by hand.
 - [ADR 0012](docs/adr/0012-keep-my-scale-a-split-on-a-score-is-not-asked.md): a title split on a score gets that score instead of the Closer-to prompt.
 - [ADR 0013](docs/adr/0013-keep-my-scale-deciding-duels-before-the-closer-to-prompt.md): Deciding Duels before the Closer-to prompt, as the user's choice.
+- [ADR 0014](docs/adr/0014-custom-distribution-at-three-fixed-points.md): the Custom Distribution, shaped by three Quartile scores at fixed points of the Ranking, not by Band score ranges.

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { ListEntry, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
 import { BANDS, KEEP_MY_SCALE, type RankingState, type SwitchableGoal } from '../../ranking/engine.ts'
 import { refineDuels } from '../../ranking/estimate.ts'
@@ -20,7 +20,10 @@ import {
   hasHumanStep,
   levelOfRaw,
   levels,
+  movedTitles,
   stepLabel,
+  type Distribution,
+  type QuartilePoint,
   type ScorePoint,
   type ScoringSettings,
   type SettingsChange,
@@ -37,8 +40,25 @@ import { count, titleName } from '../meta.ts'
 
 type Filter = 'changing' | 'all'
 
+const DISTRIBUTION_LABEL: Record<Distribution, string> = { linear: 'Linear', bell: 'Bell', custom: 'Custom' }
+
+/** The Quartile score selects under Custom, top of the scale first (#84: no "Quartile" in the UI). */
+const QUARTILE_LABEL: readonly (readonly [QuartilePoint, string, (level: number) => SettingsChange])[] = [
+  ['p25', 'Top 25%', (p25) => ({ p25 })],
+  ['p50', 'Middle', (p50) => ({ p50 })],
+  ['p75', 'Top 75%', (p75) => ({ p75 })],
+]
+
+/** The first pick of Custom (#81, story 2 vs 9): the Distribution it started from and how many titles moved. */
+type FirstPick = { from: string; moved: number }
+
+/** The first-pick bubble's width and its room from the screen's edges (#84). */
+const BUBBLE_WIDTH = 280
+const BUBBLE_EDGE = 8
+
 /**
- * Preview ("score rows", issue #4): best / worst / Distribution, one row per score level with the covers
+ * Preview ("score rows", issue #4): best / worst / Distribution (Custom adds a row with its three Quartile scores,
+ * ADR 0014, #85), one row per score level with the covers
  * that get it, each Band's level range, and the Forgotten titles. Everything recomputes live.
  * Re-rank, Move Band, Bring back and Import are disabled while their handler is not passed (Import while one runs).
  * On Scores, titles a settings change left unsettled show in an orange card instead, with the way to their Refine
@@ -100,10 +120,48 @@ export function PreviewScreen(props: {
 
   const options = levels(format, settings.step)
   const allowed = allowedLevels(settings, format)
+  // The first-pick bubble: open from the first switch to Custom (Quartile scores filled in from the current
+  // Distribution) until Got it, a click anywhere else, or any settings change, leaving Custom included.
+  const [firstPick, setFirstPick] = useState<FirstPick | null>(null)
   const change = (c: SettingsChange) => {
     const next = changeSettings(settings, format, c)
+    const first = 'distribution' in c && c.distribution === 'custom' && !settings.quartiles && settings.distribution !== 'custom'
+    setFirstPick(first ? { from: DISTRIBUTION_LABEL[settings.distribution], moved: movedTitles(state, format, settings, next) } : null)
     if (next !== settings) onSettings(next) // rejected: the select snaps back to the saved value
   }
+  const pv = useRef<HTMLDivElement>(null)
+  const customButton = useRef<HTMLButtonElement>(null)
+  const bubble = useRef<HTMLDivElement>(null)
+  const [bubblePlace, setBubblePlace] = useState<{ box: CSSProperties; arrow: number } | null>(null)
+  useLayoutEffect(() => {
+    if (!firstPick) return
+    const place = () => {
+      const box = pv.current?.getBoundingClientRect()
+      const at = customButton.current?.getBoundingClientRect()
+      if (!box || !at || !pv.current) return
+      // Under Custom, kept inside the screen (8px from its edges), the arrow still at Custom's middle.
+      const width = Math.min(BUBBLE_WIDTH, window.innerWidth - 2 * BUBBLE_EDGE)
+      const middle = at.left + at.width / 2
+      const left = Math.min(window.innerWidth - BUBBLE_EDGE - width, Math.max(BUBBLE_EDGE, middle - width / 2))
+      setBubblePlace({
+        box: { width, left: left - box.left + pv.current.scrollLeft, top: at.bottom - box.top + pv.current.scrollTop + 10 },
+        arrow: middle - left,
+      })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [firstPick])
+  useEffect(() => {
+    if (!firstPick) return
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target instanceof Node && bubble.current?.contains(e.target))) setFirstPick(null)
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [firstPick])
+  /** The Quartile scores, shown only under Custom. */
+  const quartiles = settings.distribution === 'custom' ? settings.quartiles : undefined
   const choices = (point: ScorePoint) => options.map((l) => ({ value: l, label: label(l), disabled: !allowed[point]?.includes(l) }))
 
   const cover = (row: PreviewRow) => {
@@ -169,7 +227,7 @@ export function PreviewScreen(props: {
   }
 
   return (
-    <div className="pv">
+    <div className="pv" ref={pv}>
       <div className="pv-head">
         <div>
           <div className="h1">Preview</div>
@@ -220,9 +278,14 @@ export function PreviewScreen(props: {
             />
           </span>
           <div className="seg">
-            {(['linear', 'bell'] as const).map((d) => (
-              <button key={d} className={settings.distribution === d ? 'on' : ''} onClick={() => change({ distribution: d })}>
-                {d === 'linear' ? 'Linear' : 'Bell'}
+            {(['linear', 'bell', 'custom'] as const).map((d) => (
+              <button
+                key={d}
+                ref={d === 'custom' ? customButton : undefined}
+                className={settings.distribution === d ? 'on' : ''}
+                onClick={() => change({ distribution: d })}
+              >
+                {DISTRIBUTION_LABEL[d]}
               </button>
             ))}
           </div>
@@ -255,6 +318,40 @@ export function PreviewScreen(props: {
             </div>
           )}
           <span className="small">Score Format: {SCORE_FORMAT_LABEL[format]}</span>
+        </div>
+      )}
+
+      {!onKeepMyScale && quartiles && (
+        // Custom's second row (#84): hidden under Linear and Bell.
+        <div className="pv-quart">
+          {QUARTILE_LABEL.map(([point, text, pick]) => (
+            <span key={point} className="pv-lab">
+              {text}
+              <Select label={text} value={quartiles[point]} options={choices(point)} onChange={(l) => change(pick(l))} />
+            </span>
+          ))}
+          <span className="small pv-quart-how">Straight lines from Best through these to Worst</span>
+        </div>
+      )}
+
+      {firstPick && (
+        <div
+          ref={bubble}
+          className="pv-bubble"
+          role="dialog"
+          aria-label={`Custom starts where ${firstPick.from} was`}
+          style={bubblePlace?.box ?? { visibility: 'hidden' }}
+        >
+          <i className="pv-bubble-arrow" aria-hidden="true" style={{ left: bubblePlace?.arrow }} />
+          <b>Custom starts where {firstPick.from} was</b>
+          <span>
+            {firstPick.moved > 0 &&
+              `Its three points sit on your Score Step, so ${count(firstPick.moved, 'title')} moved by one step. `}
+            Change Top 25%, Middle or Top 75% to shape your scores.
+          </span>
+          <button className="go sm" onClick={() => setFirstPick(null)}>
+            Got it
+          </button>
         </div>
       )}
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RankingState } from './engine.ts'
-import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, parseSavedScoring, score, settingsFor, stepLabel, withStep, type ScoreStep, type ScoringSettings, type SettingsChange } from './scoring.ts'
+import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, movedTitles, parseSavedScoring, score, settingsFor, stepLabel, withStep, type ScoreStep, type ScoringSettings, type SettingsChange } from './scoring.ts'
 import { rankingOf as ranking } from './testRanking.ts'
 
 const levelsOf = (state: RankingState, ...args: Parameters<typeof score> extends [unknown, ...infer R] ? R : never) => {
@@ -573,5 +573,37 @@ describe('Changing the Custom settings (ADR 0014)', () => {
         }
       }
     }
+  })
+})
+
+describe('Titles moved by a settings change (the first pick of Custom, #85)', () => {
+  const line = (n: number) => ranking([Array.from({ length: n }, (_, i) => [i + 1])])
+
+  it('counts the titles whose level changed', () => {
+    // Linear 10 → 3 on the human step: 10, 9, 8.5, 7.5, 6.5, 5.5, 5, 4, 3. Custom from it (10, 8.5, 6.5, 5, 3):
+    // 10, 9.5, 8.5, 7.5, 6.5, 6, 5, 4, 3, so the 2nd and 6th titles moved.
+    const linear = { distribution: 'linear' as const, step: 'human' as const, best: 10, worst: 3 }
+    const picked = changeSettings(linear, 'POINT_10_DECIMAL', { distribution: 'custom' })
+    expect(movedTitles(line(9), 'POINT_10_DECIMAL', linear, picked)).toBe(2)
+  })
+
+  it('counts nothing when every title keeps its level', () => {
+    // Linear 10 → 2 over 5 titles is 10, 8, 6, 4, 2, which is where Custom's points start.
+    const linear = { distribution: 'linear' as const, step: 'fine' as const, best: 10, worst: 2 }
+    const picked = changeSettings(linear, 'POINT_10', { distribution: 'custom' })
+    expect(movedTitles(line(5), 'POINT_10', linear, picked)).toBe(0)
+  })
+
+  it('on Scores, does not count a title the change leaves unsettled', () => {
+    // Positions among 5: titles 2 and 3 go 8 → 9 and 6 → 8; title 4, between 2.4 and 2.6, is 5 under Linear
+    // (5.2, 4.8) but 7 or 6 under Custom (6.8, 6.2).
+    const at = (min: number, max: number) => ({ band: 0 as const, min, max })
+    const state: RankingState = {
+      ...line(5),
+      // `score` reads only the positions; `settled` is the engine's, under the log's settings.
+      standing: { size: 5, settled: new Set(), titles: new Map([[1, at(0, 0)], [2, at(1, 1)], [3, at(2, 2)], [4, at(2.4, 2.6)], [5, at(4, 4)]]) },
+    }
+    const linear = { distribution: 'linear' as const, step: 'fine' as const, best: 10, worst: 2 }
+    expect(movedTitles(state, 'POINT_10', linear, custom(10, 9, 8, 5, 2))).toBe(2)
   })
 })

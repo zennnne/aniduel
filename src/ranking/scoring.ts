@@ -433,6 +433,20 @@ export function score(ranking: RankingState, format: ScoreFormat, settings: Scor
   return { titles, bands, unsettled }
 }
 
+/**
+ * How many titles get another level under `after` than under `before` (Preview's notice the first time Custom is
+ * picked, #85). Only titles with a level under both count: on Scores, one a change leaves unsettled is not a move.
+ */
+export function movedTitles(ranking: RankingState, format: ScoreFormat, before: ScoringSettings, after: ScoringSettings): number {
+  const was = score(ranking, format, before).titles
+  let moved = 0
+  for (const [id, { level }] of score(ranking, format, after).titles) {
+    const old = was.get(id)
+    if (old && old.level !== level) moved++
+  }
+  return moved
+}
+
 /** A score level and the titles on it. */
 export type LevelGroup = { level: number; ids: readonly number[] }
 
