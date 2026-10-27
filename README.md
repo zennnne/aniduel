@@ -90,7 +90,7 @@ You don't have to choose: Start picks one for you, Full Ranking for a list under
 | Titles with the same score | grouped, no order among them | each in its own place, or a Tier if you called them equal |
 | Score Step | whole points only (every 1 / every 10) | fine, or human steps like every 0.5 / every 5 |
 | Duels needed | about 30–40% fewer | about 1,000 for 200 titles |
-| Changing best/worst or Distribution later | costs **Refine Duels** (roughly 50–120) before the affected titles can be imported | free: the order is already complete |
+| Changing best/worst, the Distribution or Custom's three scores later | costs **Refine Duels** (roughly 50–120) before the affected titles can be imported | free: the order is already complete |
 
 The 10 point, 5 star and 3 smiley formats have only one Score Step, so both Sort Goals give the same scores there and Full Ranking only adds the order. On those formats Start picks Scores at any size.
 
