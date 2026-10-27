@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RankingState } from './engine.ts'
-import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, parseSavedScoring, score, settingsFor, stepLabel, withStep } from './scoring.ts'
+import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, parseSavedScoring, score, settingsFor, stepLabel, withStep, type SettingsChange } from './scoring.ts'
 import { rankingOf as ranking } from './testRanking.ts'
 
 const levelsOf = (state: RankingState, ...args: Parameters<typeof score> extends [unknown, ...infer R] ? R : never) => {
@@ -362,6 +362,219 @@ describe('Changing the scoring settings', () => {
               expect(changeSettings(settings, format, { best: level }).best).toBe(level > settings.worst ? level : settings.best)
               expect(changeSettings(settings, format, { worst: level }).worst).toBe(level < settings.best ? level : settings.worst)
             }
+          }
+        }
+      }
+    }
+  })
+})
+
+describe('Custom (ADR 0014)', () => {
+  const custom = (best: number, p25: number, p50: number, p75: number, worst: number) => ({
+    distribution: 'custom' as const,
+    step: 'fine' as const,
+    best,
+    worst,
+    quartiles: { p25, p50, p75 },
+  })
+  const line = (n: number) => ranking([Array.from({ length: n }, (_, i) => [i + 1])])
+
+  it('puts best, the Quartile scores and worst at 0 / 25 / 50 / 75 / 100% of the Ranking', () => {
+    expect(levelsOf(line(5), 'POINT_10', custom(10, 9, 8, 6, 2))).toEqual([10, 9, 8, 6, 2])
+  })
+
+  it('is a straight line between neighbouring points', () => {
+    expect(levelsOf(line(9), 'POINT_10_DECIMAL', custom(10, 9, 8, 6, 2))).toEqual([10, 9.5, 9, 8.5, 8, 7, 6, 4, 2])
+  })
+
+  it('gives a flat stretch on one level between equal neighbours', () => {
+    expect(levelsOf(line(9), 'POINT_10_DECIMAL', custom(10, 8, 8, 6, 2))).toEqual([10, 9, 8, 8, 8, 7, 6, 4, 2])
+  })
+
+  it('uses a Tier average position, and gives one title alone best', () => {
+    // Positions 0, (1, 2), 3, 4 among 5: the Tier sits at 1.5 / 4 = 37.5%, halfway between 9 and 8.
+    expect(levelsOf(ranking([[[1], [2, 3], [4], [5]]]), 'POINT_10_DECIMAL', custom(10, 9, 8, 6, 2))).toEqual([10, 8.5, 8.5, 6, 2])
+    expect(levelsOf(line(1), 'POINT_10', custom(9, 7, 5, 3, 1))).toEqual([9])
+  })
+
+  it('rounds to the Score Step', () => {
+    // 9 titles on the human step: 7.25 at 12.5% → 7.5, 6.25 at 37.5% → 6.5, 5 at 62.5%, 3 at 87.5%.
+    expect(levelsOf(line(9), 'POINT_10_DECIMAL', { ...custom(8, 6.5, 6, 4, 2), step: 'human' })).toEqual([8, 7.5, 6.5, 6.5, 6, 5, 4, 3, 2])
+  })
+
+  it('on every Score Format and Score Step, never rises down the Ranking and stays on the step', () => {
+    let seed = 83
+    const random = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31)
+    // Building a Ranking through the engine is the slow part: a few sizes, shared by every trial.
+    const rankings = [1, 2, 3, 4, 5, 7, 10, 17, 41].map(line)
+    for (const format of ['POINT_100', 'POINT_10_DECIMAL', 'POINT_10', 'POINT_5', 'POINT_3'] as const) {
+      for (const step of ['fine', 'human', 'whole'] as const) {
+        const all = levels(format, step)
+        for (let trial = 0; trial < 40; trial++) {
+          // Five picks from the step's levels, best first; any two neighbours may be equal, best and worst never are.
+          const picks = Array.from({ length: 5 }, () => all[Math.floor(random() * all.length)]).sort((x, y) => y - x)
+          if (picks[0] === picks[4]) continue
+          const [best, p25, p50, p75, worst] = picks
+          const settings = { distribution: 'custom' as const, step, best, worst, quartiles: { p25, p50, p75 } }
+          const ranked = rankings[Math.floor(random() * rankings.length)]
+          const n = ranked.bands[0].tiers.length
+          const got = levelsOf(ranked, format, settings)
+          expect(got[0]).toBe(best)
+          if (n > 1) expect(got.at(-1)).toBe(worst)
+          for (let i = 1; i < n; i++) expect(got[i]).toBeLessThanOrEqual(got[i - 1])
+          for (const level of got) expect(all).toContain(level)
+        }
+      }
+    }
+  })
+
+  it('leaves Linear and Bell as they are, even with Quartile scores in the settings', () => {
+    const quartiles = { p25: 3, p50: 3, p75: 3 }
+    expect(levelsOf(line(5), 'POINT_10', { distribution: 'linear', step: 'fine', best: 10, worst: 2, quartiles })).toEqual([10, 8, 6, 4, 2])
+    expect(levelsOf(line(4), 'POINT_10', { distribution: 'bell', step: 'fine', best: 10, worst: 2, quartiles })).toEqual([8, 7, 5, 4])
+  })
+})
+
+describe('Changing the Custom settings (ADR 0014)', () => {
+  const custom = (best: number, p25: number, p50: number, p75: number, worst: number, step: 'fine' | 'human' | 'whole' = 'fine') => ({
+    distribution: 'custom' as const,
+    step,
+    best,
+    worst,
+    quartiles: { p25, p50, p75 },
+  })
+
+  it('starts the Quartile scores where Linear puts them, the first time Custom is picked', () => {
+    const linear = { distribution: 'linear' as const, step: 'fine' as const, best: 10, worst: 2 }
+    expect(changeSettings(linear, 'POINT_10', { distribution: 'custom' })).toEqual(custom(10, 8, 6, 4, 2))
+    // 8.25 → 8.5, 6.5, 4.75 → 5 on the human step.
+    const human = { distribution: 'linear' as const, step: 'human' as const, best: 10, worst: 3 }
+    expect(changeSettings(human, 'POINT_10_DECIMAL', { distribution: 'custom' })).toEqual(custom(10, 8.5, 6.5, 5, 3, 'human'))
+  })
+
+  it('starts the Quartile scores where Bell puts them', () => {
+    // mid 50, σ 20: 50 ± 0.6745 × 20 = 63.49, 36.51.
+    const bell = { distribution: 'bell' as const, step: 'fine' as const, best: 90, worst: 10 }
+    expect(changeSettings(bell, 'POINT_100', { distribution: 'custom' })).toEqual(custom(90, 63, 50, 37, 10))
+  })
+
+  it('keeps the Quartile scores when switching to Linear or Bell, and brings them back with Custom', () => {
+    const mine = custom(10, 9, 9, 5, 2)
+    const bell = changeSettings(mine, 'POINT_10', { distribution: 'bell' })
+    expect(bell).toEqual({ ...mine, distribution: 'bell' })
+    const linear = changeSettings(bell, 'POINT_10', { distribution: 'linear' })
+    expect(changeSettings(linear, 'POINT_10', { distribution: 'custom' })).toEqual(mine)
+  })
+
+  it('offers each Quartile score only between its neighbours, equal allowed', () => {
+    const allowed = allowedLevels(custom(10, 8, 6, 4, 2), 'POINT_10')
+    expect(allowed).toEqual({
+      best: [10, 9, 8, 7, 6, 5, 4, 3],
+      p25: [10, 9, 8, 7, 6],
+      p50: [8, 7, 6, 5, 4],
+      p75: [6, 5, 4, 3, 2],
+      worst: [9, 8, 7, 6, 5, 4, 3, 2, 1],
+    })
+  })
+
+  it('sets a Quartile score to an allowed level and rejects any other, leaving the settings as they were', () => {
+    const settings = custom(10, 8, 6, 4, 2)
+    expect(changeSettings(settings, 'POINT_10', { p25: 10 })).toEqual(custom(10, 10, 6, 4, 2))
+    expect(changeSettings(settings, 'POINT_10', { p50: 4 })).toEqual(custom(10, 8, 4, 4, 2))
+    expect(changeSettings(settings, 'POINT_10', { p75: 2 })).toEqual(custom(10, 8, 6, 2, 2))
+    expect(changeSettings(settings, 'POINT_10', { p25: 5 })).toBe(settings)
+    expect(changeSettings(settings, 'POINT_10', { p50: 9 })).toBe(settings)
+    expect(changeSettings(settings, 'POINT_10', { p75: 1 })).toBe(settings)
+    const human = { ...settings, step: 'human' as const }
+    expect(changeSettings(human, 'POINT_10_DECIMAL', { p50: 6.2 })).toBe(human)
+  })
+
+  it('offers no Quartile scores before Custom was first picked', () => {
+    const linear = { distribution: 'linear' as const, step: 'fine' as const, best: 10, worst: 2 }
+    expect(allowedLevels(linear, 'POINT_10')).toEqual({ best: [10, 9, 8, 7, 6, 5, 4, 3], worst: [9, 8, 7, 6, 5, 4, 3, 2, 1] })
+    expect(changeSettings(linear, 'POINT_10', { p50: 6 })).toBe(linear)
+  })
+
+  it('moves Quartile scores just enough when best is lowered or worst raised past them, and leaves the others', () => {
+    const settings = custom(10, 8, 6, 4, 2)
+    expect(changeSettings(settings, 'POINT_10', { best: 7 })).toEqual(custom(7, 7, 6, 4, 2))
+    expect(changeSettings(settings, 'POINT_10', { best: 5 })).toEqual(custom(5, 5, 5, 4, 2))
+    expect(changeSettings(settings, 'POINT_10', { worst: 7 })).toEqual(custom(10, 8, 7, 7, 7))
+    expect(changeSettings(settings, 'POINT_10', { best: 9 })).toEqual(custom(9, 8, 6, 4, 2))
+  })
+
+  it('moves the Quartile scores to the nearest levels on a new Score Step', () => {
+    expect(changeSettings(custom(9.7, 8.3, 6.2, 4.4, 3.2), 'POINT_10_DECIMAL', { step: 'human' })).toEqual(custom(9.5, 8.5, 6, 4.5, 3, 'human'))
+    expect(changeSettings(custom(9.5, 8.5, 6, 4.5, 3, 'human'), 'POINT_10_DECIMAL', { step: 'fine' })).toEqual(custom(9.5, 8.5, 6, 4.5, 3))
+    // Best 0.4 and worst 0.1 become 1 and 0.5; the Quartile scores stay between them.
+    expect(changeSettings(custom(0.4, 0.4, 0.3, 0.1, 0.1), 'POINT_10_DECIMAL', { step: 'human' })).toEqual(custom(1, 0.5, 0.5, 0.5, 0.5, 'human'))
+  })
+
+  it('carries the Quartile scores to a new Score Format through their raw scores, then keeps the order (ADR 0003)', () => {
+    expect(convertSettings(custom(9.5, 8.5, 7, 5.5, 2), 'POINT_10_DECIMAL', 'POINT_10')).toEqual(custom(9, 8, 7, 5, 2))
+    expect(convertSettings(custom(9.5, 8.5, 7, 5.5, 2), 'POINT_10_DECIMAL', 'POINT_3')).toEqual(custom(3, 3, 3, 2, 1))
+    // 8 and 5 are below 10 point's lowest level: never 0, and never below worst.
+    expect(convertSettings(custom(50, 30, 8, 5, 3), 'POINT_100', 'POINT_10')).toEqual(custom(5, 3, 1, 1, 1))
+    // Kept while on Linear too.
+    expect(convertSettings({ ...custom(9.5, 8.5, 7, 5.5, 2), distribution: 'linear' }, 'POINT_10_DECIMAL', 'POINT_10')).toEqual({
+      ...custom(9, 8, 7, 5, 2),
+      distribution: 'linear',
+    })
+  })
+
+  it('reads saved Custom settings back, and keeps Quartile scores saved under Linear or Bell', () => {
+    const saved = { format: 'POINT_10_DECIMAL' as const, settings: custom(10, 8.5, 8.5, 6, 4, 'human') }
+    expect(parseSavedScoring(JSON.parse(JSON.stringify(saved)))).toEqual(saved)
+    const bell = { ...saved, settings: { ...saved.settings, distribution: 'bell' as const } }
+    expect(parseSavedScoring(JSON.parse(JSON.stringify(bell)))).toEqual(bell)
+    const old = { format: 'POINT_10' as const, settings: { distribution: 'linear' as const, step: 'fine' as const, best: 9, worst: 2 } }
+    expect(parseSavedScoring(old)).toStrictEqual(old)
+  })
+
+  it('rejects saved Quartile scores off the Score Step, out of order, or missing under Custom', () => {
+    const read = (settings: unknown) => parseSavedScoring({ format: 'POINT_10_DECIMAL', settings })
+    expect(read(custom(10, 8.2, 7, 6, 4, 'human'))).toBeNull()
+    expect(read(custom(10, 8, 8.5, 6, 4))).toBeNull()
+    expect(read(custom(9, 9.5, 8, 6, 4))).toBeNull()
+    expect(read(custom(10, 8, 7, 3, 4))).toBeNull()
+    expect(read({ ...custom(10, 8, 7, 6, 4), quartiles: { p25: 8, p50: 7 } })).toBeNull()
+    expect(read({ ...custom(10, 8, 7, 6, 4), quartiles: 'high' })).toBeNull()
+    expect(read({ ...custom(10, 8, 7, 3, 4), distribution: 'linear' })).toBeNull()
+    expect(read({ distribution: 'custom', step: 'fine', best: 10, worst: 4 })).toBeNull()
+  })
+
+  it('on every Score Format and Score Step, any change keeps best ≥ 25% ≥ 50% ≥ 75% ≥ worst on the step', () => {
+    let seed = 81
+    const random = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31)
+    const formats = ['POINT_100', 'POINT_10_DECIMAL', 'POINT_10', 'POINT_5', 'POINT_3'] as const
+    const points = ['best', 'p25', 'p50', 'p75', 'worst'] as const
+    for (const format of formats) {
+      for (const step of ['fine', 'human', 'whole'] as const) {
+        const all = levels(format, step)
+        for (let trial = 0; trial < 12; trial++) {
+          const picks = Array.from({ length: 5 }, () => all[Math.floor(random() * all.length)]).sort((x, y) => y - x)
+          if (picks[0] === picks[4]) continue
+          const settings = custom(picks[0], picks[1], picks[2], picks[3], picks[4], step)
+          const allowed = allowedLevels(settings, format)
+          // Every level on short scales; on 100-level ones every fifth, and the levels at and next to each point.
+          const near = picks.flatMap((p) => [-1, 0, 1].map((d) => all[all.indexOf(p) + d])).filter((l) => l !== undefined)
+          const tried = all.length <= 25 ? all : [...new Set([...all.filter((_, i) => i % 5 === 0), ...near])]
+          for (const point of points) {
+            for (const level of tried) {
+              const next = changeSettings(settings, format, { [point]: level } as SettingsChange)
+              const chain = [next.best, next.quartiles!.p25, next.quartiles!.p50, next.quartiles!.p75, next.worst]
+              if (allowed[point]!.includes(level)) expect(chain[points.indexOf(point)]).toBe(level)
+              else expect(next).toBe(settings)
+              for (let i = 1; i < 5; i++) expect(chain[i]).toBeLessThanOrEqual(chain[i - 1])
+              expect(next.worst).toBeLessThan(next.best)
+              for (const l of chain) expect(all).toContain(l)
+            }
+          }
+          for (const other of formats) {
+            const moved = convertSettings(settings, format, other)
+            const chain = [moved.best, moved.quartiles!.p25, moved.quartiles!.p50, moved.quartiles!.p75, moved.worst]
+            for (let i = 1; i < 5; i++) expect(chain[i]).toBeLessThanOrEqual(chain[i - 1])
+            for (const l of chain) expect(levels(other, step)).toContain(l)
           }
         }
       }

@@ -104,7 +104,7 @@ export function PreviewScreen(props: {
     const next = changeSettings(settings, format, c)
     if (next !== settings) onSettings(next) // rejected: the select snaps back to the saved value
   }
-  const choices = (point: ScorePoint) => options.map((l) => ({ value: l, label: label(l), disabled: !allowed[point].includes(l) }))
+  const choices = (point: ScorePoint) => options.map((l) => ({ value: l, label: label(l), disabled: !allowed[point]?.includes(l) }))
 
   const cover = (row: PreviewRow) => {
     const entry = entries.get(row.id)

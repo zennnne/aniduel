@@ -5,7 +5,7 @@ import type { ScoreFormat } from '../anilist/types.ts'
 import { BANDS, appendEvent, replay, startLog, type BandIndex, type DuelLog, type LogEvent, type RankingState } from './engine.ts'
 import { refineDuels } from './estimate.ts'
 import { previewOpen } from './preview.ts'
-import { defaultSettings, levels, score, withStep, type ScoringSettings } from './scoring.ts'
+import { changeSettings, defaultSettings, levels, score, withStep, type ScoringSettings, type SettingsChange } from './scoring.ts'
 
 /** Small seeded PRNG (mulberry32), so every case is reproducible. */
 function rng(seed: number): () => number {
@@ -115,6 +115,88 @@ describe('a settings change on Scores', () => {
     play(c, newLog(c, 4, 'scores', 'POINT_10_DECIMAL', settings), (state) => {
       expect(state.prompt.kind === 'duel' && state.prompt.refine).toBeFalsy()
     })
+  })
+})
+
+describe('Custom on Scores (ADR 0014)', () => {
+  /** Custom on the whole Score Step from five random levels, best first (neighbours may be equal, best and worst not). */
+  function randomCustom(random: () => number, format: ScoreFormat): ScoringSettings {
+    const all = levels(format, 'whole')
+    for (;;) {
+      const [best, p25, p50, p75, worst] = Array.from({ length: 5 }, () => all[Math.floor(random() * all.length)]).sort((x, y) => y - x)
+      if (best !== worst) return { distribution: 'custom', step: 'whole', best, worst, quartiles: { p25, p50, p75 } }
+    }
+  }
+
+  it('reaches the scores Full Ranking gives under the same oracle and settings', () => {
+    const random = rng(83)
+    for (let trial = 0; trial < 20; trial++) {
+      const format = FORMATS[trial % FORMATS.length]
+      const settings = randomCustom(random, format)
+      const n = 2 + Math.floor(random() * 50)
+      const c = randomCase(random, n, random() < 0.3 ? 1_000_000 : 1 + Math.floor(random() * 20))
+      const seed = Math.floor(random() * 2 ** 32)
+      const scores = play(c, newLog(c, seed, 'scores', format, settings))
+      expect(scores.state.prompt.kind).toBe('all-complete')
+      expect(scores.state.standing!.settled.size).toBe(n)
+      const full = play(c, newLog(c, seed, 'full-ranking', format, settings))
+      expect(levelsOf(scores.state, format, settings)).toEqual(levelsOf(full.state, format, settings))
+    }
+  })
+
+  it('a changed Quartile score unsettles titles, and Refine Duels settle them on what Full Ranking gives', () => {
+    const random = rng(84)
+    let refined = 0
+    for (let trial = 0; trial < 20; trial++) {
+      const format = FORMATS[trial % FORMATS.length]
+      const before = randomCustom(random, format)
+      const point = (['p25', 'p50', 'p75'] as const)[trial % 3]
+      const others = levels(format, 'whole').filter((l) => l !== before.quartiles![point])
+      const level = others[Math.floor(random() * others.length)]
+      const after = changeSettings(before, format, { [point]: level } as SettingsChange)
+      if (after === before) continue
+      const c = randomCase(random, 40, 1_000_000)
+      const seed = Math.floor(random() * 2 ** 32)
+      const done = play(c, newLog(c, seed, 'scores', format, before))
+      const set = appendEvent(done.log, { type: 'scoring-set', format, settings: after })
+      if (replay(set).standing!.settled.size < 40) refined++
+      const refine = play(c, set, (state) => expect(state.prompt.kind === 'duel' && state.prompt.refine).toBe(true))
+      const full = play(c, newLog(c, seed, 'full-ranking', format, after))
+      expect(levelsOf(refine.state, format, after)).toEqual(levelsOf(full.state, format, after))
+      expect(refine.state.standing!.settled.size).toBe(40)
+    }
+    expect(refined).toBeGreaterThan(5)
+  })
+
+  it('Undo after a Refine Duel cancels the answer, never the Quartile score change (ADR 0007)', () => {
+    const random = rng(85)
+    const format = 'POINT_10_DECIMAL'
+    const before: ScoringSettings = { distribution: 'custom', step: 'whole', best: 10, worst: 2, quartiles: { p25: 9, p50: 7, p75: 5 } }
+    const after: ScoringSettings = { ...before, quartiles: { p25: 9, p50: 8, p75: 5 } }
+    const c = randomCase(random, 40, 1_000_000)
+    const done = play(c, newLog(c, 1, 'scores', format, before))
+    const set = appendEvent(done.log, { type: 'scoring-set', format, settings: after })
+    const prompt = replay(set).prompt
+    if (prompt.kind !== 'duel') throw new Error('expected a Refine Duel')
+    const answered = appendEvent(set, { type: 'duel-answered', a: prompt.a, b: prompt.b, result: 'a' })
+    const undone = replay(appendEvent(answered, { type: 'undo' }))
+    expect(undone.scoring).toEqual({ format, settings: after })
+    expect(undone.prompt).toEqual(prompt)
+    // A second Undo has the Duels before the change to cancel, and still keeps the change.
+    expect(replay(appendEvent(appendEvent(answered, { type: 'undo' }), { type: 'undo' })).scoring).toEqual({ format, settings: after })
+  })
+
+  it('a log with Custom replays to the same Ranking, read back from JSON, at the engine version Scores came in with', () => {
+    const random = rng(86)
+    const format = 'POINT_100'
+    const settings = randomCustom(random, format)
+    const c = randomCase(random, 30, 12)
+    const { log, state } = play(c, newLog(c, 3, 'scores', format, settings))
+    const again = replay(JSON.parse(JSON.stringify(log)) as DuelLog)
+    expect(again).toEqual(state)
+    expect(again.scoring).toEqual({ format, settings })
+    // No new event kind: a log stamped with engine version 7 (the `scoring-set` event's) still takes Custom.
+    expect(replay({ ...log, header: { ...log.header, engine: 7 } }).scoring).toEqual({ format, settings })
   })
 })
 

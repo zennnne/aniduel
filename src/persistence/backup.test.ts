@@ -71,6 +71,19 @@ describe('Backup and Restore', () => {
     expect(readBackup(JSON.stringify(old), anime).settings.scoring).toBeNull()
   })
 
+  it('restores the Custom Distribution and its Quartile scores exactly, in the saved settings and in the Duel log (ADR 0014)', () => {
+    const settings = { distribution: 'custom' as const, step: 'whole' as const, best: 9, worst: 3, quartiles: { p25: 9, p50: 7, p75: 4 } }
+    let log = startLog({ ...anime, seed: 42, ids: [1, 2, 3], scoreFormat: 'POINT_10' })
+    log = appendEvent(log, { type: 'scoring-set', format: 'POINT_10', settings })
+    const here = memoryStorage()
+    saveDuelLog(here, log)
+    saveScoringSettings(here, anime, { format: 'POINT_10', settings: { ...settings, distribution: 'bell' } })
+    const elsewhere = memoryStorage()
+    restoreBackup(elsewhere, readBackup(createBackup(here, { ...anime, userName: 'zen' }, now)!.json, anime))
+    expect(loadScoringSettings(elsewhere, anime)).toEqual({ format: 'POINT_10', settings: { ...settings, distribution: 'bell' } })
+    expect(replay(loadDuelLog(elsewhere, anime)!).scoring).toEqual({ format: 'POINT_10', settings })
+  })
+
   it('settings changed on Preview travel in the Duel log: a reload and a Restore elsewhere give the same scores', () => {
     // Linear 9..4 over three titles: 9, 6.5 (rounds to 7), 4. The defaults would give 10, 6.5 → 7, 3.
     // A new log is on Scores, which always uses the whole Score Step (on 10 point, its only one).

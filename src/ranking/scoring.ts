@@ -4,7 +4,8 @@ import type { ScoreFormat } from '../anilist/types.ts'
 // Types only: the engine imports this module (scoring settings are Duel log events, ADR 0007).
 import type { BandIndex, LogEvent, RankingState } from './engine.ts'
 
-export type Distribution = 'linear' | 'bell'
+export type Distribution = 'linear' | 'bell' | 'custom'
+const DISTRIBUTIONS: readonly Distribution[] = ['linear', 'bell', 'custom']
 
 /**
  * Every level of the Score Format ('fine'), only every 0.5 / every 5 points ('human'), or only whole points, every
@@ -14,7 +15,20 @@ export type ScoreStep = 'fine' | 'human' | 'whole'
 const SCORE_STEPS: readonly ScoreStep[] = ['fine', 'human', 'whole']
 
 /** `best` and `worst` are levels of the Score Format on the Score Step (e.g. 7.5 on 10 point decimal, 4 on 5 stars). */
-export type ScoringSettings = { distribution: Distribution; step: ScoreStep; best: number; worst: number }
+export type ScoringSettings = {
+  distribution: Distribution
+  step: ScoreStep
+  best: number
+  worst: number
+  /**
+   * The Quartile scores (ADR 0014): levels on the Score Step for the title a quarter, half and three quarters of the
+   * way down the Ranking, best ≥ p25 ≥ p50 ≥ p75 ≥ worst. Only used under Custom, but kept whichever Distribution is
+   * chosen once Custom was first picked; settings from before that have none.
+   */
+  quartiles?: Quartiles
+}
+
+export type Quartiles = { p25: number; p50: number; p75: number }
 
 export type TitleScore = { band: BandIndex; level: number; scoreRaw: number }
 
@@ -57,10 +71,18 @@ function inverseNormal(p: number): number {
 /** The unrounded score for a (Tier average) position among n titles. */
 function rawValue(position: number, n: number, settings: ScoringSettings): number {
   const { best, worst } = settings
-  if (settings.distribution === 'linear') {
-    return n === 1 ? best : best - (position / (n - 1)) * (best - worst)
-  }
-  const p = (position + 0.5) / n
+  if (settings.distribution === 'bell') return bellValue((position + 0.5) / n, settings)
+  const t = n === 1 ? 0 : position / (n - 1)
+  if (settings.distribution === 'linear' || !settings.quartiles) return best - t * (best - worst)
+  // Custom: straight lines through best, the Quartile scores and worst at 0, 25, 50, 75 and 100% (ADR 0014).
+  const { p25, p50, p75 } = settings.quartiles
+  const points = [best, p25, p50, p75, worst]
+  const i = Math.min(3, Math.floor(t * 4))
+  return points[i] - (t * 4 - i) * (points[i] - points[i + 1])
+}
+
+/** Bell's unrounded score at percentile p of the Ranking. */
+function bellValue(p: number, { best, worst }: ScoringSettings): number {
   const value = (best + worst) / 2 + inverseNormal(1 - p) * ((best - worst) / 4)
   return Math.min(best, Math.max(worst, value))
 }
@@ -180,8 +202,17 @@ export function defaultSettings(format: ScoreFormat, step: ScoreStep = 'human'):
   return withStep({ distribution: 'linear', step: 'human', ...DEFAULTS[format] }, format, step)
 }
 
-/** Best and worst moved to the nearest levels on the Score Step, worst still below best. */
-function onStep(format: ScoreFormat, settings: ScoringSettings, best: number, worst: number): ScoringSettings {
+/**
+ * Best and worst moved to the nearest levels on the Score Step, worst still below best, and the Quartile scores (if
+ * any) to the nearest levels too, then moved just enough to stay between them in order (ADR 0014).
+ */
+function onStep(
+  format: ScoreFormat,
+  settings: ScoringSettings,
+  best: number,
+  worst: number,
+  quartiles: Quartiles | undefined = settings.quartiles,
+): ScoringSettings {
   const { perUnit, min } = stepOf(format, settings.step)
   const gap = 1 / perUnit
   best = toLevel(format, best, settings.step)
@@ -190,51 +221,109 @@ function onStep(format: ScoreFormat, settings: ScoringSettings, best: number, wo
     if (best <= min) best = toLevel(format, min + gap, settings.step)
     worst = toLevel(format, best - gap, settings.step)
   }
-  return { ...settings, best, worst }
+  if (!quartiles) return { ...settings, best, worst }
+  const level = (l: number) => toLevel(format, l, settings.step)
+  const onTheStep = { p25: level(quartiles.p25), p50: level(quartiles.p50), p75: level(quartiles.p75) }
+  return { ...settings, best, worst, quartiles: between(onTheStep, best, worst) }
 }
 
-/** The settings with another Score Step: best and worst move to the nearest levels on it (9.7 → 9.5). */
+/** The Quartile scores moved just enough to keep best ≥ p25 ≥ p50 ≥ p75 ≥ worst, never rescaled (ADR 0014). */
+function between({ p25, p50, p75 }: Quartiles, best: number, worst: number): Quartiles {
+  const clamp = (l: number) => Math.min(best, Math.max(worst, l))
+  p25 = clamp(p25)
+  p50 = Math.min(p25, clamp(p50))
+  p75 = Math.min(p50, clamp(p75))
+  return { p25, p50, p75 }
+}
+
+/**
+ * Custom's starting values (ADR 0014): the levels the settings' Distribution (Linear or Bell) gives a quarter, half
+ * and three quarters of the way down the Ranking.
+ */
+function startingQuartiles(settings: ScoringSettings, format: ScoreFormat): Quartiles {
+  const { best, worst } = settings
+  const at = (t: number) => {
+    const raw = settings.distribution === 'bell' ? bellValue(t, settings) : best - t * (best - worst)
+    return toLevel(format, raw, settings.step)
+  }
+  return between({ p25: at(0.25), p50: at(0.5), p75: at(0.75) }, best, worst)
+}
+
+/** The settings with another Score Step: best, worst and the Quartile scores move to the nearest levels on it (9.7 → 9.5). */
 export function withStep(settings: ScoringSettings, format: ScoreFormat, step: ScoreStep): ScoringSettings {
   return onStep(format, { ...settings, step }, settings.best, settings.worst)
 }
 
+/** A Quartile score: the point a quarter (p25), half (p50) or three quarters (p75) of the way down the Ranking. */
+export type QuartilePoint = keyof Quartiles
+
 /** A point of the scale the user picks a level for. */
-export type ScorePoint = 'best' | 'worst'
+export type ScorePoint = 'best' | QuartilePoint | 'worst'
+
+const POINTS: readonly ScorePoint[] = ['best', 'p25', 'p50', 'p75', 'worst']
 
 /**
- * The levels each point may be set to on the settings' Score Step, highest first: best only above worst, worst only
- * below best, so the scale never rises down the Ranking. Preview disables every other level.
+ * The levels each point may be set to on the settings' Score Step, highest first, so the scale never rises down the
+ * Ranking: best only above worst and worst only below best; each Quartile score between its neighbours, equal
+ * allowed (ADR 0014). Best and worst may pass a Quartile score, which then follows (`changeSettings`). Settings
+ * without Quartile scores yet (Custom never picked) offer none for them. Preview disables every other level.
  */
-export function allowedLevels(settings: ScoringSettings, format: ScoreFormat): Record<ScorePoint, number[]> {
+export function allowedLevels(settings: ScoringSettings, format: ScoreFormat): AllowedLevels {
   const all = levels(format, settings.step)
-  return { best: all.filter((l) => l > settings.worst), worst: all.filter((l) => l < settings.best) }
+  const { best, worst, quartiles } = settings
+  const ends = { best: all.filter((l) => l > worst), worst: all.filter((l) => l < best) }
+  if (!quartiles) return ends
+  const { p25, p50, p75 } = quartiles
+  const within = (high: number, low: number) => all.filter((l) => l <= high && l >= low)
+  return { ...ends, p25: within(best, p50), p50: within(p25, p75), p75: within(p50, worst) }
 }
 
+/** The levels each point may take: the Quartile scores only once the settings have them. */
+export type AllowedLevels = Record<'best' | 'worst', number[]> & Partial<Record<QuartilePoint, number[]>>
+
 /** One change the user makes to the scoring settings on Preview. */
-export type SettingsChange = { best: number } | { worst: number } | { distribution: Distribution } | { step: ScoreStep }
+export type SettingsChange =
+  | { best: number }
+  | { worst: number }
+  | { p25: number }
+  | { p50: number }
+  | { p75: number }
+  | { distribution: Distribution }
+  | { step: ScoreStep }
 
 /**
  * The settings after one change (Preview's pickers and buttons all go through here). A level for a point must be one
- * of its `allowedLevels`, or the change is rejected and the same `settings` object comes back unchanged. A new Score
- * Step moves best and worst to the nearest levels on it (`withStep`).
+ * of its `allowedLevels`, or the change is rejected and the same `settings` object comes back unchanged. Best lowered
+ * or worst raised past a Quartile score moves it just enough to keep the order, and leaves the others. A new Score
+ * Step moves every point to the nearest level on it (`withStep`). The first switch to Custom fills the Quartile
+ * scores in from the current Distribution; switching away keeps them for next time (ADR 0014).
  */
 export function changeSettings(settings: ScoringSettings, format: ScoreFormat, change: SettingsChange): ScoringSettings {
   if ('step' in change) return withStep(settings, format, change.step)
-  if ('distribution' in change) return { ...settings, distribution: change.distribution }
-  const point: ScorePoint = 'best' in change ? 'best' : 'worst'
-  const level = 'best' in change ? change.best : change.worst
-  if (!allowedLevels(settings, format)[point].includes(level)) return settings
-  return { ...settings, [point]: level }
+  if ('distribution' in change) {
+    if (change.distribution !== 'custom' || settings.quartiles) return { ...settings, distribution: change.distribution }
+    return { ...settings, distribution: 'custom', quartiles: startingQuartiles(settings, format) }
+  }
+  const point = POINTS.find((p) => p in change)!
+  const level = (change as Record<ScorePoint, number>)[point]
+  if (!allowedLevels(settings, format)[point]?.includes(level)) return settings
+  const next = { ...settings, [point]: level }
+  if (!settings.quartiles) return next
+  if (point === 'best' || point === 'worst') return { ...next, quartiles: between(settings.quartiles, next.best, next.worst) }
+  return { ...settings, quartiles: { ...settings.quartiles, [point]: level } }
 }
 
 /**
  * Best and worst carried over to a new Score Format (the user changed it on AniList, ADR 0003): each goes
  * through its raw score and is read the way AniList would show it. Worst never becomes 0 and stays below best.
+ * The Quartile scores go the same way, then move just enough to stay between best and worst in order (ADR 0014).
  * The Score Step stays 'fine', 'human' or 'whole', whatever gap that means in the new Score Format.
  */
 export function convertSettings(settings: ScoringSettings, from: ScoreFormat, to: ScoreFormat): ScoringSettings {
   const convert = (level: number) => levelOfRaw(to, scoreRawOf(from, level))
-  return onStep(to, settings, convert(settings.best), convert(settings.worst))
+  const q = settings.quartiles
+  const quartiles = q && { p25: convert(q.p25), p50: convert(q.p50), p75: convert(q.p75) }
+  return onStep(to, settings, convert(settings.best), convert(settings.worst), quartiles)
 }
 
 /** Scoring settings as saved, with the Score Format they were chosen in. */
@@ -246,14 +335,19 @@ export function parseSavedScoring(value: unknown): SavedScoring | null {
   const format = v?.format
   if (typeof format !== 'string' || !(format in SCALES)) return null
   // Settings saved before the Score Step existed were 'fine', so the scores they gave don't change.
-  const { distribution, step = 'fine', best, worst } = (v?.settings ?? {}) as Partial<ScoringSettings>
-  if (distribution !== 'linear' && distribution !== 'bell') return null
+  const { distribution, step = 'fine', best, worst, quartiles } = (v?.settings ?? {}) as Partial<ScoringSettings>
+  if (distribution === undefined || !DISTRIBUTIONS.includes(distribution)) return null
   if (!SCORE_STEPS.includes(step)) return null
   const valid = levels(format, step)
   if (typeof best !== 'number' || typeof worst !== 'number' || !valid.includes(best) || !valid.includes(worst) || worst >= best) {
     return null
   }
-  return { format, settings: { distribution, step, best, worst } }
+  // Settings saved before Custom existed have no Quartile scores; Custom can't do without them (ADR 0014).
+  if (quartiles === undefined) return distribution === 'custom' ? null : { format, settings: { distribution, step, best, worst } }
+  const { p25, p50, p75 } = (quartiles ?? {}) as Partial<Quartiles>
+  const chain = [best, p25, p50, p75, worst]
+  if (!chain.every((l, i) => typeof l === 'number' && valid.includes(l) && (i === 0 || l <= chain[i - 1]!))) return null
+  return { format, settings: { distribution, step, best, worst, quartiles: { p25: p25!, p50: p50!, p75: p75! } } }
 }
 
 /**

@@ -117,6 +117,16 @@ describe('Scoring settings', () => {
       expect(loadScoringSettings(storage, anime)).toBeNull()
     }
   })
+
+  it('remembers the Custom Distribution and its Quartile scores, and keeps them under Linear or Bell (ADR 0014)', () => {
+    const storage = memoryStorage()
+    const custom = { format: 'POINT_10' as const, settings: { ...saved.settings, distribution: 'custom' as const, quartiles: { p25: 8, p50: 8, p75: 6 } } }
+    saveScoringSettings(storage, anime, custom)
+    expect(loadScoringSettings(storage, anime)).toEqual(custom)
+    const linear = { ...custom, settings: { ...custom.settings, distribution: 'linear' as const } }
+    saveScoringSettings(storage, anime, linear)
+    expect(loadScoringSettings(storage, anime)).toEqual(linear)
+  })
 })
 
 describe('Write queue', () => {
