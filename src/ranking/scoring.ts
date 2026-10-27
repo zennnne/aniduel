@@ -30,6 +30,21 @@ export type ScoringSettings = {
 
 export type Quartiles = { p25: number; p50: number; p75: number }
 
+/** Which Quartile score: the one a quarter (p25), half (p50) or three quarters (p75) of the way down the Ranking. */
+export type QuartilePoint = keyof Quartiles
+
+/** A point of the scale the user picks a level for. */
+export type ScorePoint = 'best' | QuartilePoint | 'worst'
+
+/** The levels each point may take: the Quartile scores only once the settings have them. */
+export type AllowedLevels = Record<'best' | 'worst', number[]> & Partial<Record<QuartilePoint, number[]>>
+
+/** A level picked for one point of the scale. */
+type PointChange = { best: number } | { p25: number } | { p50: number } | { p75: number } | { worst: number }
+
+/** One change the user makes to the scoring settings on Preview. */
+export type SettingsChange = PointChange | { distribution: Distribution } | { step: ScoreStep }
+
 export type TitleScore = { band: BandIndex; level: number; scoreRaw: number }
 
 export type LevelRange = { min: number; max: number }
@@ -73,12 +88,26 @@ function rawValue(position: number, n: number, settings: ScoringSettings): numbe
   const { best, worst } = settings
   if (settings.distribution === 'bell') return bellValue((position + 0.5) / n, settings)
   const t = n === 1 ? 0 : position / (n - 1)
-  if (settings.distribution === 'linear' || !settings.quartiles) return best - t * (best - worst)
+  if (settings.distribution === 'linear' || !settings.quartiles) return linearValue(t, settings)
   // Custom: straight lines through best, the Quartile scores and worst at 0, 25, 50, 75 and 100% (ADR 0014).
-  const { p25, p50, p75 } = settings.quartiles
-  const points = [best, p25, p50, p75, worst]
+  const points = scalePoints(best, settings.quartiles, worst)
   const i = Math.min(3, Math.floor(t * 4))
   return points[i] - (t * 4 - i) * (points[i] - points[i + 1])
+}
+
+/** Best, the Quartile scores and worst, top of the scale first. */
+function scalePoints(best: number, { p25, p50, p75 }: Quartiles, worst: number): number[] {
+  return [best, p25, p50, p75, worst]
+}
+
+/** Every Quartile score put through `f`. */
+function mapQuartiles({ p25, p50, p75 }: Quartiles, f: (level: number) => number): Quartiles {
+  return { p25: f(p25), p50: f(p50), p75: f(p75) }
+}
+
+/** Linear's unrounded score a fraction t of the way down the Ranking. */
+function linearValue(t: number, { best, worst }: ScoringSettings): number {
+  return best - t * (best - worst)
 }
 
 /** Bell's unrounded score at percentile p of the Ranking. */
@@ -206,29 +235,23 @@ export function defaultSettings(format: ScoreFormat, step: ScoreStep = 'human'):
  * Best and worst moved to the nearest levels on the Score Step, worst still below best, and the Quartile scores (if
  * any) to the nearest levels too, then moved just enough to stay between them in order (ADR 0014).
  */
-function onStep(
-  format: ScoreFormat,
-  settings: ScoringSettings,
-  best: number,
-  worst: number,
-  quartiles: Quartiles | undefined = settings.quartiles,
-): ScoringSettings {
-  const { perUnit, min } = stepOf(format, settings.step)
+function onStep(format: ScoreFormat, settings: ScoringSettings): ScoringSettings {
+  const { step, quartiles } = settings
+  const { perUnit, min } = stepOf(format, step)
   const gap = 1 / perUnit
-  best = toLevel(format, best, settings.step)
-  worst = toLevel(format, worst, settings.step)
+  const level = (l: number) => toLevel(format, l, step)
+  let best = level(settings.best)
+  let worst = level(settings.worst)
   if (worst >= best) {
-    if (best <= min) best = toLevel(format, min + gap, settings.step)
-    worst = toLevel(format, best - gap, settings.step)
+    if (best <= min) best = level(min + gap)
+    worst = level(best - gap)
   }
   if (!quartiles) return { ...settings, best, worst }
-  const level = (l: number) => toLevel(format, l, settings.step)
-  const onTheStep = { p25: level(quartiles.p25), p50: level(quartiles.p50), p75: level(quartiles.p75) }
-  return { ...settings, best, worst, quartiles: between(onTheStep, best, worst) }
+  return { ...settings, best, worst, quartiles: clampQuartiles(mapQuartiles(quartiles, level), best, worst) }
 }
 
 /** The Quartile scores moved just enough to keep best ≥ p25 ≥ p50 ≥ p75 ≥ worst, never rescaled (ADR 0014). */
-function between({ p25, p50, p75 }: Quartiles, best: number, worst: number): Quartiles {
+function clampQuartiles({ p25, p50, p75 }: Quartiles, best: number, worst: number): Quartiles {
   const clamp = (l: number) => Math.min(best, Math.max(worst, l))
   p25 = clamp(p25)
   p50 = Math.min(p25, clamp(p50))
@@ -241,26 +264,17 @@ function between({ p25, p50, p75 }: Quartiles, best: number, worst: number): Qua
  * and three quarters of the way down the Ranking.
  */
 function startingQuartiles(settings: ScoringSettings, format: ScoreFormat): Quartiles {
-  const { best, worst } = settings
   const at = (t: number) => {
-    const raw = settings.distribution === 'bell' ? bellValue(t, settings) : best - t * (best - worst)
+    const raw = settings.distribution === 'bell' ? bellValue(t, settings) : linearValue(t, settings)
     return toLevel(format, raw, settings.step)
   }
-  return between({ p25: at(0.25), p50: at(0.5), p75: at(0.75) }, best, worst)
+  return clampQuartiles({ p25: at(0.25), p50: at(0.5), p75: at(0.75) }, settings.best, settings.worst)
 }
 
 /** The settings with another Score Step: best, worst and the Quartile scores move to the nearest levels on it (9.7 → 9.5). */
 export function withStep(settings: ScoringSettings, format: ScoreFormat, step: ScoreStep): ScoringSettings {
-  return onStep(format, { ...settings, step }, settings.best, settings.worst)
+  return onStep(format, { ...settings, step })
 }
-
-/** A Quartile score: the point a quarter (p25), half (p50) or three quarters (p75) of the way down the Ranking. */
-export type QuartilePoint = keyof Quartiles
-
-/** A point of the scale the user picks a level for. */
-export type ScorePoint = 'best' | QuartilePoint | 'worst'
-
-const POINTS: readonly ScorePoint[] = ['best', 'p25', 'p50', 'p75', 'worst']
 
 /**
  * The levels each point may be set to on the settings' Score Step, highest first, so the scale never rises down the
@@ -278,18 +292,14 @@ export function allowedLevels(settings: ScoringSettings, format: ScoreFormat): A
   return { ...ends, p25: within(best, p50), p50: within(p25, p75), p75: within(p50, worst) }
 }
 
-/** The levels each point may take: the Quartile scores only once the settings have them. */
-export type AllowedLevels = Record<'best' | 'worst', number[]> & Partial<Record<QuartilePoint, number[]>>
-
-/** One change the user makes to the scoring settings on Preview. */
-export type SettingsChange =
-  | { best: number }
-  | { worst: number }
-  | { p25: number }
-  | { p50: number }
-  | { p75: number }
-  | { distribution: Distribution }
-  | { step: ScoreStep }
+/** The point a change picks a level for, and the level. */
+function pointOf(change: PointChange): [ScorePoint, number] {
+  if ('best' in change) return ['best', change.best]
+  if ('p25' in change) return ['p25', change.p25]
+  if ('p50' in change) return ['p50', change.p50]
+  if ('p75' in change) return ['p75', change.p75]
+  return ['worst', change.worst]
+}
 
 /**
  * The settings after one change (Preview's pickers and buttons all go through here). A level for a point must be one
@@ -304,13 +314,14 @@ export function changeSettings(settings: ScoringSettings, format: ScoreFormat, c
     if (change.distribution !== 'custom' || settings.quartiles) return { ...settings, distribution: change.distribution }
     return { ...settings, distribution: 'custom', quartiles: startingQuartiles(settings, format) }
   }
-  const point = POINTS.find((p) => p in change)!
-  const level = (change as Record<ScorePoint, number>)[point]
+  const [point, level] = pointOf(change)
   if (!allowedLevels(settings, format)[point]?.includes(level)) return settings
-  const next = { ...settings, [point]: level }
-  if (!settings.quartiles) return next
-  if (point === 'best' || point === 'worst') return { ...next, quartiles: between(settings.quartiles, next.best, next.worst) }
-  return { ...settings, quartiles: { ...settings.quartiles, [point]: level } }
+  const { quartiles } = settings
+  if (point === 'best' || point === 'worst') {
+    const next = { ...settings, [point]: level }
+    return quartiles ? { ...next, quartiles: clampQuartiles(quartiles, next.best, next.worst) } : next
+  }
+  return quartiles ? { ...settings, quartiles: { ...quartiles, [point]: level } } : settings
 }
 
 /**
@@ -321,9 +332,9 @@ export function changeSettings(settings: ScoringSettings, format: ScoreFormat, c
  */
 export function convertSettings(settings: ScoringSettings, from: ScoreFormat, to: ScoreFormat): ScoringSettings {
   const convert = (level: number) => levelOfRaw(to, scoreRawOf(from, level))
-  const q = settings.quartiles
-  const quartiles = q && { p25: convert(q.p25), p50: convert(q.p50), p75: convert(q.p75) }
-  return onStep(to, settings, convert(settings.best), convert(settings.worst), quartiles)
+  const { best, worst, quartiles } = settings
+  const converted = { ...settings, best: convert(best), worst: convert(worst) }
+  return onStep(to, quartiles ? { ...converted, quartiles: mapQuartiles(quartiles, convert) } : converted)
 }
 
 /** Scoring settings as saved, with the Score Format they were chosen in. */
@@ -345,9 +356,11 @@ export function parseSavedScoring(value: unknown): SavedScoring | null {
   // Settings saved before Custom existed have no Quartile scores; Custom can't do without them (ADR 0014).
   if (quartiles === undefined) return distribution === 'custom' ? null : { format, settings: { distribution, step, best, worst } }
   const { p25, p50, p75 } = (quartiles ?? {}) as Partial<Quartiles>
-  const chain = [best, p25, p50, p75, worst]
-  if (!chain.every((l, i) => typeof l === 'number' && valid.includes(l) && (i === 0 || l <= chain[i - 1]!))) return null
-  return { format, settings: { distribution, step, best, worst, quartiles: { p25: p25!, p50: p50!, p75: p75! } } }
+  if (typeof p25 !== 'number' || typeof p50 !== 'number' || typeof p75 !== 'number') return null
+  const read = { p25, p50, p75 }
+  const points = scalePoints(best, read, worst)
+  if (!points.every((l, i) => valid.includes(l) && (i === 0 || l <= points[i - 1]))) return null
+  return { format, settings: { distribution, step, best, worst, quartiles: read } }
 }
 
 /**

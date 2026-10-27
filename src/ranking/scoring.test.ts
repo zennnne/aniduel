@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { RankingState } from './engine.ts'
-import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, parseSavedScoring, score, settingsFor, stepLabel, withStep, type SettingsChange } from './scoring.ts'
+import { allowedLevels, changeSettings, convertSettings, defaultSettings, formatLevel, hasHumanStep, levelOfRaw, levels, parseSavedScoring, score, settingsFor, stepLabel, withStep, type ScoreStep, type ScoringSettings, type SettingsChange } from './scoring.ts'
 import { rankingOf as ranking } from './testRanking.ts'
 
 const levelsOf = (state: RankingState, ...args: Parameters<typeof score> extends [unknown, ...infer R] ? R : never) => {
@@ -369,14 +369,16 @@ describe('Changing the scoring settings', () => {
   })
 })
 
+/** Custom settings with these five points, best first. */
+const custom = (best: number, p25: number, p50: number, p75: number, worst: number, step: ScoreStep = 'fine'): ScoringSettings => ({
+  distribution: 'custom',
+  step,
+  best,
+  worst,
+  quartiles: { p25, p50, p75 },
+})
+
 describe('Custom (ADR 0014)', () => {
-  const custom = (best: number, p25: number, p50: number, p75: number, worst: number) => ({
-    distribution: 'custom' as const,
-    step: 'fine' as const,
-    best,
-    worst,
-    quartiles: { p25, p50, p75 },
-  })
   const line = (n: number) => ranking([Array.from({ length: n }, (_, i) => [i + 1])])
 
   it('puts best, the Quartile scores and worst at 0 / 25 / 50 / 75 / 100% of the Ranking', () => {
@@ -399,7 +401,7 @@ describe('Custom (ADR 0014)', () => {
 
   it('rounds to the Score Step', () => {
     // 9 titles on the human step: 7.25 at 12.5% → 7.5, 6.25 at 37.5% → 6.5, 5 at 62.5%, 3 at 87.5%.
-    expect(levelsOf(line(9), 'POINT_10_DECIMAL', { ...custom(8, 6.5, 6, 4, 2), step: 'human' })).toEqual([8, 7.5, 6.5, 6.5, 6, 5, 4, 3, 2])
+    expect(levelsOf(line(9), 'POINT_10_DECIMAL', custom(8, 6.5, 6, 4, 2, 'human'))).toEqual([8, 7.5, 6.5, 6.5, 6, 5, 4, 3, 2])
   })
 
   it('on every Score Format and Score Step, never rises down the Ranking and stays on the step', () => {
@@ -436,14 +438,6 @@ describe('Custom (ADR 0014)', () => {
 })
 
 describe('Changing the Custom settings (ADR 0014)', () => {
-  const custom = (best: number, p25: number, p50: number, p75: number, worst: number, step: 'fine' | 'human' | 'whole' = 'fine') => ({
-    distribution: 'custom' as const,
-    step,
-    best,
-    worst,
-    quartiles: { p25, p50, p75 },
-  })
-
   it('starts the Quartile scores where Linear puts them, the first time Custom is picked', () => {
     const linear = { distribution: 'linear' as const, step: 'fine' as const, best: 10, worst: 2 }
     expect(changeSettings(linear, 'POINT_10', { distribution: 'custom' })).toEqual(custom(10, 8, 6, 4, 2))
