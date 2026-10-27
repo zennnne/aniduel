@@ -61,8 +61,12 @@ Taking one title out of the Ranking and running Duels again to find its new plac
 _Avoid_: Re-sort, re-duel
 
 **Distribution**:
-The rule that turns positions in the Ranking into scores between a user-chosen best and worst score: Linear or Bell.
+The rule that turns positions in the Ranking into scores between a user-chosen best and worst score: Linear, Bell or Custom. Custom is shaped by the user's own scores at three fixed points of the Ranking, a quarter, half and three quarters of the way down.
 _Avoid_: Curve, mapping
+
+**Quartile score**:
+The score the user chooses, under the Custom Distribution, for the title a quarter, half or three quarters of the way down the Ranking. Like best and worst, it sits on the Score Step, and it is never above the one before it.
+_Avoid_: Anchor, checkpoint, mark, waypoint
 
 **Score Format**:
 The AniList setting that decides which scale the user sees: 100 points, 10 points, 10 points with decimals, 5 stars, or 3 smileys. Scores are calculated at the levels of this scale.
