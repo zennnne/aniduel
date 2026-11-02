@@ -3,7 +3,8 @@ import { AniListError } from '../anilist/gateway.ts'
 import { scoreStudios, type TopStudios } from './scoring.ts'
 import { readFavouriteAnime, readStudioList } from './studioGateway.ts'
 
-export type { StudioScore, StudioVote, TopStudios } from './scoring.ts'
+export { GATE } from './scoring.ts'
+export type { StudioLabel, StudioScore, StudioVote, TopStudios } from './scoring.ts'
 
 /** How the page reaches AniList: a `fetch`, and the AniDuel! login's token if there is one. */
 export type TopStudiosSession = { fetch: typeof fetch; token: string | null }

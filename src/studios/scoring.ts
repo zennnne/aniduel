@@ -23,8 +23,30 @@ const MID_WEIGHT = 0.5
 const UNSCORED_DROP_WEIGHT = 0.5
 /** Pseudo-votes at the user's average every studio starts with: "a studio needs this much evidence". */
 const K = 13.1
-/** Entries a studio needs to be ranked. Fixed here; the step-down for short lists comes with #90. */
-const GATE = 6
+/** γ: weight of the love count, ln(1 + n_love), which rewards the number of loved works. */
+const GAMMA = 0.1
+/** A vote counts as loved from about this z (≈ 8+ on the owner's scale)... */
+const LOVE_Z = 0.9
+/** ...with this soft edge, σ((Z − LOVE_Z) / LOVE_SOFT), so there is no cliff at LOVE_Z. */
+const LOVE_SOFT = 0.15
+/** Entries a studio needs to be ranked. */
+export const GATE = 6
+/** A short list lowers the gate one entry at a time until this many studios rank... */
+const GATE_TARGET = 10
+/** ...but never below this. */
+const GATE_FLOOR = 4
+/** How many studios below the gate the watchlist shows. */
+const WATCHLIST_SIZE = 5
+/** A vote is a hit from this z, a flop up to this one. */
+const HIT_Z = 1.2
+const FLOP_Z = -1
+/** Labels compare a studio's rates with the pooled rates of this many top ranked studios... */
+const LABEL_POOL = 20
+/** ...and a rate counts as high only this far above the pool, so one title doesn't flip a label. */
+const LABEL_MARGIN = 0.06
+
+/** How a studio treats the user: hits often or not, flops often or not. */
+export type StudioLabel = 'elite' | 'bold' | 'reliable' | 'meh'
 
 /** One counted title in one studio's score. */
 export type StudioVote = {
@@ -45,11 +67,20 @@ export type StudioScore = {
   score: number
   /** The counted titles, in list order. Their count is the studio's entries, which the gate reads. */
   votes: StudioVote[]
+  /** Share of its votes at z ≥ 1.2. */
+  hitRate: number
+  /** Share of its votes at z ≤ −1. */
+  flopRate: number
+  /** 💎 Elite (hit rate high, flop rate low), 🎲 Bold (both high), 🛡️ Reliable (both low), 💤 Meh (hit low, flop high). */
+  label: StudioLabel
 }
 
 export type TopStudios = {
   /** Studios with at least `gate` entries, best first. */
   studios: StudioScore[]
+  /** The best studios below the gate, best first: promising, but too little seen to rank. */
+  watchlist: StudioScore[]
+  /** Entries a studio needed to be ranked: `GATE`, or lower for a short list. */
   gate: number
   /** Ū: the user's W-weighted mean vote utility e^(αZ) over every vote. A title above it lifts its studio. */
   averageUtility: number
@@ -100,7 +131,7 @@ function entryVote(e: StudioTitle, scale: ScoreScale, favourite: boolean): { z: 
   return { z, w, scored }
 }
 
-/** Ranks the user's studios by Studio Score v2.7 (without the love count, the step-down gate and labels: #90). */
+/** Ranks the user's studios by Studio Score v2.7. */
 export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterable<number>): StudioScoring {
   const watched = list.filter((e) => e.status !== 'PLANNING')
   const scores = watched.filter((e) => e.score > 0).map((e) => e.score)
@@ -114,8 +145,13 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
   let countedScoredCount = 0
   for (const title of watched) {
     const favourite = favourites.has(title.mediaId)
-    const { z, w, scored } = entryVote(title, scale, favourite)
+    const entry = entryVote(title, scale, favourite)
+    const { w, scored } = entry
     if (w <= 0) continue
+    // A vote's Z is the entropic mean of its entries (one per vote since v2.5), as the prototype computes it:
+    // ln(w·e^z / w) is z up to rounding, and that rounding decides whether an unscored drop (z −1) is a flop,
+    // so it is kept for parity with the prototype's labels (#90).
+    const z = entropicMean([{ z: entry.z, weight: w }])
     countedCount++
     if (scored) countedScoredCount++
     for (const studio of title.studios) {
@@ -146,14 +182,35 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
   const base = Math.log(averageUtility) / ALPHA
 
   const scored = studios
-    .map((s) => ({ ...s, score: entropicMean(s.votes, K, averageUtility) - base }))
+    .map((s) => ({
+      ...s,
+      score: entropicMean(s.votes, K, averageUtility) - base + GAMMA * Math.log(1 + loveCount(s.votes)),
+      hitRate: s.votes.filter((v) => v.z >= HIT_Z).length / s.votes.length,
+      flopRate: s.votes.filter((v) => v.z <= FLOP_Z).length / s.votes.length,
+    }))
     .sort((a, b) => b.score - a.score)
+
+  let gate = GATE
+  while (gate > GATE_FLOOR && scored.filter((s) => s.votes.length >= gate).length < GATE_TARGET) gate--
+  const ranked = scored.filter((s) => s.votes.length >= gate)
+  const watchlist = scored.filter((s) => s.votes.length < gate).slice(0, WATCHLIST_SIZE)
+
+  // The label baseline: hit and flop rates pooled over the top ranked studios' votes (none ranked: 0).
+  const pool = ranked.slice(0, LABEL_POOL)
+  const pooled = (rate: (s: (typeof pool)[number]) => number) => {
+    const votes = pool.reduce((a, s) => a + s.votes.length, 0)
+    return votes ? pool.reduce((a, s) => a + rate(s) * s.votes.length, 0) / votes : 0
+  }
+  const hitLine = pooled((s) => s.hitRate) + LABEL_MARGIN
+  const flopLine = pooled((s) => s.flopRate) + LABEL_MARGIN
+  const labelled = (s: (typeof scored)[number]): StudioScore => ({ ...s, label: labelOf(s.hitRate > hitLine, s.flopRate > flopLine) })
 
   return {
     ok: true,
     topStudios: {
-      studios: scored.filter((s) => s.votes.length >= GATE),
-      gate: GATE,
+      studios: ranked.map(labelled),
+      watchlist: watchlist.map(labelled),
+      gate,
       averageUtility,
       scale,
       scoredCount: scores.length,
@@ -162,6 +219,44 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
       countedScoredCount,
     },
   }
+}
+
+/**
+ * n_love: a soft count of the studio's loved works, not entries. Its titles joined by SEQUEL/PREQUEL form one
+ * franchise, worth at most 1 (its best vote). Fav split: in a franchise with two or more favourites, each favourite
+ * counts on its own and the rest stays one.
+ */
+function loveCount(votes: readonly StudioVote[]): number {
+  const index = new Map(votes.map((v, i) => [v.title.mediaId, i]))
+  const parent = votes.map((_, i) => i)
+  const root = (i: number): number => {
+    while (parent[i] !== i) i = parent[i] = parent[parent[i]]
+    return i
+  }
+  votes.forEach((v, i) => {
+    for (const relation of v.title.relations) {
+      const j = index.get(relation.mediaId)
+      if (j !== undefined) parent[root(i)] = root(j)
+    }
+  })
+  const favouritesIn = new Map<number, number>()
+  votes.forEach((v, i) => {
+    if (v.favourite) favouritesIn.set(root(i), (favouritesIn.get(root(i)) ?? 0) + 1)
+  })
+  const best = new Map<string, number>()
+  votes.forEach((v, i) => {
+    const franchise = root(i)
+    const key = v.favourite && (favouritesIn.get(franchise) ?? 0) >= 2 ? `fav ${i}` : `franchise ${franchise}`
+    best.set(key, Math.max(best.get(key) ?? 0, sigmoid((v.z - LOVE_Z) / LOVE_SOFT)))
+  })
+  return [...best.values()].reduce((a, b) => a + b, 0)
+}
+
+const sigmoid = (x: number) => 1 / (1 + Math.exp(-x))
+
+function labelOf(hitsHigh: boolean, flopsHigh: boolean): StudioLabel {
+  if (hitsHigh) return flopsHigh ? 'bold' : 'elite'
+  return flopsHigh ? 'meh' : 'reliable'
 }
 
 /** The user's mean and spread on the 10-point scale; a vote's z is how far a score sits from the mean. */

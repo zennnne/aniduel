@@ -60,7 +60,16 @@ function ranked({ gate = 6, studios = 10, counted = 100, countedScored = 80 } = 
   return {
     ok: true,
     topStudios: {
-      studios: Array.from({ length: studios }, (_, i) => ({ id: i, name: `Studio ${i}`, score: 0, votes: [] })),
+      studios: Array.from({ length: studios }, (_, i) => ({
+        id: i,
+        name: `Studio ${i}`,
+        score: 0,
+        votes: [],
+        hitRate: 0,
+        flopRate: 0,
+        label: 'reliable' as const,
+      })),
+      watchlist: [],
       gate,
       averageUtility: 1,
       scale: { mean: 7, sd: 1.5 },

@@ -67,8 +67,8 @@ function entry(score: number, studio: Studio, options: EntryOptions = {}, mediaI
 }
 
 // The hand-made list: a studio that swings, one that plays safe, one in between, and one too small to rank.
-// The expected S values below come from the Python prototype at γ = 0 run on the same list
-// (scripts/top-studio-score/prototype.py; the love count arrives in #90).
+// The expected S values below come from the Python prototype run on the same list
+// (scripts/top-studio-score/prototype.py --json).
 function handMadeList() {
   nextId = 1000
   return [
@@ -103,14 +103,16 @@ const scoreOf = (result: TopStudios, studio: Studio) => result.studios.find((s) 
 const names = (result: TopStudios) => result.studios.map((s) => s.name)
 
 describe('loadTopStudios: ranking', () => {
-  it('ranks studios with at least 6 entries by Studio Score, as the prototype does', async () => {
+  it('ranks studios by Studio Score, love count included, as the prototype does', async () => {
     const result = await load(handMadeList())
 
+    // Three studios can't make ten at any gate, so the gate is down to 4 and Tiny Studio waits on the watchlist.
     expect(names(result)).toEqual(['Swing Studio', 'Safe Studio', 'Middle Studio'])
-    expect(result.gate).toBe(6)
-    expect(scoreOf(result, SWING)).toBeCloseTo(-0.017663909, 6)
-    expect(scoreOf(result, SAFE)).toBeCloseTo(-0.057027119, 6)
-    expect(scoreOf(result, MIDDLE)).toBeCloseTo(-0.167082039, 6)
+    expect(result.gate).toBe(4)
+    expect(scoreOf(result, SWING)).toBeCloseTo(0.088691958, 6)
+    expect(scoreOf(result, SAFE)).toBeCloseTo(-0.044711236, 6)
+    expect(scoreOf(result, MIDDLE)).toBeCloseTo(-0.161777001, 6)
+    expect(result.watchlist.map((s) => [s.name, s.score])).toEqual([['Tiny Studio', expect.closeTo(0.351384448, 6)]])
   })
 
   it('a studio that swings beats one that plays safe on the same average', async () => {
@@ -149,6 +151,161 @@ describe('loadTopStudios: ranking', () => {
   })
 })
 
+describe('loadTopStudios: love count', () => {
+  // Six titles at 9, 9, 9, 5, 5, 5 for each studio: mean 7, SD 2, so a 9 is z +1 (loved) and a 5 is z −1.
+  const sixTitles = (studio: Studio, firstId: number, relations: Array<Array<[string, number]>> = []) =>
+    [9, 9, 9, 5, 5, 5].map((s, i) => entry(s, studio, { relations: relations[i] }, firstId + i))
+  const chain = (firstId: number, length: number) =>
+    Array.from({ length }, (_, i) => [
+      ...(i > 0 ? [['PREQUEL', firstId + i - 1] as [string, number]] : []),
+      ...(i < length - 1 ? [['SEQUEL', firstId + i + 1] as [string, number]] : []),
+    ])
+
+  it('lifts a studio with more loved works over one with the same votes whose loved titles are one franchise', async () => {
+    const result = await load([...sixTitles(SAFE, 2000, chain(2000, 3)), ...sixTitles(SWING, 3000)])
+
+    expect(names(result)).toEqual(['Swing Studio', 'Safe Studio'])
+    expect(scoreOf(result, SWING)! - scoreOf(result, SAFE)!).toBeGreaterThan(0.01)
+  })
+
+  it('counts each favourite on its own when a franchise holds two or more (fav split)', async () => {
+    const result = await load(
+      [
+        ...sixTitles(SAFE, 2000, chain(2000, 2)), // two favourites joined by SEQUEL
+        ...sixTitles(SWING, 3000), // the same two favourites, not joined
+        ...sixTitles(MIDDLE, 4000, chain(4000, 2)), // joined, no favourites
+        ...sixTitles(TINY, 5000), // not joined, no favourites
+      ],
+      [2000, 2001, 3000, 3001],
+    )
+
+    expect(scoreOf(result, SAFE)).toBeCloseTo(scoreOf(result, SWING)!, 12)
+    expect(scoreOf(result, MIDDLE)!).toBeLessThan(scoreOf(result, TINY)!)
+  })
+
+  it('joins titles into a franchise only within one studio', async () => {
+    // The same SEQUEL chain, but the sequel is another studio's title: each studio keeps its own love.
+    const linked = await load([...sixTitles(SAFE, 2000, chain(2000, 1)), ...sixTitles(SWING, 3000)])
+    const crossStudio = await load([
+      entry(9, SAFE, { relations: [['SEQUEL', 3000]] }, 2000),
+      ...sixTitles(SAFE, 2000).slice(1),
+      entry(9, SWING, { relations: [['PREQUEL', 2000]] }, 3000),
+      ...sixTitles(SWING, 3000).slice(1),
+    ])
+
+    expect(scoreOf(crossStudio, SAFE)).toBeCloseTo(scoreOf(linked, SAFE)!, 12)
+    expect(scoreOf(crossStudio, SWING)).toBeCloseTo(scoreOf(linked, SWING)!, 12)
+  })
+})
+
+describe('loadTopStudios: gate and watchlist', () => {
+  // Studios of the given sizes, numbered from 10. Studio i scores 6, 7, 8, ... shifted by i/10, so they differ in S.
+  function studiosOfSize(...sizes: number[]) {
+    nextId = 1000
+    return sizes.flatMap((size, i) => {
+      const studio: Studio = [10 + i, `Studio ${10 + i}`]
+      return Array.from({ length: size }, (_, j) => entry(6 + (j % 3) + i / 10, studio))
+    })
+  }
+  const sizes = (result: TopStudios) => result.studios.map((s) => s.votes.length)
+
+  it('keeps the gate at 6 when ten studios pass it', async () => {
+    const result = await load(studiosOfSize(...Array(10).fill(6), 5))
+
+    expect(result.gate).toBe(6)
+    expect(sizes(result)).toHaveLength(10)
+  })
+
+  it('lowers the gate to 5 when fewer than ten studios pass at 6', async () => {
+    const result = await load(studiosOfSize(...Array(9).fill(6), 5, 4))
+
+    expect(result.gate).toBe(5)
+    expect(sizes(result).sort()).toEqual([5, ...Array(9).fill(6)])
+  })
+
+  it('lowers the gate to 4 when fewer than ten pass at 5', async () => {
+    const result = await load(studiosOfSize(...Array(9).fill(6), 4, 3))
+
+    expect(result.gate).toBe(4)
+    expect(sizes(result)).toHaveLength(10)
+  })
+
+  it('never lowers the gate below 4, however few studios pass', async () => {
+    const result = await load(studiosOfSize(6, 6, 6, 3, 3))
+
+    expect(result.gate).toBe(4)
+    expect(sizes(result)).toEqual([6, 6, 6])
+    expect(result.watchlist.map((s) => s.votes.length)).toEqual([3, 3])
+  })
+
+  it('puts the best five studios below the gate on the watchlist, best first', async () => {
+    const result = await load(studiosOfSize(...Array(10).fill(6), 5, 5, 5, 5, 5, 5, 5))
+
+    expect(result.watchlist).toHaveLength(5)
+    expect(result.watchlist.every((s) => s.votes.length < result.gate)).toBe(true)
+    // Studios 20–26 differ only by their shift, so the best five are 26 down to 22.
+    expect(result.watchlist.map((s) => s.name)).toEqual(['Studio 26', 'Studio 25', 'Studio 24', 'Studio 23', 'Studio 22'])
+    expect(result.studios.every((s) => s.votes.length >= result.gate)).toBe(true)
+  })
+})
+
+describe('loadTopStudios: labels', () => {
+  const ELITE: Studio = [21, 'Elite Studio']
+  const BOLD: Studio = [22, 'Bold Studio']
+  const RELIABLE: Studio = [23, 'Reliable Studio']
+  const MEH: Studio = [24, 'Meh Studio']
+  const NEAR: Studio = [25, 'Near Studio']
+
+  // Ten titles: `hits` at 10, `flops` at 1, the rest at 5.5. Across these lists a 10 sits at z ≥ +1.6 (a hit,
+  // z ≥ 1.2), a 1 at z ≤ −1.6 (a flop, z ≤ −1) and a 5.5 near z 0 (neither).
+  const tenTitles = (studio: Studio, hits: number, flops: number) =>
+    Array.from({ length: 10 }, (_, i) => entry(i < hits ? 10 : i < hits + flops ? 1 : 5.5, studio))
+  const fourCorners = () => [
+    ...tenTitles(ELITE, 3, 0),
+    ...tenTitles(BOLD, 3, 3),
+    ...tenTitles(RELIABLE, 0, 0),
+    ...tenTitles(MEH, 0, 3),
+  ]
+  const studio = (result: TopStudios, [id]: Studio) => result.studios.find((s) => s.id === id)!
+
+  it('labels each studio from its hit and flop rates against the pooled rates of the ranked studios', async () => {
+    // Pooled: 6 hits and 6 flops in 40 titles, 15% each; a rate is high above 21%.
+    const result = await load(fourCorners())
+
+    expect(studio(result, ELITE)).toMatchObject({ label: 'elite', hitRate: 0.3, flopRate: 0 })
+    expect(studio(result, BOLD)).toMatchObject({ label: 'bold', hitRate: 0.3, flopRate: 0.3 })
+    expect(studio(result, RELIABLE)).toMatchObject({ label: 'reliable', hitRate: 0, flopRate: 0 })
+    expect(studio(result, MEH)).toMatchObject({ label: 'meh', hitRate: 0, flopRate: 0.3 })
+  })
+
+  it('counts a rate as high only 6 points above the pool', async () => {
+    // Pooled hit rate 8 in 50 = 16%: Near's 20% is above it but under 22%, so it stays low.
+    const result = await load([...fourCorners(), ...tenTitles(NEAR, 2, 0)])
+
+    expect(studio(result, NEAR)).toMatchObject({ label: 'reliable', hitRate: 0.2 })
+    expect(studio(result, ELITE).label).toBe('elite')
+  })
+
+  it('pools only the top 20 ranked studios', async () => {
+    // 19 plain studios and Bold make the top 20, with 1 flop in 200 titles; five all-flop studios rank below them.
+    // Pooled over the top 20, Bold's 10% flops read high; pooled over all 25 (51 in 250) they wouldn't.
+    nextId = 1000
+    const plain = Array.from({ length: 19 }, (_, i) => tenTitles([100 + i, `Plain ${i}`], 1, 0)).flat()
+    const flopping = Array.from({ length: 5 }, (_, i) => tenTitles([200 + i, `Flopping ${i}`], 0, 10)).flat()
+    const result = await load([...plain, ...tenTitles(BOLD, 2, 1), ...flopping])
+
+    expect(result.studios).toHaveLength(25)
+    expect(result.studios.slice(20).every((s) => s.name.startsWith('Flopping'))).toBe(true)
+    expect(studio(result, BOLD)).toMatchObject({ label: 'bold', hitRate: 0.2, flopRate: 0.1 })
+  })
+
+  it('labels the watchlist too', async () => {
+    const result = await load([...fourCorners(), entry(10, TINY), entry(10, TINY)])
+
+    expect(result.watchlist).toEqual([expect.objectContaining({ name: 'Tiny Studio', label: 'elite', hitRate: 1 })])
+  })
+})
+
 describe('loadTopStudios: which entries count', () => {
   it('ignores Planning titles', async () => {
     const base = await load(handMadeList())
@@ -176,7 +333,7 @@ describe('loadTopStudios: which entries count', () => {
     const safe = withDrop.studios.find((s) => s.id === SAFE[0])!
 
     expect(safe.votes).toHaveLength(7)
-    expect(safe.votes.at(-1)?.z).toBe(-1)
+    expect(safe.votes.at(-1)?.z).toBeCloseTo(-1, 12)
     expect(scoreOf(withDrop, SAFE)!).toBeLessThan(scoreOf(base, SAFE)!)
   })
 
@@ -185,7 +342,7 @@ describe('loadTopStudios: which entries count', () => {
     const middle = withRewatch.studios.find((s) => s.id === MIDDLE[0])!
 
     expect(middle.votes).toHaveLength(7)
-    expect(middle.votes.at(-1)?.z).toBe(0.5)
+    expect(middle.votes.at(-1)?.z).toBeCloseTo(0.5, 12)
   })
 
   it('weighs a dropped title by the episodes watched', async () => {

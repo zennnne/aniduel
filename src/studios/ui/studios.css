@@ -98,3 +98,25 @@
 .studios-table td:last-child {
   font-variant-numeric: tabular-nums;
 }
+
+.studios-legend {
+  font-size: 14px;
+}
+
+.studios-legend dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 4px 16px;
+  margin: 0 0 8px;
+}
+
+.studios-legend dt {
+  display: inline;
+  font-weight: 600;
+  color: var(--tx-strong);
+}
+
+.studios-legend dd {
+  display: inline;
+  margin: 0 0 0 6px;
+}

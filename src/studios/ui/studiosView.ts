@@ -1,6 +1,6 @@
 // The Top Studios page's view (spec #87): from the URL query, the AniDuel! login (if any) and the load, which name to
 // look up, what the search page says, and how sure a result is. Pure: the page renders it and does what it says.
-import type { TopStudios, TopStudiosFailure, TopStudiosLoad } from '../loadTopStudios.ts'
+import { GATE, type TopStudios, type TopStudiosFailure, type TopStudiosLoad } from '../loadTopStudios.ts'
 
 /** The logged-in AniDuel! user's own name: still being checked, known, or none (logged out, or the login refused). */
 export type OwnName = { kind: 'checking' } | { kind: 'known'; name: string } | { kind: 'none' }
@@ -37,8 +37,8 @@ export type StudiosView = {
   screen: StudiosScreen
 }
 
-/** The gate every list starts at (v2.7); a short list steps it down (#90), which the reading counts against. */
-const FULL_GATE = 6
+/** The gate every list starts at (v2.7); a short list steps it down, which the reading counts against. */
+const FULL_GATE = GATE
 /** Fewer ranked studios than this rest on too little to compare. */
 const FEW_RANKED = 10
 const WORDS = ['', 'Very rough', 'Rough', 'Fair', 'Good', 'Solid']

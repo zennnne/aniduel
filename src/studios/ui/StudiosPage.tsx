@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { loadTopStudios, type TopStudiosLoad, type TopStudiosSession } from '../loadTopStudios.ts'
 import { checkLogin } from '../studiosLogin.ts'
+import { StudiosResult } from './StudiosResult.tsx'
 import { searchFor, studiosView, type HowSure, type LoadState, type OwnName } from './studiosView.ts'
 
 /** The load a page with this query starts on: the view's `loadNow` already loading, else nothing yet. */
@@ -102,27 +103,7 @@ export function StudiosPage({ session }: { session: TopStudiosSession }) {
       {screen.kind === 'result' && (
         <>
           <HowSureCard howSure={screen.howSure} />
-          <table className="studios-table">
-            <caption>
-              {screen.userName}’s studios with at least {screen.topStudios.gate} titles
-            </caption>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Studio</th>
-                <th>Studio Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {screen.topStudios.studios.map((studio, i) => (
-                <tr key={studio.id}>
-                  <td>{i + 1}</td>
-                  <td>{studio.name}</td>
-                  <td>{(studio.score >= 0 ? '+' : '') + studio.score.toFixed(2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <StudiosResult userName={screen.userName} topStudios={screen.topStudios} />
         </>
       )}
     </main>
