@@ -278,6 +278,14 @@ describe('loadTopStudios: labels', () => {
     expect(studio(result, MEH)).toMatchObject({ label: 'meh', hitRate: 0, flopRate: 0.3 })
   })
 
+  it('gives the lines a rate must pass to read high, which the label map draws its corners on', async () => {
+    // Pooled 15% hits and 15% flops, plus the 6-point margin.
+    const result = await load(fourCorners())
+
+    expect(result.labelLines.hit).toBeCloseTo(0.21, 12)
+    expect(result.labelLines.flop).toBeCloseTo(0.21, 12)
+  })
+
   it('counts a rate as high only 6 points above the pool', async () => {
     // Pooled hit rate 8 in 50 = 16%: Near's 20% is above it but under 22%, so it stays low.
     const result = await load([...fourCorners(), ...tenTitles(NEAR, 2, 0)])
