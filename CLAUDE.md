@@ -4,6 +4,8 @@
 
 To see a screen without an AniList login, run `npm run dev` and open `http://localhost:5173/aniduel/?fake-anilist`: Start, signed in against a fake AniList with a fixed list (`src/dev/fakeSession.ts`). Every page load starts fresh. The fake has no Catch-up suggestions (the screen shows its error), and Manga shows the same titles as Anime.
 
+Top Studios works the same way: `http://localhost:5173/aniduel/studios/?fake-anilist` opens the page logged in as the fake's user, `Fake Zen`, with that name filled in; add `&user=Fake%20Zen` to load the result at once. The fixed list ranks seven studios with all four labels on a lowered gate (4) and fills the watchlist. Any other name is "no such user".
+
 ## Agent skills
 
 ### Issue tracker

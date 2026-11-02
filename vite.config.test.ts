@@ -18,7 +18,7 @@ describe('the production bundle', () => {
     return [built].flat().flatMap((b) => ('output' in b ? b.output : []))
   }
 
-  it('has the app and the Top Studios page, and on neither the fake AniList nor the switch that opens it (#68, #88)', async () => {
+  it('has the app and the Top Studios page, and on neither the fake AniList nor the switch that opens it (#68, #88, #93)', async () => {
     const files = await productionBuild()
     const code = files.map((file) => (file.type === 'chunk' ? file.code : '')).join('\n')
     const pages = files.filter((file) => file.fileName.endsWith('.html')).map((file) => file.fileName)
@@ -29,5 +29,7 @@ describe('the production bundle', () => {
     expect(code).not.toContain('fake-anilist') // the switch
     expect(code).not.toContain('Fake Zen') // the fake's viewer
     expect(code).not.toContain('unexpected query') // the fake's fetch
+    expect(code).not.toContain('Mob Psycho') // the fake's fixed list
+    expect(code).not.toContain('Aniplex') // and its studios
   }, 60_000)
 })
