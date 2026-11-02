@@ -28,6 +28,7 @@ const actions: MenuActions = {
   switchSortGoal: noop,
   openCatchUp: noop,
   clearPassed: noop,
+  openTopStudios: noop,
 }
 
 const ids = (log: DuelLog) =>
@@ -171,5 +172,30 @@ describe('Clear Passed in the menu', () => {
       .find((i) => i.id === 'clear-passed')!
       .run()
     expect(asked).toBe(1)
+  })
+})
+
+// #94: Top Studios, a page of its own (ADR 0015), from the App group, whichever Ranking is open.
+describe('Top Studios in the menu', () => {
+  const items = (openTopStudios = noop) =>
+    buildMenuItems(
+      { mediaType: 'MANGA', statuses: ['COMPLETED'], hasLog: false, hasProgress: false, ranking: null, choosingBand: false, splitOffers: [] },
+      { ...actions, openTopStudios },
+    )
+
+  it('is offered in App, right after Catch-up', () => {
+    const all = items()
+    const item = all.find((i) => i.id === 'top-studios')!
+    expect(item.group).toBe('App')
+    expect(item.title).toBe('Top Studios')
+    expect(all[all.indexOf(item) - 1].id).toBe('catch-up')
+  })
+
+  it('opens the Top Studios page', () => {
+    let opened = 0
+    items(() => opened++)
+      .find((i) => i.id === 'top-studios')!
+      .run()
+    expect(opened).toBe(1)
   })
 })

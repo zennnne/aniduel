@@ -13,6 +13,7 @@
     "typecheck": "tsc -b",
     "eval:catchup": "node scripts/catchup-eval.ts",
     "eval:keep-my-scale": "node scripts/keep-my-scale-eval.ts",
+    "parity:top-studios": "node scripts/top-studio-parity.ts",
     "bench:replay": "node scripts/replay-bench.ts"
   },
   "dependencies": {

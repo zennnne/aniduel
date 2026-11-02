@@ -66,16 +66,142 @@ const FIXED_LIST: readonly FixedTitle[] = [
   { name: 'Mahouka Koukou no Rettousei', score: 0, status: 'DROPPED', year: null, completed: null, genres: ['Action', 'Fantasy', 'Romance', 'Sci-Fi'], tags: [{ name: 'Magic', rank: 95 }, { name: 'School', rank: 90 }, { name: 'Male Protagonist', rank: 93 }, { name: 'Overpowered Main Characters', rank: 88 }] },
   { name: 'Akira', score: 60, status: 'PLANNING', year: 1988, completed: null, genres: ['Action', 'Sci-Fi'], tags: [{ name: 'Cyberpunk', rank: 95 }, { name: 'Dystopian', rank: 90 }] },
   { name: 'Chainsaw Man', score: 0, status: 'PLANNING', year: 2022, completed: null, genres: ['Action', 'Horror'], tags: [{ name: 'Devils', rank: 96 }, { name: 'Gore', rank: 90 }] },
+  // Sequels and more by the same studios, so Top Studios has franchises and enough entries per studio to rank (#93).
+  { name: 'Mob Psycho 100 II', score: 90, status: 'COMPLETED', year: 2019, completed: 2019, genres: ['Action', 'Comedy', 'Supernatural'], tags: [{ name: 'Psychic Powers', rank: 95 }, { name: 'Male Protagonist', rank: 94 }] },
+  { name: 'Mob Psycho 100 III', score: 80, status: 'COMPLETED', year: 2022, completed: 2023, genres: ['Action', 'Comedy', 'Supernatural'], tags: [{ name: 'Psychic Powers', rank: 95 }, { name: 'Coming of Age', rank: 85 }] },
+  { name: 'Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen', score: 100, status: 'COMPLETED', year: 2020, completed: 2020, genres: ['Comedy', 'Psychological', 'Romance'], tags: [{ name: 'Rom-Com', rank: 94 }, { name: 'Student Council', rank: 96 }] },
+  { name: 'Kaguya-sama wa Kokurasetai: Ultra Romantic', score: 100, status: 'COMPLETED', year: 2022, completed: 2022, genres: ['Comedy', 'Psychological', 'Romance'], tags: [{ name: 'Rom-Com', rank: 94 }, { name: 'Student Council', rank: 96 }] },
+  { name: 'Steins;Gate 0', score: 70, status: 'COMPLETED', year: 2018, completed: 2018, genres: ['Drama', 'Sci-Fi', 'Thriller'], tags: [{ name: 'Time Manipulation', rank: 95 }, { name: 'Alternate Universe', rank: 88 }] },
+  { name: 'Vinland Saga Season 2', score: 90, status: 'COMPLETED', year: 2023, completed: 2023, genres: ['Action', 'Adventure', 'Drama'], tags: [{ name: 'Vikings', rank: 95 }, { name: 'Agriculture', rank: 90 }] },
+  { name: 'Jujutsu Kaisen', score: 70, status: 'COMPLETED', year: 2020, completed: 2021, genres: ['Action', 'Drama', 'Supernatural'], tags: [{ name: 'Curses', rank: 95 }, { name: 'Shounen', rank: 94 }] },
+  { name: 'Jujutsu Kaisen 2nd Season', score: 80, status: 'COMPLETED', year: 2023, completed: 2023, genres: ['Action', 'Drama', 'Supernatural'], tags: [{ name: 'Curses', rank: 95 }, { name: 'Shounen', rank: 94 }] },
+  { name: 'Dorohedoro', score: 0, status: 'DROPPED', year: 2020, completed: null, genres: ['Action', 'Comedy', 'Fantasy', 'Horror'], tags: [{ name: 'Gore', rank: 90 }, { name: 'Magic', rank: 85 }] },
+  { name: 'Tokyo Ghoul √A', score: 40, status: 'COMPLETED', year: 2015, completed: 2015, genres: ['Action', 'Drama', 'Horror'], tags: [{ name: 'Gore', rank: 88 }, { name: 'Tragedy', rank: 75 }] },
+  { name: 'Hibike! Euphonium', score: 80, status: 'COMPLETED', year: 2015, completed: 2016, genres: ['Drama', 'Music'], tags: [{ name: 'Band', rank: 96 }, { name: 'School Club', rank: 94 }] },
+  { name: 'Koe no Katachi', score: 90, status: 'COMPLETED', year: 2016, completed: 2017, genres: ['Drama', 'Romance'], tags: [{ name: 'Disability', rank: 96 }, { name: 'Bullying', rank: 94 }] },
+  { name: 'One Punch Man', score: 80, status: 'COMPLETED', year: 2015, completed: 2016, genres: ['Action', 'Comedy', 'Sci-Fi'], tags: [{ name: 'Superhero', rank: 97 }, { name: 'Parody', rank: 90 }] },
+  { name: 'Shingeki no Kyojin Season 3 Part 2', score: 100, status: 'COMPLETED', year: 2019, completed: 2019, genres: ['Action', 'Drama', 'Fantasy', 'Mystery'], tags: [{ name: 'Military', rank: 92 }, { name: 'Twist Ending', rank: 88, spoiler: true }] },
 ]
 
-/** A title's release year, completion date, genres and tags, as the fake AniList answers them. */
-function mediaOf({ year, completed, genres, tags }: FixedTitle): FakeMedia {
+/** What Top Studios reads about a title besides its score and status (#93). Studio ids are the fake's own. */
+type StudioFacts = {
+  /** Main studios. */
+  by: string[]
+  /** Credited, but not as a main studio: Top Studios must leave these out. */
+  alsoCredited?: string[]
+  /** The title this one is the sequel of: the two join into one franchise. */
+  sequelOf?: string
+  favourite?: true
+  progress?: number
+  repeat?: number
+  episodes?: number
+  /** Minutes per episode. */
+  duration?: number
+}
+
+/**
+ * The fixed list's studios, franchises and favourites, by title. Picked so Top Studios shows a real ranking with
+ * several labels, too few studios with six entries (the gate steps down) and small studios on the watchlist; unscored
+ * favourites, drops and a rewatch count too, and Aniplex, never a main studio here, must not show up.
+ */
+const STUDIO_FACTS: Readonly<Record<string, StudioFacts>> = {
+  'Fullmetal Alchemist: Brotherhood': { by: ['Bones'], alsoCredited: ['Aniplex'], favourite: true, episodes: 64 },
+  'Steins;Gate': { by: ['White Fox'], episodes: 24 },
+  'Hunter x Hunter (2011)': { by: ['Madhouse'], episodes: 148 },
+  'Mob Psycho 100': { by: ['Bones'], favourite: true },
+  'Sousou no Frieren': { by: ['Madhouse'], alsoCredited: ['Aniplex'], favourite: true, episodes: 28 },
+  Monster: { by: ['Madhouse'], episodes: 74 },
+  'Cowboy Bebop': { by: ['Sunrise'], episodes: 26 },
+  'Violet Evergarden': { by: ['Kyoto Animation'], episodes: 13 },
+  'Vinland Saga': { by: ['Wit Studio'], episodes: 24 },
+  'Haikyuu!!': { by: ['Production I.G'], episodes: 25 },
+  'Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen': { by: ['A-1 Pictures'], alsoCredited: ['Aniplex'] },
+  Mushishi: { by: ['Artland'], episodes: 26 },
+  'Spy x Family': { by: ['Wit Studio', 'CloverWorks'], episodes: 25 },
+  'Kimetsu no Yaiba': { by: ['ufotable'], alsoCredited: ['Aniplex'], episodes: 26 },
+  'Dr. Stone': { by: ['TMS Entertainment'], episodes: 24 },
+  'Yuru Camp': { by: ['C-Station'] },
+  'K-On!': { by: ['Kyoto Animation'], episodes: 13 },
+  'Bocchi the Rock!': { by: ['CloverWorks'], alsoCredited: ['Aniplex'] },
+  'Sword Art Online': { by: ['A-1 Pictures'], alsoCredited: ['Aniplex'], episodes: 25 },
+  'Fairy Tail': { by: ['A-1 Pictures', 'Satelight'], episodes: 175 },
+  'Tokyo Ghoul': { by: ['Pierrot'] },
+  'Black Clover': { by: ['Pierrot'], episodes: 170 },
+  'Nanatsu no Taizai': { by: ['A-1 Pictures'], episodes: 24 },
+  'Boku no Hero Academia': { by: ['Bones'], episodes: 13 },
+  'Dungeon Meshi': { by: ['Trigger'], episodes: 24 },
+  'Odd Taxi': { by: ['OLM', 'P.I.C.S.'], episodes: 13 },
+  'Ping Pong the Animation': { by: ['Tatsunoko Production'], episodes: 11 },
+  'Tensei Shitara Slime Datta Ken': { by: ['8bit'], episodes: 24 },
+  'Shingeki no Kyojin': { by: ['Wit Studio'], favourite: true, episodes: 25 },
+  'Made in Abyss': { by: ['Kinema Citrus'], episodes: 13 },
+  'Neon Genesis Evangelion': { by: ['Gainax'], alsoCredited: ['Tatsunoko Production'], favourite: true, repeat: 2, progress: 12, episodes: 26 },
+  Hyouka: { by: ['Kyoto Animation'], progress: 8, episodes: 22 },
+  'One Piece': { by: ['Toei Animation'], progress: 1100, episodes: 0 },
+  'Kusuriya no Hitorigoto': { by: ['TOHO animation', 'OLM'], progress: 10, episodes: 24 },
+  Gintama: { by: ['Sunrise'], progress: 150, episodes: 201 },
+  'Detective Conan': { by: ['TMS Entertainment'], progress: 300, episodes: 0 },
+  'Boruto: Naruto Next Generations': { by: ['Pierrot'], progress: 40, episodes: 293 },
+  'Mahouka Koukou no Rettousei': { by: ['Madhouse'], progress: 3, episodes: 26 },
+  Akira: { by: ['TMS Entertainment'], episodes: 1, duration: 124 },
+  'Chainsaw Man': { by: ['MAPPA'] },
+  'Mob Psycho 100 II': { by: ['Bones'], sequelOf: 'Mob Psycho 100', favourite: true, episodes: 13 },
+  'Mob Psycho 100 III': { by: ['Bones'], sequelOf: 'Mob Psycho 100 II' },
+  'Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen': { by: ['A-1 Pictures'], alsoCredited: ['Aniplex'], sequelOf: 'Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen' },
+  'Kaguya-sama wa Kokurasetai: Ultra Romantic': { by: ['A-1 Pictures'], alsoCredited: ['Aniplex'], sequelOf: 'Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen', episodes: 13 },
+  'Steins;Gate 0': { by: ['White Fox'], sequelOf: 'Steins;Gate', episodes: 23 },
+  'Vinland Saga Season 2': { by: ['MAPPA'], sequelOf: 'Vinland Saga', episodes: 24 },
+  'Jujutsu Kaisen': { by: ['MAPPA'], episodes: 24 },
+  'Jujutsu Kaisen 2nd Season': { by: ['MAPPA'], sequelOf: 'Jujutsu Kaisen', episodes: 23 },
+  Dorohedoro: { by: ['MAPPA'], progress: 2 },
+  'Tokyo Ghoul √A': { by: ['Pierrot'], sequelOf: 'Tokyo Ghoul' },
+  'Hibike! Euphonium': { by: ['Kyoto Animation'], episodes: 13 },
+  'Koe no Katachi': { by: ['Kyoto Animation'], episodes: 1, duration: 130 },
+  'One Punch Man': { by: ['Madhouse'] },
+  'Shingeki no Kyojin Season 3 Part 2': { by: ['Wit Studio'], sequelOf: 'Shingeki no Kyojin', episodes: 10 },
+}
+
+/** The fake has no cover images; Top Studios shows a title's cover colour in their place. */
+const COVER_COLORS = ['#e4a15d', '#5da1e4', '#e45d86', '#5de4a1', '#a15de4', '#e4d65d', '#5dd6e4', '#e4765d']
+
+const idOf = (name: string) => FIXED_LIST.findIndex((t) => t.name === name) + 1
+const studioNames = [...new Set(Object.values(STUDIO_FACTS).flatMap((f) => [...f.by, ...(f.alsoCredited ?? [])]))]
+
+/** A title's release year, completion date, genres, tags and what Top Studios reads, as the fake AniList answers them. */
+function mediaOf({ name, year, completed, genres, tags }: FixedTitle): FakeMedia {
+  const { by, alsoCredited = [], sequelOf, progress, repeat, episodes, duration } = STUDIO_FACTS[name]
+  const studio = (isMain: boolean) => (studioName: string) => ({ id: studioNames.indexOf(studioName) + 1, name: studioName, isMain })
+  const sequels = Object.keys(STUDIO_FACTS).filter((other) => STUDIO_FACTS[other].sequelOf === name)
   return {
     year,
     completedAt: completed === null ? null : { year: completed, month: 6, day: 1 },
     genres,
     tags: tags.map(({ name, rank, spoiler = false }) => ({ name, rank, spoiler })),
+    progress,
+    repeat,
+    episodes,
+    duration,
+    coverColor: COVER_COLORS[idOf(name) % COVER_COLORS.length],
+    studios: [...by.map(studio(true)), ...alsoCredited.map(studio(false))],
+    relations: [
+      ...(sequelOf ? [{ relationType: 'PREQUEL', mediaId: idOf(sequelOf) }] : []),
+      ...sequels.map((sequel) => ({ relationType: 'SEQUEL', mediaId: idOf(sequel) })),
+    ],
   }
+}
+
+/** A fresh fake AniList holding the fixed list, viewed by Fake Zen. */
+function fixedAniList(clock: Clock) {
+  const byId = <T>(pick: (title: FixedTitle) => T) => Object.fromEntries(FIXED_LIST.map((title, i) => [i + 1, pick(title)]))
+  const aniList = fakeAniList(clock, byId((t) => t.score), {
+    statuses: byId((t) => t.status),
+    titles: byId((t) => t.name),
+    media: byId(mediaOf),
+    favourites: FIXED_LIST.filter((t) => STUDIO_FACTS[t.name].favourite).map((t) => idOf(t.name)),
+  })
+  // No real account has id 0, so nothing saved for one is touched.
+  Object.assign(aniList.viewer, { id: 0, name: 'Fake Zen' })
+  return aniList
 }
 
 /**
@@ -83,14 +209,15 @@ function mediaOf({ year, completed, genres, tags }: FixedTitle): FakeMedia {
  * What an earlier fake session saved in `storage` is thrown away with it, so the app opens on Start.
  */
 export function fakeSession(storage: Storage, clock: Clock = browserClock): AniListSession {
-  const byId = <T>(pick: (title: FixedTitle) => T) => Object.fromEntries(FIXED_LIST.map((title, i) => [i + 1, pick(title)]))
-  const aniList = fakeAniList(clock, byId((t) => t.score), {
-    statuses: byId((t) => t.status),
-    titles: byId((t) => t.name),
-    media: byId(mediaOf),
-  })
-  // No real account has id 0, so nothing saved for one is touched.
-  Object.assign(aniList.viewer, { id: 0, name: 'Fake Zen' })
+  const aniList = fixedAniList(clock)
   deleteSavedProgress(storage, aniList.viewer.id)
   return { fetch: aniList.fetch, token: 'fake' }
+}
+
+/**
+ * The Top Studios page on the same fake AniList (#93): logged in as Fake Zen, whose list it ranks; any other name is
+ * no such user. Top Studios saves nothing, so there is nothing to throw away.
+ */
+export function fakeStudiosSession(clock: Clock = browserClock): AniListSession {
+  return { fetch: fixedAniList(clock).fetch, token: 'fake' }
 }

@@ -32,6 +32,8 @@ export type FakeOptions = {
   titles?: Record<number, string>
   /** More about each title, by media id, for screens that show or filter on it (#65); a title without it has none. */
   media?: Record<number, FakeMedia>
+  /** The viewer's favourite anime, by media id, as Top Studios reads them (#93). */
+  favourites?: number[]
 }
 
 /** A title's release year, completion date, genres and tags; a tag's `spoiler` is AniList's isMediaSpoiler. */
@@ -40,6 +42,16 @@ export type FakeMedia = {
   completedAt?: { year: number | null; month: number | null; day: number | null } | null
   genres?: string[]
   tags?: Array<{ name: string; rank: number; spoiler?: boolean }>
+  /** What Top Studios reads besides (#93): the user's progress and rewatches, and the title's length, studios and links. */
+  progress?: number
+  repeat?: number
+  episodes?: number
+  /** Minutes per episode. */
+  duration?: number
+  /** AniList's coverImage.color, e.g. `#e4a15d`; the fake has no cover images. */
+  coverColor?: string
+  studios?: Array<{ id: number; name: string; isMain: boolean }>
+  relations?: Array<{ relationType: string; mediaId: number }>
 }
 
 /** What the fake answers to `Viewer`. Change `scoreFormat` to play the user changing it on AniList. */
@@ -48,7 +60,8 @@ export type FakeViewer = { id: number; name: string; scoreFormat: ScoreFormat }
 /**
  * A fake AniList behind a fake `fetch`: it keeps each title's score and status, answers the list query and
  * SaveMediaListEntry, and records when each request arrived. Scripted replies are used for writes, in order. `Viewer`
- * answers with `viewer`.
+ * answers with `viewer`. Top Studios' list and favourites queries (by user name) answer for `viewer` only, reading the
+ * stored scores as 100-point ones.
  */
 export function fakeAniList(clock: Clock, scores: Record<number, number>, options: FakeOptions = {}) {
   const store = new Map(Object.entries(scores).map(([id, s]) => [Number(id), s]))
@@ -62,7 +75,7 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
     requests++
     const body = JSON.parse(String(init?.body)) as {
       query: string
-      variables: { mediaId: number; scoreRaw?: number; status?: string; type?: MediaType; statusIn?: string[] }
+      variables: { mediaId: number; scoreRaw?: number; status?: string; type?: MediaType; statusIn?: string[]; userName?: string }
     }
     const remaining = String(options.remaining?.(requests) ?? 25)
     const resetAt = String(Math.floor(clock.now() / 1000) + 60)
@@ -71,6 +84,21 @@ export function fakeAniList(clock: Clock, scores: Record<number, number>, option
         status,
         headers: { 'Content-Type': 'application/json', 'X-RateLimit-Remaining': remaining, 'X-RateLimit-Reset': resetAt },
       })
+    // Top Studios reads by user name, and knows only the viewer (#93).
+    const { userName } = body.variables
+    if (userName !== undefined && userName.toLowerCase() !== viewer.name.toLowerCase()) {
+      return json(404, { errors: [{ message: 'User not found', status: 404 }] })
+    }
+    if (body.query.includes('MediaListCollection') && userName !== undefined) {
+      const entries = [...store].map(([mediaId, score]) =>
+        studioListEntry(mediaId, score, statuses.get(mediaId), options.titles?.[mediaId], options.media?.[mediaId]),
+      )
+      return json(200, { data: { MediaListCollection: { hasNextChunk: false, lists: [{ entries }] } } })
+    }
+    if (body.query.includes('favourites')) {
+      const nodes = (options.favourites ?? []).map((id) => ({ id }))
+      return json(200, { data: { User: { favourites: { anime: { pageInfo: { hasNextPage: false }, nodes } } } } })
+    }
     if (body.query.includes('MediaListCollection')) {
       const { statusIn = [] } = body.variables
       listReads.push({ type: body.variables.type!, statuses: statusIn, at: clock.now() })
@@ -128,6 +156,28 @@ function listEntry(mediaId: number, score: number, status = 'COMPLETED', romaji 
       siteUrl: '',
       genres: more.genres ?? [],
       tags: (more.tags ?? []).map((t) => ({ name: t.name, rank: t.rank, isMediaSpoiler: t.spoiler ?? false, isGeneralSpoiler: false })),
+    },
+  }
+}
+
+/** A list entry as Top Studios' list query reads it: the score on the 10-point decimal scale, studios and links. */
+function studioListEntry(mediaId: number, score: number, status = 'COMPLETED', romaji = `T${mediaId}`, more: FakeMedia = {}) {
+  return {
+    mediaId,
+    status,
+    progress: more.progress ?? null,
+    repeat: more.repeat ?? 0,
+    score: score / 10,
+    media: {
+      id: mediaId,
+      title: { romaji, english: null, native: null },
+      coverImage: { large: null, color: more.coverColor ?? null },
+      bannerImage: null,
+      siteUrl: '',
+      episodes: more.episodes ?? 12,
+      duration: more.duration ?? 24,
+      studios: { edges: (more.studios ?? []).map(({ id, name, isMain }) => ({ isMain, node: { id, name } })) },
+      relations: { edges: (more.relations ?? []).map(({ relationType, mediaId: id }) => ({ relationType, node: { id } })) },
     },
   }
 }
