@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { sitePage } from '../../sitePages.ts'
 import { loadTopStudios, type TopStudiosLoad, type TopStudiosSession } from '../loadTopStudios.ts'
-import { checkLogin } from '../studiosLogin.ts'
+import { checkLogin, type OwnName } from '../studiosLogin.ts'
 import { Mochi } from './Bits.tsx'
 import { StudiosResult } from './StudiosResult.tsx'
-import { searchFor, studiosView, type HowSure, type LoadState, type OwnName } from './studiosView.ts'
+import { searchFor, studiosView, type HowSure, type LoadState } from './studiosView.ts'
 
 /** The load a page with this query starts on: the view's `loadNow` already loading, else nothing yet. */
 function landingOn(search: string): LoadState {

@@ -22,7 +22,7 @@ export const StudioPanel = forwardRef<HTMLElement, { opened: OpenStudio }>(funct
         )}
         <div className="st-dh-name">
           <div className="small fine">
-            {card.rank === null ? '🌱 Watchlist' : `#${card.rank}`} · {card.titles} titles · {percent(card.hitRate)} hits ·{' '}
+            {card.rank === null ? '🌱 Watchlist' : `#${card.rank}`} · {card.votes} titles · {percent(card.hitRate)} hits ·{' '}
             {percent(card.flopRate)} flops
           </div>
           <h2 id="st-det-name">{card.name}</h2>

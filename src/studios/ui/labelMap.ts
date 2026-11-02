@@ -1,15 +1,15 @@
 // Where the label map (#89) draws each studio: a cover bubble on hit rate (up) × flop rate (across), the label lines
 // through the middle so the four corners are the four labels. Bubbles of one label that would overlap merge into a
 // "+N" stack. Pure geometry in pixels of the box it is given; the map component measures the box.
-import type { StudioLabel } from '../loadTopStudios.ts'
+import { labelRates, type StudioLabel, type TopStudios } from '../loadTopStudios.ts'
 import type { StudioCard } from './resultView.ts'
 
 /** A bubble on the map: one studio, or a stack of them with the best on top. */
 export type MapBubble = { members: StudioCard[]; x: number; y: number; r: number }
 
 export type Box = { width: number; height: number }
-/** The rates a studio must pass to read high (TopStudios.labelLines). */
-export type LabelLines = { hit: number; flop: number }
+/** The rates a studio must pass to read high. */
+export type LabelLines = TopStudios['labelLines']
 
 /** Room left at the top and bottom of the map for the corner names. */
 const LABEL_ROOM = 36
@@ -17,8 +17,6 @@ const EDGE = 6
 const GAP = 6
 /** Same-label bubbles closer than this share of their radii merge into a stack. */
 const MERGE = 0.9
-const TOP: ReadonlySet<StudioLabel> = new Set(['elite', 'bold'])
-const LEFT: ReadonlySet<StudioLabel> = new Set(['elite', 'reliable'])
 
 /** A box narrower than this gets the phone's smaller bubbles. */
 const SMALL_BOX = 480
@@ -95,11 +93,12 @@ export function labelMap(cards: readonly StudioCard[], lines: LabelLines, { widt
   }
 
   const keep = (p: Pin) => {
-    const label = p.members[0].label
+    // Hits high on top, flops high on the right.
+    const { hitsHigh, flopsHigh } = labelRates(p.members[0].label)
     const m = p.r + EDGE
     const clamp = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)))
-    p.x = LEFT.has(label) ? clamp(p.x, m, width / 2 - m) : clamp(p.x, width / 2 + m, width - m)
-    p.y = TOP.has(label) ? clamp(p.y, m + LABEL_ROOM, height / 2 - m) : clamp(p.y, height / 2 + m, height - m - LABEL_ROOM)
+    p.x = flopsHigh ? clamp(p.x, width / 2 + m, width - m) : clamp(p.x, m, width / 2 - m)
+    p.y = hitsHigh ? clamp(p.y, m + LABEL_ROOM, height / 2 - m) : clamp(p.y, height / 2 + m, height - m - LABEL_ROOM)
   }
   return settled(pack(groups, keep))
 }

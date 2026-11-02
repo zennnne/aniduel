@@ -1,6 +1,9 @@
 // What Top Studios reads about one title on a user's anime list. Kept free of GraphQL details.
 import type { ListStatus, Title } from '../anilist/types.ts'
 
+/** How the page reaches AniList: a `fetch`, and the AniDuel! login's token if there is one. */
+export type TopStudiosSession = { fetch: typeof fetch; token: string | null }
+
 export type Studio = { id: number; name: string }
 
 /** A SEQUEL/PREQUEL link from a title to another one, which joins titles into a franchise (the love count, #90). */
@@ -27,3 +30,9 @@ export type StudioTitle = {
   bannerUrl: string | null
   siteUrl: string
 }
+
+/** Whether the user dropped it. */
+export const isDropped = (title: StudioTitle): boolean => title.status === 'DROPPED'
+
+/** Times the user rewatched it: a title being rewatched now counts at least once. */
+export const rewatchesOf = (title: StudioTitle): number => Math.max(title.repeat, title.status === 'REPEATING' ? 1 : 0)

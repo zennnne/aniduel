@@ -7,7 +7,7 @@ import type { StudioCard } from './resultView.ts'
 let nextId = 1
 function card(label: StudioLabel, hitRate: number, flopRate: number, score = 0.2, rank: number | null = nextId): StudioCard {
   const id = nextId++
-  return { id, name: `S${id}`, rank, label, score, hearts: 3, titles: 8, hitRate, flopRate, cover: null, coverColor: null, banner: null }
+  return { id, name: `S${id}`, rank, label, score, hearts: 3, votes: 8, hitRate, flopRate, cover: null, coverColor: null, banner: null }
 }
 
 const lines = { hit: 0.2, flop: 0.2 }

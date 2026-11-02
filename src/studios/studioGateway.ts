@@ -3,9 +3,7 @@
 // list. Queries stay flat: AniList answers deeply nested ones with 500.
 import { request } from '../anilist/gateway.ts'
 import type { ListStatus, Title } from '../anilist/types.ts'
-import type { FranchiseRelation, StudioTitle } from './types.ts'
-
-export type StudioGatewayDeps = { fetch: typeof fetch; token: string | null }
+import type { FranchiseRelation, StudioTitle, TopStudiosSession } from './types.ts'
 
 /** The most entries AniList returns in one MediaListCollection chunk. */
 const PER_CHUNK = 500
@@ -105,11 +103,11 @@ function toStudioTitle(raw: RawEntry): StudioTitle {
 }
 
 /** The user's whole anime list, every status, following every chunk. */
-export async function readStudioList(deps: StudioGatewayDeps, userName: string): Promise<StudioTitle[]> {
+export async function readStudioList(session: TopStudiosSession, userName: string): Promise<StudioTitle[]> {
   const byMediaId = new Map<number, StudioTitle>()
   for (let chunk = 1; ; chunk++) {
     const { MediaListCollection: collection } = await request<{ MediaListCollection: RawCollection }>(
-      deps,
+      session,
       STUDIO_LIST_QUERY,
       { userName, chunk, perChunk: PER_CHUNK },
     )
@@ -125,10 +123,10 @@ export async function readStudioList(deps: StudioGatewayDeps, userName: string):
 }
 
 /** The ids of the user's favourite anime, following every page. */
-export async function readFavouriteAnime(deps: StudioGatewayDeps, userName: string): Promise<number[]> {
+export async function readFavouriteAnime(session: TopStudiosSession, userName: string): Promise<number[]> {
   const ids: number[] = []
   for (let page = 1; ; page++) {
-    const data = await request<RawFavourites>(deps, FAVOURITE_ANIME_QUERY, { userName, page })
+    const data = await request<RawFavourites>(session, FAVOURITE_ANIME_QUERY, { userName, page })
     const { anime } = data.User.favourites
     ids.push(...anime.nodes.map((n) => n.id))
     if (!anime.pageInfo.hasNextPage) break
