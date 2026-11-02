@@ -7,8 +7,9 @@ import { loadLastMediaType, saveLastMediaType } from '../persistence/progress.ts
 import { anchorsOf } from '../pool/anchors.ts'
 import { DEFAULT_STATUSES, LIST_STATUSES, OFFERED_STATUSES } from '../pool/pool.ts'
 import { KEEP_MY_SCALE } from '../ranking/engine.ts'
+import { GATE, loadTopStudios } from '../studios/loadTopStudios.ts'
 import { startView } from '../ui/start/startView.ts'
-import { fakeSession } from './fakeSession.ts'
+import { fakeSession, fakeStudiosSession } from './fakeSession.ts'
 
 async function signedIn() {
   const gateway = createAniListGateway(fakeSession(memoryStorage(), fakeClock()))
@@ -88,5 +89,37 @@ describe('the fake session', () => {
     await gateway.saveScore(unscored.mediaId, 80)
     const after = await gateway.mediaList({ userId: viewer.id, type: 'ANIME', statuses: OFFERED_STATUSES })
     expect(after.find((e) => e.mediaId === unscored.mediaId)!.oldScore100).toBe(80)
+  })
+})
+
+// The same fake on the Top Studios page (#93): the fixed list read by user name, with studios, franchises and favourites.
+describe('the fake on Top Studios', () => {
+  async function fakeZensStudios() {
+    const loaded = await loadTopStudios(fakeStudiosSession(fakeClock()), 'Fake Zen')
+    if (!loaded.ok) throw new Error(`no ranking: ${JSON.stringify(loaded.failure)}`)
+    return loaded.topStudios
+  }
+
+  it("ranks the fake user's studios, every label among them, on a lowered gate and with a watchlist", async () => {
+    const { studios, gate, watchlist } = await fakeZensStudios()
+    expect(studios.length).toBeGreaterThanOrEqual(4)
+    expect(new Set(studios.map((s) => s.label))).toEqual(new Set(['elite', 'bold', 'reliable', 'meh']))
+    expect(gate).toBeLessThan(GATE)
+    expect(watchlist.length).toBeGreaterThan(0)
+  })
+
+  it('counts main studios only, favourites, unscored drops and rewatches, and joins sequels into franchises', async () => {
+    const { studios, watchlist } = await fakeZensStudios()
+    const votes = [...studios, ...watchlist].flatMap((s) => s.votes)
+    expect([...studios, ...watchlist].map((s) => s.name)).not.toContain('Aniplex') // credited, but never as main studio
+    expect(votes.some((v) => v.favourite && !v.scored)).toBe(true)
+    expect(votes.some((v) => v.title.status === 'DROPPED' && !v.scored)).toBe(true)
+    expect(votes.some((v) => v.title.status === 'REPEATING' && !v.scored)).toBe(true)
+    expect(votes.some((v) => v.title.relations.some((r) => votes.some((o) => o.title.mediaId === r.mediaId)))).toBe(true)
+  })
+
+  it('knows no other user', async () => {
+    const loaded = await loadTopStudios(fakeStudiosSession(fakeClock()), 'someone else')
+    expect(loaded).toEqual({ ok: false, failure: { kind: 'no-such-user' } })
   })
 })
