@@ -37,6 +37,18 @@ describe('the label map', () => {
     expect(bubbles.map((b) => corner(b))).toEqual(['reliable', 'elite'])
   })
 
+  it('keeps bubbles, and the name tags under them, clear of the corner names at the top and bottom', () => {
+    // Studios at the far edges of every corner: the highest hit rate up top, none at all down below.
+    const cards = [card('elite', 0.9, 0), card('bold', 0.9, 0.9), card('reliable', 0, 0), card('meh', 0, 0.9)]
+    for (const box of [size, { width: 900, height: 702 }]) {
+      for (const b of labelMap(cards, lines, box)) {
+        // A corner name: 14px padding and two lines, 46px from its edge; a name tag: 6px gap and 13px under a bubble.
+        if (b.y < box.height / 2) expect(b.y - b.r).toBeGreaterThanOrEqual(46)
+        else expect(b.y + b.r + 19).toBeLessThanOrEqual(box.height - 46)
+      }
+    }
+  })
+
   it('merges studios of one label that would overlap into a stack, the higher Studio Score on top', () => {
     const low = card('reliable', 0.1, 0.1, 0.1)
     const high = card('reliable', 0.1, 0.1, 0.5)

@@ -11,9 +11,11 @@ export type Box = { width: number; height: number }
 /** The rates a studio must pass to read high. */
 export type LabelLines = TopStudios['labelLines']
 
-/** Room left at the top and bottom of the map for the corner names. */
-const LABEL_ROOM = 36
+/** Room left at the top and bottom of the map for the corner names (14px padding and two lines, in studios.css), and a little air. */
+const LABEL_ROOM = 42
 const EDGE = 6
+/** Room under a bubble for its name tag (6px gap and a 13px tag), kept clear of the bottom corner names. */
+const NAME_ROOM = 19
 const GAP = 6
 /** Same-label bubbles closer than this share of their radii merge into a stack. */
 const MERGE = 0.9
@@ -98,7 +100,7 @@ export function labelMap(cards: readonly StudioCard[], lines: LabelLines, { widt
     const m = p.r + EDGE
     const clamp = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(hi, Math.max(lo, v)))
     p.x = flopsHigh ? clamp(p.x, width / 2 + m, width - m) : clamp(p.x, m, width / 2 - m)
-    p.y = hitsHigh ? clamp(p.y, m + LABEL_ROOM, height / 2 - m) : clamp(p.y, height / 2 + m, height - m - LABEL_ROOM)
+    p.y = hitsHigh ? clamp(p.y, m + LABEL_ROOM, height / 2 - m) : clamp(p.y, height / 2 + m, height - m - LABEL_ROOM - NAME_ROOM)
   }
   return settled(pack(groups, keep))
 }
