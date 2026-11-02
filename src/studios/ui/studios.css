@@ -1,0 +1,64 @@
+/* Top Studios tracer (#88): a plain page on AniDuel!'s palette. The chosen layout comes with #92. */
+.studios {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 32px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.studios h1 {
+  color: var(--tx-strong);
+  font-size: 24px;
+}
+
+.studios-form {
+  display: flex;
+  gap: 8px;
+}
+
+.studios-form input {
+  flex: 1;
+  font: inherit;
+  padding: 8px 12px;
+  border: 1px solid var(--fg2);
+  border-radius: 6px;
+  background: var(--fg);
+  color: var(--tx-strong);
+}
+
+.studios-form button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: var(--blue);
+  color: var(--on-accent);
+}
+
+.studios-form button:disabled {
+  opacity: 0.6;
+}
+
+.studios-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--fg);
+  border-radius: 6px;
+}
+
+.studios-table caption {
+  text-align: left;
+  padding-bottom: 8px;
+}
+
+.studios-table th,
+.studios-table td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fg2);
+}
+
+.studios-table td:first-child,
+.studios-table td:last-child {
+  font-variant-numeric: tabular-nums;
+}
