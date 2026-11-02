@@ -35,7 +35,6 @@ export function StudiosResult({ topStudios, cards }: Props) {
     if (!scrollToPanel.current) return
     scrollToPanel.current = false
     panel.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-    panel.current?.focus({ preventScroll: true })
   }, [openId])
 
   /** Opening from the list zooms the phone's map to the studio's tile and brings the panel into view. */
@@ -129,7 +128,11 @@ function Row({ card, open, onOpen }: { card: StudioCard; open: boolean; onOpen: 
     <li>
       <button type="button" className={open ? 'st-it on' : 'st-it'} aria-pressed={open} onClick={() => onOpen(card)}>
         <span className="rk">{card.rank ?? <span aria-label="Watchlist">🌱</span>}</span>
-        {card.cover ? <img className="st-av" src={card.cover} alt="" loading="lazy" /> : <span className="st-av" />}
+        {card.cover ? (
+          <img className="st-av" src={card.cover} alt="" loading="lazy" />
+        ) : (
+          <span className="st-av" style={{ background: card.coverColor ?? undefined }} />
+        )}
         <span className="nm strong">{card.name}</span>
         <span title={LABELS[card.label].name} role="img" aria-label={LABELS[card.label].name}>
           {LABELS[card.label].icon}

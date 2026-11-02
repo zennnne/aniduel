@@ -30,6 +30,8 @@ export type CountedTitle = {
   mediaId: number
   name: string
   cover: string | null
+  /** The cover's main colour, shown while it loads or when there is no cover. */
+  coverColor: string | null
   siteUrl: string
   /** W·(e^z − Ū): against the user's own average title, not leave-one-out (#89). */
   push: number
@@ -132,6 +134,7 @@ function countedTitle(vote: StudioVote, push: number, biggest: number): CountedT
     mediaId: title.mediaId,
     name: title.title.english ?? title.title.romaji,
     cover: title.coverUrl,
+    coverColor: title.coverColor,
     siteUrl: title.siteUrl,
     push,
     effect: push >= 0 ? 'lifted' : 'held back',

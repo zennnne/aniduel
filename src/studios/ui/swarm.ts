@@ -8,6 +8,8 @@ export type Swarm<T> = {
   ticks: number[]
   /** The x of a score on the line (the "your usual" mark). */
   at: (score: number) => number
+  /** The height the beads took: the box's, or taller when a crowded score needed more room. */
+  height: number
 }
 
 /** A box narrower than this gets smaller beads. */
@@ -16,8 +18,10 @@ const SMALL_BOX = 480
 export function swarm<T extends { score: number; weight: number }>(
   items: readonly T[],
   usual: number,
-  { width, height }: { width: number; height: number },
+  box: { width: number; height: number },
 ): Swarm<T> {
+  const { width } = box
+  let { height } = box
   const small = width < SMALL_BOX
   const low = Math.max(1, Math.floor(Math.min(usual, ...items.map((t) => t.score)))) - 0.5
   const high = 10.5
@@ -28,7 +32,14 @@ export function swarm<T extends { score: number; weight: number }>(
     .sort((a, b) => b.r - a.r)
 
   for (let round = 0; round < 8; round++) {
-    for (let it = 0; it < 200; it++) {
+    for (let it = 0; it < 260; it++) {
+      // Each bead drifts back toward its score and the middle of the line; then overlapping ones part. The last
+      // rounds only part them, so the drift leaves no overlap behind.
+      if (it < 200)
+        for (const b of beads) {
+          b.y += (height / 2 - b.y) * 0.02
+          b.x += (at(b.item.score) - b.x) * 0.2
+        }
       for (let i = 0; i < beads.length; i++)
         for (let j = i + 1; j < beads.length; j++) {
           const a = beads[i]
@@ -47,18 +58,17 @@ export function swarm<T extends { score: number; weight: number }>(
           }
         }
       for (const b of beads) {
-        b.y += (height / 2 - b.y) * 0.02
         b.y = Math.max(b.r, Math.min(height - b.r, b.y))
-        b.x += (at(b.item.score) - b.x) * 0.2
         b.x = Math.max(b.r, Math.min(width - b.r, b.x))
       }
     }
     const crowded = beads.some((a, i) => beads.slice(i + 1).some((b) => Math.hypot(a.x - b.x, a.y - b.y) < a.r + b.r))
     if (!crowded) break
-    for (const b of beads) b.r *= 0.88
+    // A crowded score gets more room rather than smaller covers.
+    height *= 1.2
   }
 
   const ticks: number[] = []
   for (let v = Math.ceil(low); v <= 10; v++) ticks.push(v)
-  return { beads, ticks, at }
+  return { beads, ticks, at, height }
 }

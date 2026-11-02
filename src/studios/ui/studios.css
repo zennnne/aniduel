@@ -580,9 +580,6 @@ img {
   margin-top: 16px;
   container-type: inline-size;
 }
-.st-det:focus {
-  outline: none;
-}
 .st-banner {
   height: 110px;
   background: var(--fg2) center / cover;

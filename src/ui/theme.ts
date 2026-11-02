@@ -9,7 +9,8 @@ function systemTheme(): Theme {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-function storedTheme(storage: Storage): Theme | null {
+/** The theme the user picked on AniDuel!, if any (Top Studios follows it too). */
+export function storedTheme(storage: Storage): Theme | null {
   const value = storage.getItem(THEME_KEY)
   return value === 'light' || value === 'dark' ? value : null
 }

@@ -107,6 +107,8 @@ export function labelMap(cards: readonly StudioCard[], lines: LabelLines, { widt
 /** Room at the top of a zoomed corner for its back button and name. */
 const CORNER_TOP = 44
 const CORNER_SIDE = 10
+/** Room under the lowest bubbles for their name tags. */
+const CORNER_BOTTOM = 24
 
 /** One label's corner zoomed to the whole box (the phone's tiles): its studios spread out, one bubble each. */
 export function cornerMap(cards: readonly StudioCard[], label: StudioLabel, lines: LabelLines, { width, height }: Box): MapBubble[] {
@@ -120,12 +122,12 @@ export function cornerMap(cards: readonly StudioCard[], label: StudioLabel, line
     members: [p.card],
     order: p.order,
     x: stretch(p.x, x0, x1, width * 0.15, width * 0.85),
-    y: stretch(p.y, y0, y1, CORNER_TOP + 30, height - 30),
+    y: stretch(p.y, y0, y1, CORNER_TOP + 30, height - CORNER_BOTTOM - 20),
     r: p.card.rank === null ? 13 : 15 + Math.max(0, p.card.score) * 14,
   }))
   const keep = (p: Pin) => {
     p.x = Math.min(width - p.r - CORNER_SIDE, Math.max(p.r + CORNER_SIDE, p.x))
-    p.y = Math.min(height - p.r - CORNER_SIDE, Math.max(p.r + CORNER_TOP, p.y))
+    p.y = Math.min(height - p.r - CORNER_BOTTOM, Math.max(p.r + CORNER_TOP, p.y))
   }
   return settled(pack(pins, keep))
 }

@@ -2,7 +2,7 @@
 // one label stacked under a "+N" that fans them out. On a phone, four label tiles instead; a tile zooms into its corner.
 import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import type { StudioLabel } from '../loadTopStudios.ts'
-import { useWidth } from './Bits.tsx'
+import { useWidth } from './useWidth.ts'
 import { cornerMap, labelMap, type LabelLines, type MapBubble } from './labelMap.ts'
 import { CORNERS, LABELS, signed } from './labels.ts'
 import type { StudioCard } from './resultView.ts'
@@ -35,7 +35,7 @@ type PinProps = {
 function Pin({ card, x, y, r, open, name, onOpen, className, autoFocus, children }: PinProps) {
   const style: CSSProperties = { left: x, top: y, width: r * 2, height: r * 2 }
   return (
-    <div className={`st-pin ${className ?? ''}`} style={style}>
+    <div className={`st-pin ${className ?? ''}`} style={style} data-stack={card.id}>
       <button
         type="button"
         className={`st-bub${open ? ' on' : ''}${card.rank === null ? ' wl' : ''}`}
@@ -87,10 +87,15 @@ export function LabelMap({ cards, lines, openId, onOpen }: MapProps) {
 
   useEffect(() => {
     if (fan === null) return
+    const map = ref.current
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setFan(null)
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [fan])
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      // Folded back: focus returns to the stack, so the keyboard doesn't lose its place.
+      map?.querySelector<HTMLElement>(`[data-stack="${fan}"] .st-bub`)?.focus()
+    }
+  }, [fan, ref])
 
   const open = (id: number) => {
     setFan(null)
@@ -170,7 +175,7 @@ export function LabelTiles({ cards, lines, openId, onOpen, zoom, onZoom }: Tiles
             </b>
             <span className="d">{LABELS[label].meaning}</span>
             <span className="st" aria-hidden="true">
-              {mine.slice(0, 4).map((c) => (c.cover ? <img key={c.id} src={c.cover} alt="" /> : <i key={c.id} />))}
+              {mine.slice(0, 4).map((c) => (c.cover ? <img key={c.id} src={c.cover} alt="" /> : <i key={c.id} style={{ background: c.coverColor ?? undefined }} />))}
               {mine.length > 4 && <em>+{mine.length - 4}</em>}
             </span>
             <span className="c">
