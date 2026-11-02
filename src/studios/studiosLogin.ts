@@ -1,8 +1,10 @@
 // The AniDuel! login as Top Studios sees it (#91). The page reads the token AniDuel! stored (same origin) and never
 // starts a login of its own; the user's own name comes from the Viewer query.
 import { AniListError, createAniListGateway } from '../anilist/gateway.ts'
-import type { TopStudiosSession } from './loadTopStudios.ts'
-import type { OwnName } from './ui/studiosView.ts'
+import type { TopStudiosSession } from './types.ts'
+
+/** The logged-in AniDuel! user's own name: still being checked, known, or none (logged out, or the login refused). */
+export type OwnName = { kind: 'checking' } | { kind: 'known'; name: string } | { kind: 'none' }
 
 /** The login once checked: the user's own name if known, and the token to send with lookups (null once refused). */
 export type CheckedLogin = { own: OwnName; token: string | null }

@@ -88,7 +88,7 @@ function RankedList({ cards, gate, openId, onOpen }: { cards: StudioCard[]; gate
               <span className="nm">
                 <b>{card.name}</b>
                 <span>
-                  <span aria-hidden="true">{LABELS[card.label].icon}</span> {LABELS[card.label].name} · {card.titles} titles
+                  <span aria-hidden="true">{LABELS[card.label].icon}</span> {LABELS[card.label].name} · {card.votes} titles
                 </span>
               </span>
               <Hearts hearts={card.hearts} score={card.score} big />

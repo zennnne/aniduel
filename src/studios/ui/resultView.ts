@@ -1,6 +1,7 @@
 // What the Top Studios result shows (#92, layout picked in #89): every studio as a card (rank, hearts, cover), and an
 // opened studio's counted titles with how each pushed its score. Pure: the result components render it.
-import type { StudioLabel, StudioScore, StudioVote, TopStudios } from '../loadTopStudios.ts'
+import { scoreWorth, utility, type StudioLabel, type StudioScore, type StudioVote, type TopStudios } from '../loadTopStudios.ts'
+import { isDropped, rewatchesOf } from '../types.ts'
 
 export type StudioCard = {
   id: number
@@ -12,7 +13,8 @@ export type StudioCard = {
   score: number
   /** S as 0–5 hearts, relative to the user's #1. */
   hearts: number
-  titles: number
+  /** How many Votes it has: its counted titles, which the gate reads. */
+  votes: number
   hitRate: number
   flopRate: number
   /** The cover of the title that lifts it most: AniList's `Studio` has no image. */
@@ -58,7 +60,10 @@ export type OpenStudio = {
   heldBack: CountedTitle[]
   /** Every counted title, biggest lift first. */
   titles: CountedTitle[]
-  /** The user's mean score on the 10-point scale: the swarm's "your usual" mark. */
+  /**
+   * The swarm's "your usual" mark on the 10-point scale: the score whose Vote is worth Ū, the line pushes are measured
+   * from, so a plain scored title right of it lifted its studio (a drop's z cap or the fav bonus can still move one).
+   */
   usualScore: number
 }
 
@@ -70,7 +75,7 @@ const A_LOT = 0.5
 const A_LITTLE = 0.15
 const SHOWN = 3
 
-const pushOf = (vote: StudioVote, averageUtility: number) => vote.weight * (Math.exp(vote.z) - averageUtility)
+const pushOf = (vote: StudioVote, averageUtility: number) => vote.weight * (utility(vote.z) - averageUtility)
 
 function byPush(studio: StudioScore, averageUtility: number): StudioVote[] {
   return [...studio.votes].sort((a, b) => pushOf(b, averageUtility) - pushOf(a, averageUtility))
@@ -89,7 +94,7 @@ export function studioCards(top: TopStudios): StudioCard[] {
       label: studio.label,
       score: studio.score,
       hearts: heartsOf(studio.score, best),
-      titles: studio.votes.length,
+      votes: studio.votes.length,
       hitRate: studio.hitRate,
       flopRate: studio.flopRate,
       cover: lead?.coverUrl ?? null,
@@ -122,14 +127,14 @@ export function openStudio(top: TopStudios, id: number): OpenStudio | null {
     lifted: lifted.slice(0, SHOWN),
     heldBack: heldBack.slice(0, SHOWN),
     titles,
-    usualScore: top.scale.mean,
+    usualScore: scoreWorth(top.averageUtility, top.scale),
   }
 }
 
 function countedTitle(vote: StudioVote, push: number, biggest: number): CountedTitle {
   const { title } = vote
   const share = biggest > 0 ? Math.abs(push) / biggest : 0
-  const dropped = title.status === 'DROPPED'
+  const dropped = isDropped(title)
   return {
     mediaId: title.mediaId,
     name: title.title.english ?? title.title.romaji,
@@ -148,8 +153,8 @@ function countedTitle(vote: StudioVote, push: number, biggest: number): CountedT
 }
 
 function howMarked({ title, favourite, scored }: StudioVote): string {
-  const dropped = title.status === 'DROPPED' ? `dropped at ep ${Math.max(title.progress, 1)}` : null
-  const rewatched = title.repeat > 0 || title.status === 'REPEATING' ? 'rewatched' : null
+  const dropped = isDropped(title) ? `dropped at ep ${Math.max(title.progress, 1)}` : null
+  const rewatched = rewatchesOf(title) > 0 ? 'rewatched' : null
   const fav = favourite ? '★ favourite' : null
   if (scored) return [`scored ${title.score}`, fav, dropped, rewatched].filter(Boolean).join(' · ')
   // Unscored, it counted through the one signal the user gave.

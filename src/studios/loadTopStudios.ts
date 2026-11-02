@@ -2,12 +2,11 @@
 import { AniListError } from '../anilist/gateway.ts'
 import { scoreStudios, type TopStudios } from './scoring.ts'
 import { readFavouriteAnime, readStudioList } from './studioGateway.ts'
+import type { TopStudiosSession } from './types.ts'
 
-export { GATE } from './scoring.ts'
+export { GATE, GATE_TARGET, LABEL_GRID, labelRates, MIN_SCORED, scoreWorth, utility } from './scoring.ts'
 export type { StudioLabel, StudioScore, StudioVote, TopStudios } from './scoring.ts'
-
-/** How the page reaches AniList: a `fetch`, and the AniDuel! login's token if there is one. */
-export type TopStudiosSession = { fetch: typeof fetch; token: string | null }
+export type { TopStudiosSession } from './types.ts'
 
 export type TopStudiosFailure =
   | { kind: 'no-such-user' }
@@ -24,14 +23,16 @@ export type TopStudiosLoad = { ok: true; topStudios: TopStudios } | { ok: false;
 const TOKEN_REFUSED = 'token-refused'
 
 function failureOf(error: AniListError, sentToken: boolean): TopStudiosFailure | typeof TOKEN_REFUSED {
+  // AniList answers a list it won't show with "Private User" (a 401 so far); the message wins whatever the status.
+  if (/private/i.test(error.message)) return { kind: 'private-list' }
   switch (error.kind) {
     case 'unreachable':
       return { kind: 'unreachable' }
     case 'rate-limited':
       return { kind: 'rate-limited' }
     case 'auth':
-      // AniList answers a list it won't show with 401 "Private User"; `request` reads any 401 as an auth error.
-      if (/private/i.test(error.message) || !sentToken) return { kind: 'private-list' }
+      // `request` reads any 401 as an auth error; with no token sent, the only thing refused is the list.
+      if (!sentToken) return { kind: 'private-list' }
       return TOKEN_REFUSED
     case 'api':
       if (error.status === 404 || /not found/i.test(error.message)) return { kind: 'no-such-user' }

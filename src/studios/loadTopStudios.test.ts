@@ -478,6 +478,11 @@ describe('loadTopStudios: when it cannot rank', () => {
     expect(await failure(privateUser)).toEqual({ kind: 'private-list' })
   })
 
+  it('says the list is private whatever status AniList answers it with', async () => {
+    const privateNotFound = { status: 404, json: { data: { MediaListCollection: null }, errors: [{ message: 'Private User', status: 404 }] } }
+    expect(await failure(privateNotFound)).toEqual({ kind: 'private-list' })
+  })
+
   it('says when fewer than 10 titles are scored', async () => {
     nextId = 1000
     const nine = [9, 8, 7, 6, 5, 4, 3, 2, 1].map((s) => entry(s, SWING))

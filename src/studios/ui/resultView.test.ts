@@ -165,4 +165,14 @@ describe('an opened studio', () => {
       [null, 0.5],
     ])
   })
+
+  it('puts the usual mark at the score worth the user’s average vote utility, the line between lifted and held back', () => {
+    // Ū = e^0.4: the average vote sits at z 0.4, so on a 6.2 ± 1.5 scale the usual mark is 6.8, not the mean 6.2.
+    const votes = [vote(0.6, 1, { score: 7.1, name: 'Above' }), vote(0.2, 1, { score: 6.5, name: 'Between' })]
+    const opened = openStudio(topStudios([studio(1, 0.5, votes)], [], Math.exp(0.4)), 1)!
+
+    expect(opened.usualScore).toBeCloseTo(6.8, 10)
+    expect(opened.lifted.map((t) => t.name)).toEqual(['Above'])
+    expect(opened.heldBack.map((t) => t.name)).toEqual(['Between'])
+  })
 })

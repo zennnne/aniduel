@@ -1,10 +1,9 @@
 // The Top Studios page's view (spec #87): from the URL query, the AniDuel! login (if any) and the load, which name to
 // look up, what the search page says, and how sure a result is. Pure: the page renders it and does what it says.
-import { GATE, type TopStudios, type TopStudiosFailure, type TopStudiosLoad } from '../loadTopStudios.ts'
+import { pluralWord } from '../../ui/meta.ts'
+import { GATE, GATE_TARGET, MIN_SCORED, type TopStudios, type TopStudiosFailure, type TopStudiosLoad } from '../loadTopStudios.ts'
+import type { OwnName } from '../studiosLogin.ts'
 import { studioCards, type StudioCard } from './resultView.ts'
-
-/** The logged-in AniDuel! user's own name: still being checked, known, or none (logged out, or the login refused). */
-export type OwnName = { kind: 'checking' } | { kind: 'known'; name: string } | { kind: 'none' }
 
 export type LoadState =
   | { kind: 'idle' }
@@ -39,10 +38,6 @@ export type StudiosView = {
   screen: StudiosScreen
 }
 
-/** The gate every list starts at (v2.7); a short list steps it down, which the reading counts against. */
-const FULL_GATE = GATE
-/** Fewer ranked studios than this rest on too little to compare. */
-const FEW_RANKED = 10
 const WORDS = ['', 'Very rough', 'Rough', 'Fair', 'Good', 'Solid']
 
 /** The name in `?user=`, or null when there is none. */
@@ -98,8 +93,8 @@ function failureMessage(failure: TopStudiosFailure, userName: string, own: OwnNa
       }
     case 'too-few-scored':
       return {
-        title: `${userName} has scored only ${failure.scored} title${failure.scored === 1 ? '' : 's'}.`,
-        body: 'Top Studios needs at least 10 scored titles to tell studios apart. Score more on AniList and try again.',
+        title: `${userName} has scored only ${failure.scored} ${pluralWord(failure.scored, 'title')}.`,
+        body: `Top Studios needs at least ${MIN_SCORED} scored titles to tell studios apart. Score more on AniList and try again.`,
         retry: false,
       }
     case 'rate-limited':
@@ -115,15 +110,18 @@ function failureMessage(failure: TopStudiosFailure, userName: string, own: OwnNa
   }
 }
 
-/** −1 when the gate was lowered, −1 more when fewer than 10 studios rank, −2 when under half the counted titles are scored. */
+/**
+ * −1 when the gate was lowered from `GATE`, −1 more when fewer studios rank than the gate aims for (`GATE_TARGET`, as
+ * too few to compare), −2 when under half the counted titles are scored.
+ */
 function howSure(result: TopStudios): HowSure {
   let dots = 5
   const notes: string[] = []
-  if (result.gate < FULL_GATE) {
+  if (result.gate < GATE) {
     dots -= 1
-    notes.push(`Your list is short, so a studio needed only ${result.gate} titles (not ${FULL_GATE}) to be ranked.`)
+    notes.push(`Your list is short, so a studio needed only ${result.gate} titles (not ${GATE}) to be ranked.`)
   }
-  if (result.studios.length < FEW_RANKED) {
+  if (result.studios.length < GATE_TARGET) {
     dots -= 1
     notes.push(`Only ${result.studios.length} studios made it.`)
   }
