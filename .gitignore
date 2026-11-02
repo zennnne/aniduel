@@ -25,3 +25,6 @@ dist-ssr
 *.sln
 *.sw?
 .playwright-mcp
+
+# Session handoff notes (local only)
+handoff-*.md

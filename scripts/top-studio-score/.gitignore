@@ -1,0 +1,3 @@
+# AniList response caches written by prototype.py (contain other users' lists)
+*.json
+__pycache__/
