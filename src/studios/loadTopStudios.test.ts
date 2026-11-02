@@ -237,6 +237,23 @@ describe('loadTopStudios: which entries count', () => {
   })
 })
 
+describe('loadTopStudios: how much of the list is scored', () => {
+  it('counts the titles that count toward a studio, and the scored ones among them', async () => {
+    const result = await load([
+      ...handMadeList(),
+      entry(0, SWING, { status: 'DROPPED', progress: 3 }),
+      entry(0, MIDDLE, { repeat: 1 }),
+      entry(8, SAFE, { studios: [] }),
+      entry(0, SAFE),
+      entry(0, SAFE, { status: 'PLANNING' }),
+    ])
+
+    // 20 scored + a studio-less scored title + an unscored drop and rewatch; the unscored completed and Planning ones don't count.
+    expect(result.countedCount).toBe(23)
+    expect(result.countedScoredCount).toBe(21)
+  })
+})
+
 describe('loadTopStudios: reading AniList', () => {
   it('follows list chunks and favourites pages to the end', async () => {
     const list = handMadeList()
@@ -318,8 +335,34 @@ describe('loadTopStudios: when it cannot rank', () => {
     expect(await loadTopStudios({ fetch, token: null }, 'zen')).toEqual({ ok: false, failure: { kind: 'unreachable' } })
   })
 
-  it('says when the token it was given is no longer valid', async () => {
-    const { fetch } = fakeFetch({ status: 400, json: { data: null, errors: [{ message: 'Invalid token', status: 400 }] } })
-    expect(await loadTopStudios({ fetch, token: 'old' }, 'zen')).toEqual({ ok: false, failure: { kind: 'invalid-token' } })
+  it('tells a missing user and a private list apart from other AniList errors', async () => {
+    const broken = { status: 500, json: { data: null, errors: [{ message: 'Internal Server Error', status: 500 }] } }
+    expect(await failure(broken)).toEqual({ kind: 'api', message: 'Internal Server Error' })
+  })
+
+  it('says a list is private when AniList refuses it even with a token', async () => {
+    const privateUser = { status: 401, json: { data: { MediaListCollection: null }, errors: [{ message: 'Private User', status: 401 }] } }
+    const { fetch, calls } = fakeFetch(privateUser)
+    expect(await loadTopStudios({ fetch, token: 'tok' }, 'friend')).toEqual({ ok: false, failure: { kind: 'private-list' } })
+    expect(calls).toHaveLength(1)
+  })
+})
+
+describe('loadTopStudios: a token AniList refuses', () => {
+  it('loads the list again without the token', async () => {
+    const refused = { status: 400, json: { data: null, errors: [{ message: 'Invalid token', status: 400 }] } }
+    const { fetch, calls } = fakeFetch(refused, listChunk(false, handMadeList()), favouritesPage(false, []))
+    const loaded = await loadTopStudios({ fetch, token: 'old' }, 'zen')
+
+    expect(names(ranked(loaded))).toEqual(['Swing Studio', 'Safe Studio', 'Middle Studio'])
+    expect(new Headers(calls[0].init.headers).get('Authorization')).toBe('Bearer old')
+    expect(calls.slice(1).every((c) => !new Headers(c.init.headers).has('Authorization'))).toBe(true)
+  })
+
+  it('says the list is private when it can’t be read without the token either', async () => {
+    const refused = { status: 400, json: { data: null, errors: [{ message: 'Invalid token', status: 400 }] } }
+    const privateUser = { status: 401, json: { data: { MediaListCollection: null }, errors: [{ message: 'Private User', status: 401 }] } }
+    const { fetch } = fakeFetch(refused, privateUser)
+    expect(await loadTopStudios({ fetch, token: 'old' }, 'zen')).toEqual({ ok: false, failure: { kind: 'private-list' } })
   })
 })
