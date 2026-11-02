@@ -1,6 +1,7 @@
 // The Top Studios page's view (spec #87): from the URL query, the AniDuel! login (if any) and the load, which name to
 // look up, what the search page says, and how sure a result is. Pure: the page renders it and does what it says.
 import { GATE, type TopStudios, type TopStudiosFailure, type TopStudiosLoad } from '../loadTopStudios.ts'
+import { studioCards, type StudioCard } from './resultView.ts'
 
 /** The logged-in AniDuel! user's own name: still being checked, known, or none (logged out, or the login refused). */
 export type OwnName = { kind: 'checking' } | { kind: 'known'; name: string } | { kind: 'none' }
@@ -27,7 +28,8 @@ export type StudiosScreen =
   /** The big search: before a result, or with the reason a name couldn't be ranked. */
   | { kind: 'search'; error: FailureMessage | null }
   | { kind: 'loading'; userName: string }
-  | { kind: 'result'; userName: string; topStudios: TopStudios; howSure: HowSure }
+  /** `cards`: the ranked studios from #1, then the watchlist (#92's layout draws the map and list from them). */
+  | { kind: 'result'; userName: string; topStudios: TopStudios; cards: StudioCard[]; howSure: HowSure }
 
 export type StudiosView = {
   /** A name to load now: a shared `?user=` link before anything has loaded. */
@@ -70,7 +72,8 @@ function screenOf(load: LoadState, own: OwnName): StudiosScreen {
     case 'loaded': {
       const { loaded, userName } = load
       if (!loaded.ok) return { kind: 'search', error: failureMessage(loaded.failure, userName, own) }
-      return { kind: 'result', userName, topStudios: loaded.topStudios, howSure: howSure(loaded.topStudios) }
+      const { topStudios } = loaded
+      return { kind: 'result', userName, topStudios, cards: studioCards(topStudios), howSure: howSure(topStudios) }
     }
   }
 }

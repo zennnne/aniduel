@@ -82,6 +82,8 @@ export type TopStudios = {
   watchlist: StudioScore[]
   /** Entries a studio needed to be ranked: `GATE`, or lower for a short list. */
   gate: number
+  /** The hit and flop rates a studio must pass to read high: the pooled rates of the top ranked studios + the margin. */
+  labelLines: { hit: number; flop: number }
   /** Ū: the user's W-weighted mean vote utility e^(αZ) over every vote. A title above it lifts its studio. */
   averageUtility: number
   scale: ScoreScale
@@ -211,6 +213,7 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
       studios: ranked.map(labelled),
       watchlist: watchlist.map(labelled),
       gate,
+      labelLines: { hit: hitLine, flop: flopLine },
       averageUtility,
       scale,
       scoredCount: scores.length,

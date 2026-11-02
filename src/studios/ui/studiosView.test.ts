@@ -41,6 +41,15 @@ describe('who the page looks up', () => {
     expect(friend.formName).toBe('Friend')
   })
 
+  it('shows a result as the studios’ cards, ranked first, then the watchlist', () => {
+    const { screen } = view({ load: { kind: 'loaded', userName: 'zen', loaded: ranked({ studios: 2 }) } })
+    if (screen.kind !== 'result') throw new Error(`expected a result, got ${screen.kind}`)
+    expect(screen.cards.map((c) => [c.name, c.rank])).toEqual([
+      ['Studio 0', 1],
+      ['Studio 1', 2],
+    ])
+  })
+
   it('shows the name being read while it loads', () => {
     expect(view({ load: { kind: 'loading', userName: 'Friend' } }).screen).toEqual({ kind: 'loading', userName: 'Friend' })
   })
@@ -71,6 +80,7 @@ function ranked({ gate = 6, studios = 10, counted = 100, countedScored = 80 } = 
       })),
       watchlist: [],
       gate,
+      labelLines: { hit: 0.2, flop: 0.2 },
       averageUtility: 1,
       scale: { mean: 7, sd: 1.5 },
       scoredCount: countedScored,
