@@ -46,6 +46,42 @@
   border-radius: 6px;
 }
 
+/* #91: what the page says when it can't rank, and the "How sure is this?" card. #92 restyles both. */
+.studios-error {
+  color: var(--danger);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.studios-error button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  background: var(--blue);
+  color: var(--on-accent);
+}
+
+.studios-sure {
+  background: var(--fg);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.studios-sure ul {
+  margin: 6px 0 0 18px;
+}
+
+.studios-sure-dots {
+  color: var(--good);
+  letter-spacing: 2px;
+}
+
+.studios-sure-off {
+  color: var(--fg2);
+}
+
 .studios-table caption {
   text-align: left;
   padding-bottom: 8px;
@@ -61,13 +97,6 @@
 .studios-table td:first-child,
 .studios-table td:last-child {
   font-variant-numeric: tabular-nums;
-}
-
-.studios-note {
-  padding: 8px 12px;
-  border-left: 3px solid var(--blue);
-  background: var(--fg);
-  border-radius: 6px;
 }
 
 .studios-legend {

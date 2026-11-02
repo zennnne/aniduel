@@ -1,6 +1,6 @@
-// Top Studios result, plain (#90): the ranked table with labels, a lowered-gate note, the label legend and the
-// watchlist. The chosen layout replaces it with #92.
-import { GATE, type StudioLabel, type StudioScore, type TopStudios } from '../loadTopStudios.ts'
+// Top Studios result, plain (#90): the ranked table with labels, the label legend and the watchlist. The lowered-gate
+// note is in the "How sure is this?" card (studiosView). The chosen layout replaces it with #92.
+import { type StudioLabel, type StudioScore, type TopStudios } from '../loadTopStudios.ts'
 
 const LABELS: Record<StudioLabel, { icon: string; name: string; meaning: string }> = {
   elite: { icon: '💎', name: 'Elite', meaning: 'more hits than usual, few flops' },
@@ -54,11 +54,6 @@ export function StudiosResult({ userName, topStudios }: { userName: string; topS
   const { studios, watchlist, gate } = topStudios
   return (
     <>
-      {gate < GATE && (
-        <p className="studios-note">
-          Short list: studios needed only {gate} titles to rank here (usually {GATE}), so this ranking rests on less.
-        </p>
-      )}
       <table className="studios-table">
         <caption>
           {userName}’s studios with at least {gate} titles

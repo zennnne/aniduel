@@ -88,6 +88,10 @@ export type TopStudios = {
   /** Scored titles among the titles the user watched (every status but Planning). */
   scoredCount: number
   watchedCount: number
+  /** Titles that count (a score, or an unscored drop, rewatch or favourite), with or without a main studio. */
+  countedCount: number
+  /** Scored titles among those: under half of `countedCount`, the labels may be off (#91's note). */
+  countedScoredCount: number
 }
 
 export type StudioScoring = { ok: true; topStudios: TopStudios } | { ok: false; reason: 'too-few-scored'; scored: number }
@@ -137,6 +141,8 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
 
   // Every entry is its own vote at each of its main studios (sequels, films and recaps included).
   const byStudio = new Map<number, { name: string; votes: Array<{ title: StudioTitle; z: number; w: number; scored: boolean; favourite: boolean }> }>()
+  let countedCount = 0
+  let countedScoredCount = 0
   for (const title of watched) {
     const favourite = favourites.has(title.mediaId)
     const entry = entryVote(title, scale, favourite)
@@ -146,6 +152,8 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
     // ln(w·e^z / w) is z up to rounding, and that rounding decides whether an unscored drop (z −1) is a flop,
     // so it is kept for parity with the prototype's labels (#90).
     const z = entropicMean([{ z: entry.z, weight: w }])
+    countedCount++
+    if (scored) countedScoredCount++
     for (const studio of title.studios) {
       let group = byStudio.get(studio.id)
       if (!group) byStudio.set(studio.id, (group = { name: studio.name, votes: [] }))
@@ -207,6 +215,8 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
       scale,
       scoredCount: scores.length,
       watchedCount: watched.length,
+      countedCount,
+      countedScoredCount,
     },
   }
 }

@@ -40,7 +40,12 @@ export function restoreSession(deps: {
     }
     history.replaceState(null, '', location.pathname + location.search)
   }
-  return { token: arrived ?? storage.getItem(TOKEN_KEY), saved }
+  return { token: arrived ?? storedToken(storage), saved }
+}
+
+/** The stored login's token, or null. Top Studios reads it this way: that page never takes a login of its own. */
+export function storedToken(storage: Storage): string | null {
+  return storage.getItem(TOKEN_KEY)
 }
 
 /** Clears the token. With `deleteProgress`, also deletes this user's saved progress in this browser. */
