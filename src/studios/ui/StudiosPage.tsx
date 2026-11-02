@@ -1,6 +1,7 @@
 // Top Studios, the tracer (#88): a username field and a plain ranked table. The chosen layout comes with #92.
 import { useRef, useState, type FormEvent } from 'react'
 import { loadTopStudios, type TopStudiosFailure, type TopStudiosLoad, type TopStudiosSession } from '../loadTopStudios.ts'
+import { StudiosResult } from './StudiosResult.tsx'
 
 type PageState =
   | { kind: 'idle' }
@@ -61,27 +62,7 @@ export function StudiosPage({ session }: { session: TopStudiosSession }) {
       {state.kind === 'loading' && <p>Reading {state.userName}’s list…</p>}
       {state.kind === 'loaded' && !state.loaded.ok && <p role="alert">{failureMessage(state.loaded.failure)}</p>}
       {state.kind === 'loaded' && state.loaded.ok && (
-        <table className="studios-table">
-          <caption>
-            {state.userName}’s studios with at least {state.loaded.topStudios.gate} titles
-          </caption>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Studio</th>
-              <th>Studio Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {state.loaded.topStudios.studios.map((studio, i) => (
-              <tr key={studio.id}>
-                <td>{i + 1}</td>
-                <td>{studio.name}</td>
-                <td>{(studio.score >= 0 ? '+' : '') + studio.score.toFixed(2)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <StudiosResult userName={state.userName} topStudios={state.loaded.topStudios} />
       )}
     </main>
   )

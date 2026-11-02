@@ -1,9 +1,12 @@
 """Top Studio Score v2.7 (Python prototype). Spec: docs/research/top-studio-score.md
-usage: python -I prototype.py <user> [--detail | --compact] [--alpha=1.0] [--gamma=0.1]
-       [--staff] [--prior=user|zero] [--k=<number>|est]
+usage: python -I prototype.py <user> [--detail | --compact | --json] [--alpha=1.0] [--gamma=0.1]
+       [--staff] [--prior=user|zero] [--k=<number>|est] [--cache=<dir>]
   --staff         add the fav-staff pseudo-vote (off by default; first fetch ~10 min)
   --prior=zero    v2.3 rule: put the k pseudo-votes at Z=0, not at the user's average entry (default since v2.4)
   --k=est         estimate k per user from within/between-studio variance
+  --json          print every ranked and watchlist studio at full precision, one JSON object per user
+                  (read by scripts/top-studio-parity.ts)
+  --cache=<dir>   read and write the caches there instead of next to this file
 Caches AniList responses as list_/favs_/staff_<user>.json next to this file (gitignore them)."""
 import json, math, os, sys, time, urllib.request, urllib.error
 from collections import defaultdict, Counter
@@ -33,7 +36,7 @@ ROLE_W = {"Director": 3, "Chief Director": 3,
           "Series Composition": 2, "Storyboard": 2, "Key Animation": 2, "Episode Director": 2,
           "Script": 2, "Animation Director": 2, "Chief Animation Director": 2,
           "Character Design": 1, "Music": 1, "Art Director": 1}
-HERE = os.path.dirname(os.path.abspath(__file__))
+HERE = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--cache=")), os.path.dirname(os.path.abspath(__file__)))
 _last = [0.0]
 
 
@@ -251,6 +254,11 @@ def run(user):
         hi, fl = r["hit"] > mh + LABEL_MARGIN, r["flop"] > mf + LABEL_MARGIN
         r["tag"] = {(1, 0): "💎 Elite", (1, 1): "🎲 Bold", (0, 0): "🛡️ Reliable", (0, 1): "💤 Meh"}[(hi, fl)]
 
+    if "--json" in sys.argv:
+        studio = lambda r: dict(name=r["name"], S=r["S"], n=r["n"], hit=r["hit"], flop=r["flop"], tag=r["tag"].split()[1])
+        print(json.dumps(dict(user=user, gate=gate, u_bar=u_bar, ranked=[studio(r) for r in rows],
+                              watchlist=[studio(r) for r in watch]), ensure_ascii=False))
+        return
     if "--compact" in sys.argv:
         print(f"\n### {user}" + (f" (gate {gate})" if gate != MIN_N else ""))
         top_n = next((int(a.split("=")[1]) for a in sys.argv if a.startswith("--top=")), 10)
