@@ -2,7 +2,7 @@
 
 A score function that ranks an AniList user's **top animation studios** from their own list — without using their *favourite studios* (that's the answer we're trying to infer, not an input).
 
-Status: v2.7 (v2.1 from the grilling session on 2026-11-01; on 2026-11-02 fixes from a scrutinize review, a k decision, the user-average prior, label margins, one vote per entry, a gate that steps down for small lists, and a love count per franchise), prototyped in Python at `scripts/top-studio-score/prototype.py`, run on 8 real users. Not integrated into AniDuel! yet.
+Status: v2.7 (v2.1 from the grilling session on 2026-11-01; on 2026-11-02 fixes from a scrutinize review, a k decision, the user-average prior, label margins, one vote per entry, a gate that steps down for small lists, and a love count per franchise), prototyped in Python at `scripts/top-studio-score/prototype.py`, run on 8 real users. Ported to TypeScript as AniDuel!'s Top Studios page (spec #87, ADR 0015), unchanged; the prototype stays the reference, and `npm run parity:top-studios` checks the port against it.
 
 ## Intent
 

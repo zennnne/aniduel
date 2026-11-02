@@ -43,6 +43,8 @@ export type MenuActions = {
   openCatchUp: () => void
   /** Asks before emptying Catch-up's Passed history. */
   clearPassed: () => void
+  /** Top Studios, a page of its own on the same site (ADR 0015). */
+  openTopStudios: () => void
 }
 
 /** The one list behind the account menu and the Ctrl+K palette, for a logged-in user. */
@@ -164,6 +166,14 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       title: 'Catch-up',
       description: 'Add anime you’ve already watched, 20 at a time',
       run: actions.openCatchUp,
+    },
+    {
+      id: 'top-studios',
+      group: 'App',
+      icon: '★',
+      title: 'Top Studios',
+      description: 'Your top animation studios, ranked from your AniList list',
+      run: actions.openTopStudios,
     },
     {
       id: 'theme',

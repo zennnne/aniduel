@@ -1,6 +1,7 @@
 // Top Studios in the layout picked in #89 (#92): a big search before a result (errors right under the field), then the
 // result under a header with the search. Who is looked up and what the page says is decided by studiosView (#91).
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { sitePage } from '../../sitePages.ts'
 import { loadTopStudios, type TopStudiosLoad, type TopStudiosSession } from '../loadTopStudios.ts'
 import { checkLogin } from '../studiosLogin.ts'
 import { Mochi } from './Bits.tsx'
@@ -98,7 +99,7 @@ export function StudiosPage({ session }: { session: TopStudiosSession }) {
           <Mochi size={34} />
           Top <b>Studios</b>
         </span>
-        <a className="st-back" href={import.meta.env.BASE_URL}>
+        <a className="st-back" href={sitePage('aniduel')}>
           ← AniDuel!
         </a>
         {screen.kind === 'result' && (
