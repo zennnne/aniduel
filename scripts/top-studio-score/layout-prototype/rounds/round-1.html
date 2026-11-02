@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE — Top Studios layouts (#89)</title>
+<style>
+:root{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc;--danger:#e05555;--warn:#f2b13d;--good:#3fae5a;--bad:#f27d7d;--shadow:#0002;
+--elite:#7cc6f5;--bold:#f5a46b;--reliable:#8fd19e;--meh:#b9b3c9;--pink:#ffb3c8}
+:root[data-theme=dark]{--bg:#0b1622;--fg:#151f2e;--fg2:#1f2a3c;--tx:#9fadbd;--tx-strong:#edf1f5;--nav:#0b1622;--navtx:#9fadbd;--shadow:#0006}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Overpass,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;background:var(--bg);color:var(--tx);min-height:100vh}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.strong{color:var(--tx-strong)} .fine{opacity:.7} .small{font-size:12px}
+#stage{min-height:100vh}
+body.phone #stage{display:flex;justify-content:center;padding:24px 0 120px;background:repeating-linear-gradient(45deg,var(--bg),var(--bg) 12px,var(--fg2) 12px,var(--fg2) 24px)}
+#app{container-type:inline-size;width:100%;background:var(--bg);min-height:100vh}
+body.phone #app{width:390px;min-height:760px;border-radius:28px;box-shadow:0 10px 40px var(--shadow);overflow:hidden;border:8px solid var(--nav)}
+
+/* ---------- shared header ---------- */
+.hdr{background:var(--nav);color:var(--navtx);padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hdr .logo{font-weight:900;color:#fff;font-size:18px;display:flex;align-items:center;gap:8px}
+.hdr .logo b{color:var(--blue)}
+.mochi{width:34px;height:26px;background:var(--pink);border-radius:50% 50% 42% 42%/60% 60% 40% 40%;position:relative;flex:none;box-shadow:inset 0 -3px 0 #0001}
+.mochi::before{content:'• ᴗ •';position:absolute;inset:0;display:grid;place-items:center;font-size:9px;color:#4a3b52;font-weight:700;letter-spacing:-1px}
+.hdr form{display:flex;gap:6px;margin-left:auto}
+.hdr input{font:inherit;padding:6px 10px;border-radius:6px;border:none;background:#ffffff1a;color:#fff;width:170px}
+.hdr .go{background:var(--blue);color:#fff;border-radius:6px;padding:6px 12px;font-weight:700}
+.hdr .back{font-size:12px;color:var(--navtx);text-decoration:underline;cursor:pointer}
+@container (max-width:600px){.hdr{padding:10px 12px}.hdr form{margin-left:0;width:100%}.hdr input{flex:1;width:auto}}
+
+.wrap{max-width:1040px;margin:0 auto;padding:20px}
+@container (max-width:600px){.wrap{padding:12px}}
+.who{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.who h1{font-size:22px;color:var(--tx-strong);font-weight:800}
+.note{background:var(--fg);border-left:4px solid var(--warn);padding:8px 12px;border-radius:6px;margin-bottom:8px;font-size:13px}
+.note.info{border-color:var(--blue)}
+.card{background:var(--fg);border-radius:8px;box-shadow:0 1px 3px var(--shadow)}
+.lab{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;color:#2b2d42;white-space:nowrap}
+.lab.elite{background:var(--elite)}.lab.bold{background:var(--bold)}.lab.reliable{background:var(--reliable)}.lab.meh{background:var(--meh)}
+.S{font-variant-numeric:tabular-nums;font-weight:800;color:var(--tx-strong)}
+.up{color:var(--good)} .down{color:var(--danger)}
+.tag{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--fg2);margin-left:4px;white-space:nowrap}
+h2{font-size:15px;color:var(--tx-strong);margin:18px 0 8px}
+.empty{padding:20px;text-align:center}
+
+/* ---------- picker ---------- */
+#picker{position:fixed;right:18px;bottom:18px;z-index:99;background:#1b1d2e;color:#eee;border-radius:12px;padding:10px 12px;box-shadow:0 8px 30px #0008;font-size:12px;width:300px;user-select:none}
+#picker .grip{cursor:move;font-size:10px;opacity:.6;text-align:center;margin:-4px 0 4px}
+#picker .nm{display:flex;align-items:center;gap:8px}
+#picker .nm b{flex:1;text-align:center;font-size:14px}
+#picker .nm button{background:#ffffff1a;border-radius:6px;padding:4px 10px;font-size:14px}
+#picker .desc{opacity:.75;margin:6px 0 8px;text-align:center;line-height:1.35}
+#picker .grp{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+#picker .grp button{background:#ffffff14;border-radius:5px;padding:3px 7px}
+#picker .grp button.on{background:var(--blue);color:#fff}
+#picker .k{opacity:.5;width:100%;margin-top:4px}
+
+/* ============ A: Table + accordion ============ */
+.A table{width:100%;border-collapse:collapse}
+.A th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:8px 12px;color:var(--tx)}
+.A td{padding:10px 12px;border-top:1px solid var(--fg2)}
+.A tr.r{cursor:pointer} .A tr.r:hover td{background:var(--fg2)}
+.A tr.r.open td{background:var(--fg2)}
+.A .rk{width:40px;font-weight:800;color:var(--tx-strong)}
+.A .num{text-align:right}
+.A .detail td{padding:0 12px 14px 52px;background:var(--fg2)}
+.A .tl{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:13px}
+.A .push{white-space:nowrap;font-weight:700}
+.A .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin:10px 0}
+.A .wl{display:flex;flex-wrap:wrap;gap:8px}
+.A .wl .card{padding:8px 12px}
+@container (max-width:600px){.A .hide-m{display:none}.A .detail td{padding-left:12px}.A td,.A th{padding:8px}}
+
+/* ============ B: Split master/detail ============ */
+.B .grid{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+.B .list .it{display:flex;align-items:center;gap:10px;padding:9px 12px;border-top:1px solid var(--fg2);cursor:pointer}
+.B .list .it.on{background:var(--blue);color:#fff}.B .list .it.on .S,.B .list .it.on .strong{color:#fff}
+.B .list .rk{width:22px;font-weight:800;text-align:right}
+.B .det{padding:16px 18px;position:sticky;top:12px}
+.B .det h3{font-size:20px;color:var(--tx-strong)}
+.B .row2{display:flex;gap:18px;flex-wrap:wrap;margin:10px 0 14px}
+.B .stat b{display:block;font-size:18px;color:var(--tx-strong)}
+.B .tt{display:grid;grid-template-columns:1fr 140px;gap:6px 12px;align-items:center;font-size:13px}
+.B .bar{height:10px;position:relative;background:var(--fg2);border-radius:5px}
+.B .bar i{position:absolute;top:0;bottom:0;border-radius:5px}
+.B .bar::after{content:'';position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--tx)}
+.B .side2{display:grid;gap:12px;margin-top:12px}
+.B .side2 .card{padding:12px}
+.B .lg div{margin:4px 0;font-size:12px}
+.B .sheetbar{display:none}
+@container (max-width:700px){.B .grid{grid-template-columns:1fr}.B .det{position:fixed;left:0;right:0;bottom:0;max-height:62%;overflow:auto;border-radius:16px 16px 0 0;box-shadow:0 -6px 24px var(--shadow);z-index:5}
+ body.phone .B .det{position:absolute}.B .sheetbar{display:block;width:40px;height:4px;background:var(--fg2);border-radius:2px;margin:-6px auto 10px}.B .tt{grid-template-columns:1fr 90px}}
+body.phone #app{position:relative}
+
+/* ============ C: Podium + cards + drawer ============ */
+.C .podium{display:grid;grid-template-columns:1fr 1.15fr 1fr;gap:12px;align-items:end;margin-bottom:16px}
+.C .pd{padding:16px;text-align:center;cursor:pointer;position:relative}
+.C .pd .medal{font-size:28px}
+.C .pd .nm{font-size:16px;font-weight:800;color:var(--tx-strong);margin:4px 0}
+.C .pd.p1{padding:26px 16px;border-top:4px solid #f2c94c}.C .pd.p2{border-top:4px solid #c0c7d0}.C .pd.p3{border-top:4px solid #d69a6a}
+.C .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.C .cd{padding:12px;cursor:pointer;display:grid;gap:6px}
+.C .cd .t{display:flex;gap:8px;align-items:baseline}.C .cd .t b{flex:1;color:var(--tx-strong)}
+.C .meter{height:6px;background:var(--fg2);border-radius:3px;overflow:hidden}.C .meter i{display:block;height:100%;background:var(--blue)}
+.C .strip{display:flex;gap:10px;overflow-x:auto;padding-bottom:6px}
+.C .strip .card{min-width:170px;padding:10px 12px;border:2px dashed var(--good);cursor:pointer}
+.C .quad{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.C .quad .card{padding:10px;font-size:12px}
+.C .scrim{position:fixed;inset:0;background:#0006;z-index:20}
+body.phone .C .scrim{position:absolute}
+.C .drawer{position:absolute;right:0;top:0;bottom:0;width:min(440px,100%);background:var(--fg);padding:18px;overflow:auto}
+.C .drawer h3{font-size:20px;color:var(--tx-strong)}
+.C .chip{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border-radius:8px;margin:3px;font-size:12px}
+.C .chip.u{background:#3fae5a22;border:1px solid var(--good)}.C .chip.d{background:#e0555522;border:1px solid var(--danger)}.C .chip.n{background:var(--fg2)}
+@container (max-width:600px){.C .podium{grid-template-columns:1fr;}.C .pd.p1{order:-1}.C .drawer{top:auto;height:80%;border-radius:16px 16px 0 0;width:100%}}
+
+/* ============ D: Diverging bars + waterfall ============ */
+.D .board .ln{display:grid;grid-template-columns:28px 180px 1fr 60px;gap:10px;align-items:center;padding:5px 10px;cursor:pointer;border-radius:6px}
+.D .board .ln:hover,.D .board .ln.on{background:var(--fg2)}
+.D .track{position:relative;height:18px}
+.D .track::before{content:'';position:absolute;left:30%;top:-4px;bottom:-4px;width:1px;background:var(--tx);opacity:.5}
+.D .track i{position:absolute;top:2px;bottom:2px;border-radius:3px}
+.D .axis{display:grid;grid-template-columns:28px 180px 1fr 60px;gap:10px;font-size:11px;padding:0 10px}
+.D .axis .ax{position:relative;height:14px}.D .axis .ax span{position:absolute;transform:translateX(-50%)}
+.D .wf{padding:12px 14px 16px;margin:4px 0 10px}
+.D .wfrow{display:grid;grid-template-columns:minmax(120px,260px) 1fr 64px;gap:10px;align-items:center;font-size:12px;padding:2px 0}
+.D .wfbar{position:relative;height:14px}.D .wfbar i{position:absolute;top:0;bottom:0;border-radius:2px}
+.D .bot{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px}
+.D .bot .card{padding:12px}
+@container (max-width:600px){.D .board .ln,.D .axis{grid-template-columns:22px 1fr 50px;}.D .board .ln .track,.D .axis .ax{grid-column:1/-1;order:5}.D .bot{grid-template-columns:1fr}.D .wfrow{grid-template-columns:1fr 70px 50px}}
+
+/* ============ E: Quadrant map ============ */
+.E .lay{display:grid;grid-template-columns:1fr 300px;gap:16px;align-items:start}
+.E .map{position:relative;aspect-ratio:1/0.82;padding:0;overflow:hidden}
+.E .q{position:absolute;width:50%;height:50%;padding:10px;font-size:12px;font-weight:700;opacity:.9}
+.E .q span{display:block;font-weight:400;opacity:.8;font-size:11px;max-width:200px}
+.E .dot{position:absolute;transform:translate(-50%,-50%);border-radius:50%;background:var(--tx-strong);color:var(--fg);display:grid;place-items:center;font-size:11px;font-weight:800;cursor:pointer;border:2px solid var(--fg);transition:.2s}
+.E .dot.on{background:var(--blue);z-index:3;box-shadow:0 0 0 4px #3db4f255}
+.E .dot.wl{background:transparent;color:var(--good);border:2px dashed var(--good)}
+.E .axl{position:absolute;font-size:11px;opacity:.7}
+.E .rl .it{display:flex;gap:8px;padding:6px 10px;cursor:pointer;border-top:1px solid var(--fg2);align-items:center}
+.E .rl .it.on{background:var(--fg2)}
+.E .rl .rk{width:20px;font-weight:800;text-align:right}
+.E .det{padding:14px;margin-top:14px}
+.E .tl{columns:2;column-gap:24px;font-size:13px}.E .tl div{break-inside:avoid;padding:2px 0}
+@container (max-width:700px){.E .lay{grid-template-columns:1fr}.E .tl{columns:1}.E .q span{display:none}}
+</style>
+</head>
+<body>
+<div id="stage"><div id="app"></div></div>
+<div id="picker">
+  <div class="grip">⠿ drag ⠿</div>
+  <div class="nm"><button id="prev">←</button><b id="dname"></b><button id="next">→</button></div>
+  <div class="desc" id="ddesc"></div>
+  <div class="grp" id="gUser"></div>
+  <div class="grp" id="gWidth"></div>
+  <div class="grp" id="gTheme"></div>
+  <div class="k">← / → switch layout · click a studio to open it</div>
+</div>
+<script>
+const DATA = /*DATA*/;
+const USERS = [['zennnne','zennnne (normal)'],['ManMode','ManMode (scored < 50%)'],['Keennaja','Keennaja (gate lowered)']];
+const LAB = {elite:['💎','Elite','Lots of hits, few flops'],bold:['🎲','Bold','Lots of hits, and lots of flops too'],reliable:['🛡️','Reliable','Few hits, few flops'],meh:['💤','Meh','Few hits, lots of flops']};
+const st = {d:+(localStorage.p89d||0), user:localStorage.p89u||'zennnne', phone:localStorage.p89w==='phone', theme:localStorage.p89t||'light', open:0, drawer:false};
+const D = () => DATA[st.user];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtS = s => (s>=0?'+':'−') + Math.abs(s).toFixed(2);
+const lab = l => `<span class="lab ${l}">${LAB[l][0]} ${LAB[l][1]}</span>`;
+const allStudios = () => [...D().ranked.map((r,i)=>({...r,rank:i+1})), ...D().watch.map(r=>({...r,rank:null,wl:true}))];
+const cur = () => allStudios()[st.open] || allStudios()[0];
+function why(t){ // plain words for one title
+  const bits=[];
+  if(t.score!=null) bits.push(`you scored ${t.score}`); else if(t.status==='DROPPED') bits.push('dropped, no score'); else if(t.rep) bits.push('rewatched, no score'); else bits.push('no score');
+  if(t.fav) bits.push('★ favourite');
+  if(t.status==='DROPPED' && t.score!=null) bits.push('dropped');
+  if(t.status==='DROPPED' && t.prog) bits.push(`watched ${t.prog}${t.eps?'/'+t.eps:''} eps`);
+  if(t.rep && t.score!=null) bits.push(`rewatched ×${t.rep}`);
+  return bits.join(' · ');
+}
+function pushWord(d){const a=Math.abs(d); const s = a>=0.05?'a lot':a>=0.015?'some':'a little'; return d>=0? `lifts it ${s}`:`drags it down ${s}`;}
+function pushArrows(d){const a=Math.abs(d); const n=a>=0.05?3:a>=0.015?2:1; return `<span class="${d>=0?'up':'down'}">${(d>=0?'▲':'▼').repeat(n)}</span>`;}
+function notes(){
+  const d=D(), out=[];
+  if(d.gate<6) out.push(`<div class="note">You have a short list, so a studio needed only <b>${d.gate} titles</b> (not 6) to be ranked. The ranking rests on less evidence.${d.rankedCount<10?` Only ${d.rankedCount} studios made it.`:''}</div>`);
+  if(d.countedScoredFrac<0.5) out.push(`<div class="note">You scored only <b>${Math.round(d.countedScoredFrac*100)}%</b> of the titles that counted, so the labels may be off.</div>`);
+  return out.join('');
+}
+function legendInline(){return Object.keys(LAB).map(k=>`<span>${lab(k)} <span class="fine">${LAB[k][2]}</span></span>`).join('');}
+const hdr = () => `<div class="hdr"><div class="logo"><span class="mochi"></span>Top <b>Studios</b></div>
+  <span class="back">← AniDuel!</span>
+  <form onsubmit="return false"><input value="${esc(st.user)}" placeholder="AniList username"><button class="go">Show</button></form></div>`;
+const whoLine = (extra='') => `<div class="who"><h1>${esc(st.user)}’s top studios</h1><span class="fine small">${D().entries} titles watched · ${D().rankedCount} studios ranked</span>${extra}</div>`;
+
+/* ---------------- A ---------------- */
+function A(){
+  const d=D(); const rows=d.ranked.map((r,i)=>{
+    const o=st.open===i;
+    return `<tr class="r ${o?'open':''}" data-i="${i}"><td class="rk">${i+1}</td><td class="strong">${o?'▾':'▸'} ${esc(r.name)}</td><td>${lab(r.label)}</td><td class="num hide-m">${r.n}</td><td class="num S">${fmtS(r.S)}</td></tr>`+
+      (o?`<tr class="detail"><td colspan="5"><div class="small fine" style="margin:6px 0 8px">${r.n} titles counted. How each one moved the score:</div><div class="tl">${r.titles.map(t=>`<div><span class="strong">${esc(t.t)}</span> <span class="fine small">${why(t)}</span></div><div class="push">${pushArrows(t.delta)} <span class="small">${pushWord(t.delta)}</span></div>`).join('')}</div></td></tr>`:'');
+  }).join('');
+  const wi=d.ranked.length;
+  return `<div class="A">${hdr()}<div class="wrap">${whoLine()}${notes()}
+   <div class="legend">${legendInline()}</div>
+   <div class="card"><table><thead><tr><th>#</th><th>Studio</th><th>Label</th><th class="num hide-m">Titles</th><th class="num">Score</th></tr></thead><tbody>${rows}</tbody></table></div>
+   <h2>🌱 Watchlist <span class="fine small" style="font-weight:400">strong, but fewer than ${d.gate} titles so far</span></h2>
+   <div class="wl">${d.watch.map((r,j)=>`<div class="card" data-i="${wi+j}" style="cursor:pointer"><b class="strong">${esc(r.name)}</b> <span class="S small">${fmtS(r.S)}</span> <span class="fine small">· ${r.n} title${r.n>1?'s':''}</span></div>`).join('')}</div>
+   ${st.open>=wi?`<div class="card" style="padding:12px;margin-top:10px"><b class="strong">${esc(cur().name)}</b><div class="tl" style="margin-top:6px">${cur().titles.map(t=>`<div>${esc(t.t)} <span class="fine small">${why(t)}</span></div><div class="push">${pushArrows(t.delta)} <span class="small">${pushWord(t.delta)}</span></div>`).join('')}</div></div>`:''}
+   <p class="small fine" style="margin-top:16px">Score: 0 = an average studio for you. Higher = you like their work more.</p>
+  </div></div>`;
+}
+
+/* ---------------- B ---------------- */
+function B(){
+  const d=D(), all=allStudios(), c=cur();
+  const max=Math.max(...c.titles.map(t=>Math.abs(t.delta)),0.01);
+  const item=(r,i)=>`<div class="it ${st.open===i?'on':''}" data-i="${i}"><span class="rk">${r.rank??'🌱'}</span><span class="grow strong" style="flex:1">${esc(r.name)}</span>${LAB[r.label][0]}<span class="S" style="width:46px;text-align:right">${fmtS(r.S)}</span></div>`;
+  return `<div class="B">${hdr()}<div class="wrap">${whoLine()}${notes()}
+   <div class="grid"><div>
+     <div class="card list">${d.ranked.map((r,i)=>item(all[i],i)).join('')}</div>
+     <div class="side2">
+       <div class="card"><b class="strong">🌱 Watchlist</b><div class="small fine">Strong, fewer than ${d.gate} titles</div></div>
+       <div class="card list" style="margin-top:-8px">${d.watch.map((r,j)=>item(all[d.ranked.length+j],d.ranked.length+j)).join('')}</div>
+       <div class="card lg"><b class="strong">Labels</b>${Object.keys(LAB).map(k=>`<div>${lab(k)} ${LAB[k][2]}</div>`).join('')}</div>
+     </div></div>
+     <div class="card det"><div class="sheetbar"></div>
+       <div class="fine small">${c.rank?'#'+c.rank:'🌱 Watchlist'}</div><h3>${esc(c.name)}</h3>
+       <div class="row2"><div class="stat"><b>${fmtS(c.S)}</b><span class="small">Studio Score</span></div><div class="stat"><b>${lab(c.label)}</b><span class="small">label</span></div>
+        <div class="stat"><b>${Math.round(c.hit*100)}%</b><span class="small">hits</span></div><div class="stat"><b>${Math.round(c.flop*100)}%</b><span class="small">flops</span></div><div class="stat"><b>${c.n}</b><span class="small">titles</span></div></div>
+       <div class="small fine" style="margin-bottom:8px">← drags it down · lifts it up →</div>
+       <div class="tt">${c.titles.map(t=>{const w=Math.abs(t.delta)/max*50;return `<div><span class="strong">${esc(t.t)}</span><br><span class="fine small">${why(t)}</span></div><div class="bar"><i style="${t.delta>=0?`left:50%;width:${w}%;background:var(--good)`:`right:50%;width:${w}%;background:var(--danger)`}"></i></div>`}).join('')}</div>
+     </div></div>
+   <p class="small fine" style="margin-top:16px">Score: 0 = an average studio for you.</p>
+  </div></div>`;
+}
+
+/* ---------------- C ---------------- */
+function C(){
+  const d=D(), all=allStudios(), max=Math.max(...d.ranked.map(r=>r.S)), min=Math.min(0,...d.ranked.map(r=>r.S));
+  const pct=s=>Math.max(3,(s-min)/(max-min)*100);
+  const pd=(i,cls,m)=>d.ranked[i]?`<div class="card pd ${cls}" data-i="${i}" data-dr="1"><div class="medal">${m}</div><div class="nm">${esc(d.ranked[i].name)}</div>${lab(d.ranked[i].label)}<div class="S" style="font-size:22px;margin-top:6px">${fmtS(d.ranked[i].S)}</div><div class="small fine">${d.ranked[i].n} titles</div></div>`:'<div></div>';
+  const c=cur();
+  const drawer = st.drawer?`<div class="scrim" data-close="1"><div class="drawer" onclick="event.stopPropagation()">
+     <button style="float:right;font-size:18px" data-close="1">✕</button>
+     <div class="fine small">${c.rank?'#'+c.rank:'🌱 Watchlist'}</div><h3>${esc(c.name)}</h3><div style="margin:6px 0 12px">${lab(c.label)} <span class="S">${fmtS(c.S)}</span></div>
+     <b class="strong small">What lifted it</b><div>${c.titles.filter(t=>t.delta>=0.005).map(t=>`<span class="chip u"><b>${esc(t.t)}</b>${t.score??'–'}${t.fav?' ★':''}</span>`).join('')||'<span class="fine small">nothing much</span>'}</div>
+     <b class="strong small" style="display:block;margin-top:10px">What held it back</b><div>${c.titles.filter(t=>t.delta<=-0.005).map(t=>`<span class="chip d"><b>${esc(t.t)}</b>${t.score??(t.status==='DROPPED'?'dropped':'–')}</span>`).join('')||'<span class="fine small">nothing</span>'}</div>
+     <b class="strong small" style="display:block;margin-top:10px">Barely moved it</b><div>${c.titles.filter(t=>Math.abs(t.delta)<0.005).map(t=>`<span class="chip n">${esc(t.t)} ${t.score??''}</span>`).join('')||'<span class="fine small">—</span>'}</div>
+   </div></div>`:'';
+  return `<div class="C">${hdr()}<div class="wrap">${whoLine()}${notes()}
+   <div class="podium">${pd(1,'p2','🥈')}${pd(0,'p1','🥇')}${pd(2,'p3','🥉')}</div>
+   <div class="cards">${d.ranked.slice(3).map((r,j)=>`<div class="card cd" data-i="${j+3}" data-dr="1"><div class="t"><span class="fine">#${j+4}</span><b>${esc(r.name)}</b><span class="S">${fmtS(r.S)}</span></div><div class="meter"><i style="width:${pct(r.S)}%"></i></div><div>${lab(r.label)} <span class="small fine">${r.n} titles</span></div></div>`).join('')}</div>
+   <h2>🌱 Watchlist <span class="fine small" style="font-weight:400">— fewer than ${d.gate} titles, but looking good</span></h2>
+   <div class="strip">${d.watch.map((r,j)=>`<div class="card" data-i="${d.ranked.length+j}" data-dr="1"><b class="strong">${esc(r.name)}</b><div class="S">${fmtS(r.S)}</div><div class="small fine">${r.n} title${r.n>1?'s':''}</div></div>`).join('')}</div>
+   <h2>What the labels mean</h2>
+   <div class="quad">${['elite','bold','reliable','meh'].map(k=>`<div class="card">${lab(k)}<div style="margin-top:4px">${LAB[k][2]}</div></div>`).join('')}</div>
+  </div>${drawer}</div>`;
+}
+
+/* ---------------- D ---------------- */
+function D_(){
+  const d=D(), all=allStudios();
+  const lo=-0.4, hi=Math.max(1,...all.map(r=>r.S)); const x=s=>(s-lo)/(hi-lo)*100; const z0=x(0);
+  const col={elite:'var(--elite)',bold:'var(--bold)',reliable:'var(--reliable)',meh:'var(--meh)'};
+  const wf=r=>{const ts=r.titles; const mx=Math.max(...ts.map(t=>Math.abs(t.delta)),0.01);
+    return `<div class="card wf"><div class="small fine" style="margin-bottom:6px">Each title’s push. Bar = how much lower (red) or higher (green) the score would be without it.</div>${ts.map(t=>{const w=Math.abs(t.delta)/mx*48;return `<div class="wfrow"><div><span class="strong">${esc(t.t)}</span> <span class="fine">${t.score??(t.status==='DROPPED'?'drop':'–')}${t.fav?' ★':''}</span></div><div class="wfbar"><i style="${t.delta>=0?`left:50%;width:${w}%;background:var(--good)`:`right:50%;width:${w}%;background:var(--danger)`}"></i></div><div class="small ${t.delta>=0?'up':'down'}" style="text-align:right">${t.delta>=0?'+':'−'}${Math.abs(t.delta).toFixed(2)}</div></div>`}).join('')}</div>`};
+  const ln=(r,i)=>`<div class="ln ${st.open===i?'on':''}" data-i="${i}"><span class="fine">${r.rank??'🌱'}</span><span class="strong" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r.name)}</span>
+    <div class="track"><i style="${r.S>=0?`left:${z0}%;width:${x(r.S)-z0}%`:`left:${x(r.S)}%;width:${z0-x(r.S)}%`};background:${col[r.label]}"></i></div><span class="S" style="text-align:right">${fmtS(r.S)}</span></div>${st.open===i?wf(r):''}`;
+  return `<div class="D">${hdr()}<div class="wrap">${whoLine()}${notes()}
+   <div class="small" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px">Bar colour = label: ${Object.keys(LAB).map(k=>lab(k)).join('')}</div>
+   <div class="card" style="padding:8px 0">
+    <div class="axis"><span></span><span></span><div class="ax"><span style="left:${z0}%">0 = average for you</span></div><span></span></div>
+    ${d.ranked.map((r,i)=>ln(all[i],i)).join('')}
+    <div style="border-top:1px dashed var(--good);margin:8px 10px 4px;padding-top:6px" class="small"><b class="up">🌱 Watchlist</b> <span class="fine">— fewer than ${d.gate} titles, not ranked yet</span></div>
+    ${d.watch.map((r,j)=>ln(all[d.ranked.length+j],d.ranked.length+j)).join('')}
+   </div>
+   <div class="bot"><div class="card">${Object.keys(LAB).map(k=>`<div style="margin:3px 0">${lab(k)} <span class="small">${LAB[k][2]}</span></div>`).join('')}</div>
+   <div class="card small">A <b>hit</b> is a title you liked well above your usual; a <b>flop</b> well below. Labels compare each studio’s hit and flop rates with your top 20 studios (${Math.round(d.baseHit*100)}% hits, ${Math.round(d.baseFlop*100)}% flops).</div></div>
+  </div></div>`;
+}
+
+/* ---------------- E ---------------- */
+function E(){
+  const d=D(), all=allStudios(), c=cur();
+  const h0=d.baseHit+0.06, f0=d.baseFlop+0.06;
+  const mxH=Math.max(0.6,...all.map(r=>r.hit)), mxF=Math.max(0.5,...all.map(r=>r.flop));
+  // x = flop (left low), y = hit (top high); split lines at thresholds, drawn at 50%
+  const px=f=>f<=f0? f/f0*50 : 50+(f-f0)/(mxF-f0)*50, py=h=>h<=h0? 100-h/h0*50 : 50-(h-h0)/(mxH-h0)*50;
+  const dots=all.filter((r,i)=>r.rank&&r.rank<=15||r.wl).map(r=>{const i=all.indexOf(r);const sz=r.wl?22:Math.max(20,Math.min(38,14+r.n*0.8));
+    return `<div class="dot ${r.wl?'wl':''} ${st.open===i?'on':''}" data-i="${i}" title="${esc(r.name)}" style="left:${Math.min(96,Math.max(4,px(r.flop)))}%;top:${Math.min(94,Math.max(6,py(r.hit)))}%;width:${sz}px;height:${sz}px">${r.rank??'🌱'}</div>`}).join('');
+  return `<div class="E">${hdr()}<div class="wrap">${whoLine()}${notes()}
+   <div class="lay"><div>
+    <div class="card map">
+     <div class="q" style="left:0;top:0;background:#7cc6f522">💎 Elite<span>${LAB.elite[2]}</span></div>
+     <div class="q" style="right:0;top:0;background:#f5a46b22;text-align:right">🎲 Bold<span style="margin-left:auto">${LAB.bold[2]}</span></div>
+     <div class="q" style="left:0;bottom:0;background:#8fd19e22;display:flex;flex-direction:column;justify-content:flex-end">🛡️ Reliable<span>${LAB.reliable[2]}</span></div>
+     <div class="q" style="right:0;bottom:0;background:#b9b3c922;text-align:right;display:flex;flex-direction:column;justify-content:flex-end;align-items:flex-end">💤 Meh<span>${LAB.meh[2]}</span></div>
+     <div class="axl" style="left:50%;bottom:4px;transform:translateX(-50%)">more flops →</div>
+     <div class="axl" style="left:4px;top:50%;transform:rotate(-90deg) translateX(30%);transform-origin:left">more hits →</div>
+     ${dots}
+    </div>
+    <div class="card det"><div class="fine small">${c.rank?'#'+c.rank:'🌱 Watchlist'} · ${c.n} titles · ${Math.round(c.hit*100)}% hits · ${Math.round(c.flop*100)}% flops</div>
+      <div style="display:flex;gap:10px;align-items:center;margin:4px 0 10px"><b class="strong" style="font-size:18px">${esc(c.name)}</b>${lab(c.label)}<span class="S">${fmtS(c.S)}</span></div>
+      <div class="tl">${c.titles.map(t=>`<div>${pushArrows(t.delta)} <span class="strong">${esc(t.t)}</span> <span class="fine small">${why(t)}</span></div>`).join('')}</div>
+      <div class="small fine" style="margin-top:8px">▲▲▲ lifts it a lot · ▼ drags it down a little</div></div>
+   </div>
+   <div><div class="card rl">${d.ranked.map((r,i)=>`<div class="it ${st.open===i?'on':''}" data-i="${i}"><span class="rk">${i+1}</span><span class="strong" style="flex:1">${esc(r.name)}</span>${LAB[r.label][0]}<span class="S small">${fmtS(r.S)}</span></div>`).join('')}</div>
+    <div class="card rl" style="margin-top:12px"><div class="small" style="padding:8px 10px"><b class="up">🌱 Watchlist</b> <span class="fine">· under ${d.gate} titles</span></div>${d.watch.map((r,j)=>{const i=d.ranked.length+j;return `<div class="it ${st.open===i?'on':''}" data-i="${i}"><span class="rk">🌱</span><span class="strong" style="flex:1">${esc(r.name)}</span><span class="S small">${fmtS(r.S)}</span></div>`}).join('')}</div>
+   </div></div>
+  </div></div>`;
+}
+
+const DESIGNS=[
+ ['A · Table + accordion','A plain ranked table. Click a row: its titles open inline, each with ▲/▼ and “lifts it a lot / drags it down a little”.',A],
+ ['B · Split view','List on the left, the open studio on the right (a bottom sheet on a phone). Each title gets a ← down / up → bar.',B],
+ ['C · Podium + cards','Top 3 on a podium, the rest as cards. Tap one: a drawer sorts its titles into “lifted it / held it back / barely moved it”.',C],
+ ['D · Bar leaderboard','Every studio is a bar from 0 (average for you), coloured by label. Click: a waterfall shows each title’s ± push in numbers.',D_],
+ ['E · Label map','Studios placed by hit rate × flop rate, so the four labels are the four corners. Ranked list on the side, open studio below.',E],
+];
+function render(){
+  document.documentElement.dataset.theme=st.theme; document.body.classList.toggle('phone',st.phone);
+  const [n,desc,fn]=DESIGNS[st.d]; document.getElementById('app').innerHTML=fn();
+  document.getElementById('dname').textContent=`${n}  (${st.d+1}/${DESIGNS.length})`; document.getElementById('ddesc').textContent=desc;
+  const g=(id,opts,key,val)=>{document.getElementById(id).innerHTML=opts.map(([v,l])=>`<button class="${val===v?'on':''}" data-k="${key}" data-v="${v}">${l}</button>`).join('')};
+  g('gUser',USERS,'user',st.user); g('gWidth',[['desk','🖥 Desktop'],['phone','📱 Phone 390']],'w',st.phone?'phone':'desk'); g('gTheme',[['light','☀ Light'],['dark','☾ Dark']],'t',st.theme);
+  localStorage.p89d=st.d; localStorage.p89u=st.user; localStorage.p89w=st.phone?'phone':'desk'; localStorage.p89t=st.theme;
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-k]'); if(b){const k=b.dataset.k,v=b.dataset.v; if(k==='user'){st.user=v;st.open=0;st.drawer=false} if(k==='w')st.phone=v==='phone'; if(k==='t')st.theme=v; render(); return;}
+  if(e.target.closest('[data-close]')){st.drawer=false;render();return}
+  const r=e.target.closest('#app [data-i]'); if(r){const i=+r.dataset.i; st.drawer=!!r.dataset.dr; st.open=(st.d===0&&st.open===i&&i<D().ranked.length)?-1:i; render();}
+});
+document.getElementById('prev').onclick=()=>{st.d=(st.d+DESIGNS.length-1)%DESIGNS.length;render()};
+document.getElementById('next').onclick=()=>{st.d=(st.d+1)%DESIGNS.length;render()};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return; if(e.key==='ArrowLeft')document.getElementById('prev').click(); if(e.key==='ArrowRight')document.getElementById('next').click(); if(e.key==='Escape'&&st.drawer){st.drawer=false;render()}});
+(()=>{const p=document.getElementById('picker'),g=p.querySelector('.grip');let sx,sy,ox,oy;g.onmousedown=e=>{sx=e.clientX;sy=e.clientY;const r=p.getBoundingClientRect();ox=r.left;oy=r.top;
+ const mv=e=>{p.style.left=ox+e.clientX-sx+'px';p.style.top=oy+e.clientY-sy+'px';p.style.right='auto';p.style.bottom='auto'};const up=()=>{removeEventListener('mousemove',mv);removeEventListener('mouseup',up)};addEventListener('mousemove',mv);addEventListener('mouseup',up)}})();
+render();
+</script>
+</body>
+</html>

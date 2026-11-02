@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE — Top Studios bubble map (#89, round 5)</title>
+<style>
+:root{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc;--danger:#e05555;--warn:#f2b13d;--good:#3fae5a;--shadow:#0002;
+--elite:#7cc6f5;--bold:#f5a46b;--reliable:#8fd19e;--meh:#b9b3c9;--pink:#ffb3c8;
+--band-loved:#ffb3c8;--band-liked:#ffe08a;--band-okay:#bfe8c9;--band-meh:#c9d4ff;--band-ink:#4a3b52}
+:root[data-theme=dark]{--bg:#0b1622;--fg:#151f2e;--fg2:#1f2a3c;--tx:#9fadbd;--tx-strong:#edf1f5;--nav:#0b1622;--navtx:#9fadbd;--shadow:#0006}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Overpass,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;background:var(--bg);color:var(--tx);min-height:100vh}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+.strong{color:var(--tx-strong)} .fine{opacity:.7} .small{font-size:12px}
+body.phone #stage{display:flex;justify-content:center;padding:24px 0 140px;background:repeating-linear-gradient(45deg,var(--bg),var(--bg) 12px,var(--fg2) 12px,var(--fg2) 24px)}
+#app{container-type:inline-size;width:100%;background:var(--bg);min-height:100vh;position:relative}
+body.phone #app{width:390px;min-height:760px;border-radius:28px;box-shadow:0 10px 40px var(--shadow);overflow:hidden;border:8px solid var(--nav)}
+.hdr{background:var(--nav);color:var(--navtx);padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.hdr .logo{font-weight:900;color:#fff;font-size:18px;display:flex;align-items:center;gap:8px}
+.hdr .logo b{color:var(--blue)}
+.mochi{width:34px;height:26px;background:var(--pink);border-radius:50% 50% 42% 42%/60% 60% 40% 40%;position:relative;flex:none;box-shadow:inset 0 -3px 0 #0001}
+.mochi::before{content:'• ᴗ •';position:absolute;inset:0;display:grid;place-items:center;font-size:9px;color:#4a3b52;font-weight:700;letter-spacing:-1px}
+.hdr form{display:flex;gap:6px;margin-left:auto}
+.hdr input{font:inherit;padding:6px 10px;border-radius:6px;border:none;background:#ffffff1a;color:#fff;width:170px}
+.hdr .go{background:var(--blue);color:#fff;border-radius:6px;padding:6px 12px;font-weight:700}
+.hdr .back{font-size:12px;color:var(--navtx);text-decoration:underline;cursor:pointer}
+@container (max-width:600px){.hdr{padding:10px 12px}.hdr form{margin-left:0;width:100%}.hdr input{flex:1;width:auto}}
+.wrap{max-width:1100px;margin:0 auto;padding:20px}
+@container (max-width:600px){.wrap{padding:12px}}
+.who{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.who h1{font-size:22px;color:var(--tx-strong);font-weight:800}
+.note{background:var(--fg);border-left:4px solid var(--warn);padding:8px 12px;border-radius:6px;margin-bottom:8px;font-size:13px}
+.card{background:var(--fg);border-radius:10px;box-shadow:0 1px 3px var(--shadow)}
+.lab{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;color:#2b2d42;white-space:nowrap}
+.lab.elite{background:var(--elite)}.lab.bold{background:var(--bold)}.lab.reliable{background:var(--reliable)}.lab.meh{background:var(--meh)}
+.S{font-variant-numeric:tabular-nums;font-weight:800;color:var(--tx-strong)}
+.up{color:var(--good)} .down{color:var(--danger)}
+img{display:block}
+
+#picker{position:fixed;right:18px;bottom:18px;z-index:99;background:#1b1d2e;color:#eee;border-radius:12px;padding:10px 12px;box-shadow:0 8px 30px #0008;font-size:12px;width:310px;user-select:none}
+#picker .grip{cursor:move;font-size:10px;opacity:.6;text-align:center;margin:-4px 0 4px}
+#picker .nm{display:flex;align-items:center;gap:8px}
+#picker .nm b{flex:1;text-align:center;font-size:14px}
+#picker .nm button{background:#ffffff1a;border-radius:6px;padding:4px 10px;font-size:14px}
+#picker .desc{opacity:.75;margin:6px 0 8px;text-align:center;line-height:1.35}
+#picker .grp{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+#picker .grp button{background:#ffffff14;border-radius:5px;padding:3px 7px}
+#picker .grp button.on{background:var(--blue);color:#fff}
+#picker .k{opacity:.5;width:100%;margin-top:4px}
+
+/* shared map bits */
+.map{position:relative;border-radius:16px;overflow:hidden}
+.map .pin{position:absolute;transform:translate(-50%,-50%);cursor:pointer;transition:transform .15s}
+.map .pin:hover{transform:translate(-50%,-50%) scale(1.12);z-index:9}
+.lay{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}
+.lay>div{min-width:0}
+@container (max-width:760px){.lay{grid-template-columns:1fr}}
+.rlist .it{display:flex;gap:10px;padding:7px 10px;cursor:pointer;align-items:center;border-top:1px solid var(--fg2)}
+.rlist .it:first-child{border-top:none}
+.rlist .it.on{background:var(--fg2)}
+.rlist .rk{width:20px;font-weight:800;text-align:right;color:var(--tx-strong)}
+.av{width:30px;height:30px;border-radius:50%;object-fit:cover;flex:none;background:var(--fg2)}
+.covers{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:12px}
+.cv{position:relative}
+.cv img{width:100%;aspect-ratio:2/3;object-fit:cover;border-radius:8px;box-shadow:0 2px 6px var(--shadow)}
+.cv .pb{position:absolute;top:6px;right:6px;font-size:11px;font-weight:800;padding:1px 6px;border-radius:99px;background:#fff;box-shadow:0 1px 3px #0004}
+.cv .ct{font-size:11px;margin-top:4px;line-height:1.25;color:var(--tx-strong);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.cv .cs{font-size:11px;opacity:.75}
+.cv.dn img{filter:grayscale(.7) brightness(.9)}
+.sec{font-size:13px;font-weight:800;color:var(--tx-strong);margin:14px 0 8px}
+
+/* ===== 1: Cover bubbles ===== */
+.V1 .map{aspect-ratio:1/.78;background:var(--fg)}
+.V1 .q{position:absolute;width:50%;height:50%;display:flex;flex-direction:column;padding:14px 16px;font-weight:800;font-size:13px;color:var(--tx-strong)}
+.V1 .q .big{font-size:64px;opacity:.13;position:absolute;filter:grayscale(.2)}
+.V1 .q span{font-weight:400;font-size:11px;opacity:.75}
+.V1 .bub{border-radius:50%;border:3px solid #fff;box-shadow:0 3px 10px #0003;overflow:visible;position:absolute;transform:translate(-50%,-50%);cursor:pointer;transition:transform .15s}
+.V1 .bub img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.V1 .bub:hover{transform:translate(-50%,-50%) scale(1.15);z-index:9}
+.V1 .bub .rb{position:absolute;bottom:-6px;right:-6px;background:var(--tx-strong);color:var(--fg);font-size:10px;font-weight:800;border-radius:99px;min-width:18px;height:18px;display:grid;place-items:center;padding:0 4px;border:2px solid var(--fg)}
+.V1 .bub .nmtag{position:absolute;top:100%;left:50%;transform:translateX(-50%);margin-top:6px;font-size:10px;font-weight:700;white-space:nowrap;color:var(--tx-strong);background:var(--fg);padding:0 5px;border-radius:4px;opacity:.95}
+.V1 .bub.on{border-color:var(--blue);box-shadow:0 0 0 5px #3db4f266;z-index:8}
+.V1 .bub.wl{border:3px dashed var(--good)}
+.V1 .det{padding:0;overflow:hidden;margin-top:16px}
+.V1 .banner{height:110px;background-size:cover;background-position:center;position:relative}
+.V1 .banner::after{content:'';position:absolute;inset:0;background:linear-gradient(transparent,var(--fg))}
+.V1 .dh{padding:0 18px;margin-top:-34px;position:relative;z-index:1;display:flex;gap:12px;align-items:flex-end}
+.V1 .dh h3{font-size:22px;color:var(--tx-strong)}
+.V1 .db{padding:12px 18px 18px}
+
+.V1 .maphint{position:absolute;left:50%;bottom:6px;transform:translateX(-50%);font-size:10px;opacity:.6;white-space:nowrap;z-index:1}
+.V1 .bub .more{position:absolute;top:-6px;right:-8px;background:var(--blue);color:#fff;font-size:11px;font-weight:900;border-radius:99px;padding:1px 6px;border:2px solid var(--fg);cursor:pointer}
+.V1 .fanscrim{position:absolute;inset:0;background:#0003;z-index:7;cursor:pointer}
+.V1 .bub.fanned{z-index:9;animation:pop .2s}
+@keyframes pop{from{transform:translate(-50%,-50%) scale(.3);opacity:0}}
+.V1 .bub img{background:var(--fg2)}
+.shelf2{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 8px}
+.shelf2 .cv{min-width:84px;max-width:84px}
+.stackbar{display:flex;height:96px;border-radius:10px;overflow:hidden;gap:2px;background:var(--fg2)}
+.stackbar .sl{min-width:3px;overflow:hidden;position:relative}
+.stackbar .sl img{width:100%;height:100%;object-fit:cover}
+.stackbar .pad{background:repeating-linear-gradient(45deg,var(--fg2),var(--fg2) 6px,var(--bg) 6px,var(--bg) 12px);display:grid;place-items:center;font-weight:900;color:var(--tx)}
+.lst .lr{display:flex;align-items:center;gap:10px;padding:4px 0;border-top:1px solid var(--fg2);font-size:13px}
+.lst .lr img{width:26px;height:38px;object-fit:cover;border-radius:4px}
+.lst .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lst .pct{width:64px;text-align:right;font-weight:800;color:var(--tx-strong);background:linear-gradient(90deg,transparent calc(100% - var(--p)),#3db4f233 calc(100% - var(--p)));border-radius:4px;padding:0 4px}
+.speech2{display:flex;gap:12px;align-items:center;background:var(--fg2);border-radius:12px;padding:10px 14px;margin-bottom:6px}
+.speech2 p{color:var(--tx-strong);line-height:1.5}
+.minimochi{width:52px;height:40px;background:var(--pink);border-radius:50% 50% 42% 42%/60% 60% 40% 40%;flex:none;display:grid;place-items:center;font-size:11px;font-weight:700;color:#4a3b52}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.covers.c6{grid-template-columns:repeat(3,minmax(0,1fr))}
+.det{container-type:inline-size}
+@container (max-width:600px){.two{grid-template-columns:1fr}}
+.more2 summary{cursor:pointer;margin-top:14px;font-weight:700;color:var(--blue)}
+.ladder{position:relative;display:flex;align-items:flex-end;gap:3px;min-height:160px;border-bottom:2px solid var(--fg2);padding-bottom:18px}
+.ladder .col{flex:1;display:flex;flex-direction:column-reverse;align-items:center;gap:2px;position:relative}
+.ladder .col img{width:100%;max-width:30px;aspect-ratio:2/3;object-fit:cover;border-radius:3px;box-shadow:0 1px 2px #0003}
+.ladder .col img.drop{opacity:.35;filter:grayscale(1)}
+.ladder .col img.fav{outline:2px solid #f2c94c;outline-offset:1px}
+.ladder .tick{position:absolute;bottom:-18px;font-size:10px;opacity:.7}
+.ladder .avgline{position:absolute;top:0;bottom:0;width:2px;background:var(--blue)}
+.ladder .avgline::after{content:'your avg';position:absolute;top:-2px;left:4px;font-size:10px;color:var(--blue);white-space:nowrap}
+.lay.wide{grid-template-columns:1fr 380px}
+@container (max-width:760px){.lay.wide{grid-template-columns:1fr}}
+.lay3{display:grid;grid-template-columns:320px 1fr;gap:18px;margin-top:16px;align-items:start}
+.lay3>div{min-width:0}
+.lay3 .det{margin-top:0}
+.backbtn{font-weight:800;color:var(--blue);margin-bottom:8px}
+.l2 .det{margin-top:0}
+.inl{padding:0 0 10px}.inl .det{margin-top:0;border-radius:0;box-shadow:none}
+.tabs{display:inline-flex;background:var(--fg2);border-radius:99px;padding:3px;margin-bottom:10px}
+.tabs button{padding:5px 16px;border-radius:99px;font-weight:700}
+.tabs button.on{background:var(--fg);color:var(--tx-strong);box-shadow:0 1px 3px var(--shadow)}
+.scrim5{position:fixed;inset:0;background:#0005;z-index:20}
+.drawer5{position:fixed;top:0;right:0;bottom:0;width:min(520px,100%);overflow:auto;z-index:21;background:var(--bg);padding:12px;animation:slide .2s}
+.drawer5 .det{margin-top:0}
+.x5{position:absolute;right:20px;top:20px;z-index:3;background:#000a;color:#fff;border-radius:50%;width:30px;height:30px}
+@keyframes slide{from{transform:translateX(40px);opacity:0}}
+body.phone .scrim5{position:absolute}
+body.phone .drawer5{position:absolute;top:auto;height:82%;width:100%;border-radius:18px 18px 0 0;animation:none}
+/* ===== 2: Night sky ===== */
+.V2{--sky:#0a1020}
+.V2 .wrap{max-width:none;padding:0}
+.V2 .skywrap{background:radial-gradient(ellipse at 30% 20%,#1d2b55 0%,#0a1020 60%);color:#cfd8ee;padding:20px}
+.V2 .skywrap h1{color:#fff}
+.V2 .map{aspect-ratio:1/.62;max-width:1060px;margin:0 auto;background-image:radial-gradient(1px 1px at 10% 20%,#fff8,transparent),radial-gradient(1px 1px at 70% 30%,#fff6,transparent),radial-gradient(1.5px 1.5px at 40% 80%,#fff7,transparent),radial-gradient(1px 1px at 85% 65%,#fff5,transparent),radial-gradient(1px 1px at 25% 55%,#fff6,transparent),radial-gradient(1px 1px at 55% 12%,#fff6,transparent)}
+.V2 .ql{position:absolute;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#ffffff55;font-weight:700}
+.V2 .ql span{display:block;letter-spacing:0;text-transform:none;font-weight:400;font-size:11px;color:#ffffff40}
+.V2 .cross{position:absolute;background:#ffffff14}
+.V2 .star{position:absolute;transform:translate(-50%,-50%);cursor:pointer;display:flex;align-items:center;gap:6px}
+.V2 .star i{display:block;border-radius:50%;background:#fff;box-shadow:0 0 12px 4px var(--g),0 0 30px 8px var(--g)}
+.V2 .star b{font-size:11px;color:#e8eeff;white-space:nowrap;text-shadow:0 1px 4px #000}
+.V2 .star.on i{box-shadow:0 0 0 3px #fff,0 0 18px 8px var(--g),0 0 50px 16px var(--g)}
+.V2 .star.wl i{background:transparent;border:1.5px dashed #9be7a9;box-shadow:none}
+.V2 .glass{background:#ffffff10;border:1px solid #ffffff1f;backdrop-filter:blur(8px);border-radius:14px;padding:16px;color:#cfd8ee}
+.V2 .glass .strong,.V2 .glass .S{color:#fff}
+.V2 .lower{max-width:1060px;margin:16px auto 0;display:grid;grid-template-columns:1fr 300px;gap:16px}
+@container (max-width:760px){.V2 .lower{grid-template-columns:1fr}.V2 .star b{display:none}.V2 .star.on b,.V2 .star.top b{display:block}.V2 .map{aspect-ratio:1/1}}
+.V2 .rlist .it{border-color:#ffffff14}.V2 .rlist .it.on{background:#ffffff18}.V2 .rlist .rk{color:#fff}
+.V2 .note{background:#ffffff10;color:#e8eeff}
+
+/* ===== 3: Four rooms ===== */
+.V3 .rooms{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@container (max-width:640px){.V3 .rooms{grid-template-columns:1fr}}
+.V3 .room{border-radius:16px;padding:14px;position:relative;min-height:160px}
+.V3 .room.elite{background:linear-gradient(135deg,#7cc6f533,#7cc6f511)}.V3 .room.bold{background:linear-gradient(135deg,#f5a46b33,#f5a46b11)}
+.V3 .room.reliable{background:linear-gradient(135deg,#8fd19e33,#8fd19e11)}.V3 .room.meh{background:linear-gradient(135deg,#b9b3c944,#b9b3c911)}
+.V3 .rh{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.V3 .rh b{font-size:17px;color:var(--tx-strong)}
+.V3 .rd{font-size:12px;opacity:.8;margin-bottom:10px}
+.V3 .chips{display:flex;flex-wrap:wrap;gap:8px}
+.V3 .chip{display:flex;align-items:center;gap:8px;background:var(--fg);border-radius:12px;padding:6px 10px 6px 6px;cursor:pointer;box-shadow:0 1px 3px var(--shadow);transition:transform .12s}
+.V3 .chip:hover{transform:translateY(-2px)}
+.V3 .chip.on{outline:3px solid var(--blue)}
+.V3 .stack{display:flex}
+.V3 .stack img{width:26px;height:38px;object-fit:cover;border-radius:4px;border:2px solid var(--fg);margin-left:-10px;box-shadow:0 1px 3px #0003}
+.V3 .stack img:first-child{margin-left:0}
+.V3 .chip .rk{font-weight:900;color:var(--tx-strong);font-size:12px}
+.V3 .chip .n{font-weight:700;color:var(--tx-strong);font-size:13px}
+.V3 .chip.big .stack img{width:36px;height:52px}
+.V3 .chip.big .n{font-size:15px}
+.V3 .det{padding:16px;margin-top:14px}
+.V3 .axis{display:flex;justify-content:space-between;font-size:11px;opacity:.6;margin:6px 4px}
+
+/* ===== 4: Polished map + cover list ===== */
+.V4 .map{aspect-ratio:1/.8;background:var(--fg);box-shadow:0 1px 3px var(--shadow)}
+.V4 .grid{position:absolute;inset:0;background-image:linear-gradient(var(--fg2) 1px,transparent 1px),linear-gradient(90deg,var(--fg2) 1px,transparent 1px);background-size:10% 12.5%;opacity:.7}
+.V4 .qq{position:absolute;width:50%;height:50%}
+.V4 .ql{position:absolute;font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;color:#2b2d42;z-index:2}
+.V4 .dot{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;color:#fff;border:2px solid var(--fg);box-shadow:0 2px 6px #0003}
+.V4 .dot.on{outline:3px solid var(--blue);outline-offset:2px;z-index:8}
+.V4 .dot.wl{background:var(--fg)!important;color:var(--good);border:2px dashed var(--good)}
+.V4 .ax{position:absolute;font-size:10px;opacity:.7}
+.V4 .shelf{display:flex;gap:12px;overflow-x:auto;padding:4px 2px 10px;scroll-snap-type:x mandatory}
+.V4 .shelf .cv{min-width:96px;max-width:96px;scroll-snap-align:start}
+.V4 .det{padding:16px;margin-top:16px}
+
+/* ===== 5: Mochi map ===== */
+.V5 .map{aspect-ratio:1/.75}
+.V5 .q{position:absolute;width:50%;height:50%;padding:12px 14px}
+.V5 .q.elite{background:var(--band-loved)}.V5 .q.bold{background:var(--band-liked)}.V5 .q.reliable{background:var(--band-okay)}.V5 .q.meh{background:var(--band-meh)}
+.V5 .q{z-index:0}.V5 .q .kao{font-size:15px;font-weight:700;color:var(--band-ink)}
+.V5 .q .kn{font-size:13px;font-weight:900;color:var(--band-ink)}
+.V5 .q .kd{font-size:11px;color:var(--band-ink);opacity:.75}
+.V5 .pin.stk{transform:translate(0,-50%)}.V5 .pin.stk:hover{transform:translate(0,-50%) scale(1.08)}
+.V5 .stk{display:flex;align-items:center;gap:5px;background:#fff;border-radius:99px;padding:3px 9px 3px 3px;box-shadow:0 2px 0 #0002;font-size:11px;font-weight:800;color:#4a3b52;white-space:nowrap;border:2px solid #fff}
+.V5 .stk img{width:22px;height:22px;border-radius:50%;object-fit:cover}
+.V5 .stk.on{border-color:#4a3b52;z-index:8}
+.V5 .stk.wl{border:2px dashed var(--good)}
+.V5 .speech{display:flex;gap:14px;align-items:flex-start;margin-top:16px}
+.V5 .bigmochi{width:74px;height:56px;background:var(--pink);border-radius:50% 50% 42% 42%/60% 60% 40% 40%;flex:none;display:grid;place-items:center;font-size:13px;font-weight:700;color:#4a3b52;box-shadow:inset 0 -5px 0 #0001}
+.V5 .bubble{background:var(--fg);border-radius:16px;padding:14px 16px;position:relative;flex:1;box-shadow:0 1px 3px var(--shadow)}
+.V5 .bubble::before{content:'';position:absolute;left:-8px;top:18px;border:8px solid transparent;border-right-color:var(--fg);border-left:0}
+.V5 .bubble p{color:var(--tx-strong);font-size:14px;line-height:1.5}
+@container (max-width:600px){.V5 .stk span{display:none}.V5 .stk{padding:3px}.V5 .stk.on span{display:inline}.V5 .q .kd{display:none}.V5 .map{aspect-ratio:1/1}}
+</style>
+</head>
+<body>
+<div id="stage"><div id="app"></div></div>
+<div id="picker">
+  <div class="grip">⠿ drag ⠿</div>
+  <div class="nm"><button id="prev">←</button><b id="dname"></b><button id="next">→</button></div>
+  <div class="desc" id="ddesc"></div>
+  <div class="grp" id="gUser"></div>
+  <div class="grp" id="gWidth"></div>
+  <div class="grp" id="gTheme"></div>
+  <div class="grp" id="gFold"></div>
+  <div class="k">← / → switch design · click a studio to open it</div>
+</div>
+<script>
+const DATA = /*DATA*/;
+const USERS = [['zennnne','zennnne (normal)'],['ManMode','ManMode (scored < 50%)'],['Keennaja','Keennaja (gate lowered)']];
+const LAB = {elite:['💎','Elite','Lots of hits, few flops','(♡˙︶˙♡)'],bold:['🎲','Bold','Lots of hits, and lots of flops too','(๑•̀ㅂ•́)و✧'],reliable:['🛡️','Reliable','Few hits, few flops','( ・_・)'],meh:['💤','Meh','Few hits, lots of flops','(´・ω・`)']};
+const st = {d:+(localStorage.p89r5d||0), user:localStorage.p89u||'zennnne', phone:localStorage.p89w==='phone', theme:localStorage.p89t||'light', open:0, fan:-1, panel:false, tab:'map', fold:localStorage.p89fold||'grid', foldOpen:false};
+const D = () => DATA[st.user];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const fmtS = s => (s>=0?'+':'−') + Math.abs(s).toFixed(2);
+const lab = l => `<span class="lab ${l}">${LAB[l][0]} ${LAB[l][1]}</span>`;
+const allStudios = () => [...D().ranked.map((r,i)=>({...r,rank:i+1,idx:i})), ...D().watch.map((r,j)=>({...r,rank:null,wl:true,idx:D().ranked.length+j}))];
+const cur = () => allStudios()[st.open] || allStudios()[0];
+const best = r => r.titles[0]; // titles sorted by push, biggest lift first
+const cover = t => t && t.c ? t.c : '';
+function why(t){const b=[]; if(t.score!=null) b.push(`you scored ${t.score}`); else if(t.status==='DROPPED') b.push('dropped, no score'); else if(t.rep) b.push('rewatched, no score'); else b.push('no score');
+  if(t.fav) b.push('★'); if(t.status==='DROPPED'&&t.score!=null) b.push('dropped'); return b.join(' · ');}
+function pushArrows(d){const a=Math.abs(d); const n=a>=0.05?3:a>=0.015?2:1; return (d>=0?'▲':'▼').repeat(n);}
+function notes(){const d=D(), o=[];
+  if(d.gate<6) o.push(`<div class="note">You have a short list, so a studio needed only <b>${d.gate} titles</b> (not 6) to be ranked.${d.rankedCount<10?` Only ${d.rankedCount} studios made it.`:''}</div>`);
+  if(d.countedScoredFrac<0.5) o.push(`<div class="note">You scored only <b>${Math.round(d.countedScoredFrac*100)}%</b> of the titles that counted, so the labels may be off.</div>`);
+  return o.join('');}
+const hdr = () => `<div class="hdr"><div class="logo"><span class="mochi"></span>Top <b>Studios</b></div><span class="back">← AniDuel!</span>
+  <form onsubmit="return false"><input value="${esc(st.user)}" placeholder="AniList username"><button class="go">Show</button></form></div>`;
+const whoLine = () => `<div class="who"><h1>${esc(st.user)}’s top studios</h1><span class="fine small">${D().entries} titles watched · ${D().rankedCount} studios ranked</span></div>`;
+
+/* position on the hit × flop plane: the label line sits in the middle of each axis */
+function plane(maxN){
+  const d=D(), h0=d.baseHit+0.06, f0=d.baseFlop+0.06, all=allStudios();
+  const shown = all.filter(r=>r.wl || r.rank<=maxN);
+  const mxH=Math.max(h0+0.1,...shown.map(r=>r.hit)), mxF=Math.max(f0+0.1,...shown.map(r=>r.flop));
+  const px=f=>f<=f0? 4+f/f0*46 : 50+(f-f0)/(mxF-f0)*46, py=h=>h<=h0? 96-h/h0*46 : 50-(h-h0)/(mxH-h0)*46;
+  return shown.map(r=>({r, x:px(r.flop), y:py(r.hit)}));
+}
+/* nudge apart overlapping pins; keep each pin inside its own quadrant */
+function relax(pts, minD, aspect){
+  for(let it=0;it<120;it++) for(let i=0;i<pts.length;i++) for(let j=i+1;j<pts.length;j++){
+    const a=pts[i],b=pts[j]; let dx=(b.x-a.x), dy=(b.y-a.y)/aspect; let dist=Math.hypot(dx,dy)||0.01; const m=(minD(a)+minD(b))/2;
+    if(dist<m){const p=(m-dist)/2; dx/=dist; dy/=dist; a.x-=dx*p; a.y-=dy*p*aspect; b.x+=dx*p; b.y+=dy*p*aspect;}
+  }
+  for(const p of pts){const L=p.r.label; const top=L==='elite'||L==='bold', left=L==='elite'||L==='reliable';
+    p.x=left?Math.min(47,Math.max(5,p.x)):Math.min(95,Math.max(53,p.x)); p.y=top?Math.min(46,Math.max(7,p.y)):Math.min(93,Math.max(54,p.y));}
+  return pts;
+}
+function coverGrid(r){return `<div class="covers">${r.titles.map(t=>`<div class="cv ${t.delta<0?'dn':''}"><img loading="lazy" src="${cover(t)}"><span class="pb ${t.delta>=0?'up':'down'}">${pushArrows(t.delta)}</span><div class="ct">${esc(t.t)}</div><div class="cs">${why(t)}</div></div>`).join('')}</div>`;}
+function rankList(withAv=true){const d=D(); return `<div class="card rlist">${allStudios().map(r=>`${r.wl&&r.idx===d.ranked.length?`<div class="small" style="padding:8px 10px;border-top:1px dashed var(--good)"><b class="up">🌱 Watchlist</b> <span class="fine">· fewer than ${d.gate} titles</span></div>`:''}<div class="it ${st.open===r.idx?'on':''}" data-i="${r.idx}"><span class="rk">${r.rank??'🌱'}</span>${withAv?`<img class="av" src="${cover(best(r))}">`:''}<span class="strong" style="flex:1">${esc(r.name)}</span>${LAB[r.label][0]}<span class="S small">${fmtS(r.S)}</span></div>`).join('')}</div>`;}
+
+/* ===== Round 3: the bubble map, five ways to handle the crowd ===== */
+const isPh = () => document.body.classList.contains('phone');
+let MAPFULL=false;
+const mapW = () => isPh() ? 350 : Math.max(420, Math.min(1100, innerWidth) - 40 - (MAPFULL?0:(st.d===1?398:338)));
+const ASP = 0.78;
+/* px positions; keep each bubble inside its own label quadrant, push overlaps apart */
+function packPx(pts, W, H, gap=4, iters=220){
+  const inQ = p => { const L=p.r.label, top=L==='elite'||L==='bold', left=L==='elite'||L==='reliable', m=p.rad+6;
+    p.x = left ? Math.min(W/2-m, Math.max(m, p.x)) : Math.min(W-m, Math.max(W/2+m, p.x));
+    p.y = top ? Math.min(H/2-m, Math.max(m+36, p.y)) : Math.min(H-m-36, Math.max(H/2+m, p.y)); };
+  pts.forEach(inQ);
+  for(let it=0; it<iters; it++){
+    for(let i=0;i<pts.length;i++) for(let j=i+1;j<pts.length;j++){
+      const a=pts[i], b=pts[j]; let dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||0.01, m=a.rad+b.rad+gap;
+      if(d<m){ const p=(m-d)/2; dx/=d; dy/=d; a.x-=dx*p; a.y-=dy*p; b.x+=dx*p; b.y+=dy*p; }
+    }
+    pts.forEach(inQ);
+  }
+  return pts;
+}
+function planePx(list, W, H, spread=false){
+  const d=D(), h0=d.baseHit+0.06, f0=d.baseFlop+0.06;
+  const mxH=Math.max(h0+0.1,...list.map(r=>r.hit)), mxF=Math.max(f0+0.1,...list.map(r=>r.flop));
+  let fx=f=>f<=f0? f/f0*0.5 : 0.5+(f-f0)/(mxF-f0)*0.5, fy=h=>h<=h0? 1-h/h0*0.5 : 0.5-(h-h0)/(mxH-h0)*0.5;
+  if(spread){ // rank-based: spread studios evenly inside each half of each axis
+    const rk=(vals,v,lo)=>{const s=vals.filter(x=>lo?x<=v:true).sort((a,b)=>a-b);return s;};
+    const lowF=list.filter(r=>r.flop<=f0).map(r=>r.flop).sort((a,b)=>a-b), hiF=list.filter(r=>r.flop>f0).map(r=>r.flop).sort((a,b)=>a-b);
+    const lowH=list.filter(r=>r.hit<=h0).map(r=>r.hit).sort((a,b)=>a-b), hiH=list.filter(r=>r.hit>h0).map(r=>r.hit).sort((a,b)=>a-b);
+    const pos=(arr,v)=>{const i=arr.indexOf(v), j=arr.lastIndexOf(v); return ((i+j)/2+0.5)/arr.length;};
+    fx=f=>f<=f0? pos(lowF,f)*0.5 : 0.5+pos(hiF,f)*0.5; fy=h=>h<=h0? 1-pos(lowH,h)*0.5 : 0.5-pos(hiH,h)*0.5;
+  }
+  return list.map(r=>({r, x:fx(r.flop)*W, y:fy(r.hit)*H}));
+}
+const quads = () => {
+  const qd=(k,pos,al)=>`<div class="q" style="${pos};background:${{elite:'#7cc6f520',bold:'#f5a46b20',reliable:'#8fd19e20',meh:'#b9b3c925'}[k]};${al||''}">${LAB[k][0]} ${LAB[k][1]}<span>${LAB[k][2]}</span></div>`;
+  return qd('elite','left:0;top:0')+qd('bold','right:0;top:0','text-align:right;align-items:flex-end')+qd('reliable','left:0;bottom:0','justify-content:flex-end')+qd('meh','right:0;bottom:0','justify-content:flex-end;align-items:flex-end;text-align:right');
+};
+function bubble(p, W, H, opts={}){
+  const r=p.r, s=p.rad*2, on=opts.on ?? st.open===r.idx;
+  const nameTxt = opts.nameText ?? (((r.rank&&r.rank<=5)||on) ? r.name : '');
+  return `<div class="bub ${r.wl?'wl':''} ${on?'on':''}" data-i="${r.idx}" title="${esc(r.name)} ${fmtS(r.S)}" style="left:${p.x/W*100}%;top:${p.y/H*100}%;width:${s}px;height:${s}px">
+    <img src="${cover(best(r))}"><span class="rb">${r.rank??'🌱'}</span>${nameTxt?`<span class="nmtag">${esc(nameTxt)}</span>`:''}${opts.extra?opts.extra(p):''}</div>`;
+}
+const mapBox = (W, H, inner) => `<div class="card map" style="aspect-ratio:${W}/${H}">${quads()}${inner}</div>`;
+
+/* Map chosen in round 3: stacks that fan out. A stack whose hidden member is open gets the blue ring and that member's name. */
+function stackMap(){
+  const W=mapW(), H=W*(MAPFULL&&!isPh()?0.5:ASP), ph=isPh(), all=allStudios();
+  const rad=r=>r.wl?(ph?12:16):(ph?12:18)+Math.max(0,r.S)*(ph?12:22);
+  const pts=planePx(all,W,H).map(p=>({...p,rad:rad(p.r)})).sort((a,b)=>b.r.S-a.r.S);
+  const groups=[];
+  for(const p of pts){const g=groups.find(g=>g.r.label===p.r.label&&Math.hypot(g.x-p.x,g.y-p.y)<(g.rad+p.rad)*0.9); if(g) g.members.push(p); else groups.push({...p,members:[p]});}
+  packPx(groups,W,H,6);
+  const fanOpen = groups.find(g=>g.members.length>1&&g.members.some(m=>m.r.idx===st.fan));
+  let html=groups.map(g=>{
+    if(g===fanOpen) return '';
+    const more=g.members.length-1, openM=g.members.find(m=>m.r.idx===st.open);
+    const hiddenOpen = openM && openM!==g.members[0];
+    return bubble(g,W,H,{on:!!openM, nameText: hiddenOpen ? `${openM.r.rank?openM.r.rank+'. ':'🌱 '}${openM.r.name}` : undefined,
+      extra:()=>more?`<span class="more" data-fan="${g.r.idx}">+${more}</span>`:''});
+  }).join('');
+  if(fanOpen){ const n=fanOpen.members.length, R=Math.max(fanOpen.rad*2+34, n*(ph?14:20));
+    html+=`<div class="fanscrim" data-fan="-1"></div>`+fanOpen.members.map((m,i)=>{const a=-Math.PI/2+i*2*Math.PI/n; let x=fanOpen.x+Math.cos(a)*(i?R:0), y=fanOpen.y+Math.sin(a)*(i?R:0);
+      x=Math.min(W-m.rad,Math.max(m.rad,x)); y=Math.min(H-m.rad,Math.max(m.rad,y));
+      return bubble({...m,x,y,rad:Math.max(m.rad,ph?16:22)},W,H,{nameText:m.r.name}).replace('class="bub','class="bub fanned');}).join(''); }
+  return mapBox(W,H,html+`<div class="maphint">Tap a “+N” to fan out a stack</div>`);
+}
+
+/* ---- how a title pushes its studio ----
+   loo  = leave-one-out: how much lower/higher S would be without it (compares to this studio's own titles)
+   vsAvg = W·(e^z − Ū): above or below YOUR average title (compares to your whole list)        */
+const U = () => Math.exp(D().base);
+const vsAvg = t => t.W*(Math.exp(t.z)-U());
+const avgScore = () => D().mean;
+const ttl = t => `<div class="ct">${esc(t.t)}</div>`;
+function sTxt(t){ if(t.score!=null) return `${t.score}${t.fav?' ★':''}${t.status==='DROPPED'?' · dropped':''}`; if(t.status==='DROPPED') return 'dropped'+(t.prog?` at ep ${t.prog}`:''); if(t.rep) return 'rewatched'+(t.fav?' ★':''); return t.fav?'★ fav':'—'; }
+function head(c){
+  const bn=c.titles.find(t=>t.b)?.b||cover(best(c));
+  return `<div class="banner" style="background-image:url('${bn}')"></div>
+    <div class="dh"><img class="av" style="width:64px;height:64px;border:3px solid var(--fg)" src="${cover(best(c))}"><div><div class="small fine">${c.rank?'#'+c.rank:'🌱 Watchlist'} · ${c.n} titles · ${Math.round(c.hit*100)}% hits · ${Math.round(c.flop*100)}% flops</div><h3>${esc(c.name)}</h3></div><div style="margin-left:auto;text-align:right">${lab(c.label)}<div class="S" style="font-size:20px">${fmtS(c.S)}</div></div></div>`;
+}
+const card = (c, body) => `<div class="card det">${head(c)}<div class="db">${body}</div></div>`;
+const cvTile = (t, badge, dim) => `<div class="cv ${dim?'dn':''}"><img loading="lazy" src="${cover(t)}">${badge}${ttl(t)}<div class="cs">${sTxt(t)}</div></div>`;
+
+/* P1: cover grid, ▲▼ = leave-one-out (what we had) */
+function P1(c){
+  return card(c, `<div class="small fine" style="margin-bottom:10px">▲ = the score would drop without it · ▼ = the score would rise without it</div><div class="covers">${c.titles.map(t=>cvTile(t,`<span class="pb ${t.delta>=0?'up':'down'}">${pushArrows(t.delta)}</span>`,t.delta<0)).join('')}</div>`);
+}
+/* P2: shelves by how the title did against YOUR average */
+function P2(c){
+  const ts=[...c.titles].sort((a,b)=>b.z-a.z);
+  const shelf=(name,cls,arr)=>arr.length?`<div class="sec ${cls}">${name} <span class="fine small" style="font-weight:400">${arr.length}</span></div><div class="shelf2">${arr.map(t=>cvTile(t,'',cls==='down')).join('')}</div>`:'';
+  const hit=ts.filter(t=>t.z>=1.2), ok=ts.filter(t=>t.z<1.2&&t.z>-1), flop=ts.filter(t=>t.z<=-1);
+  return card(c, `<div class="small fine" style="margin-bottom:4px">Your average score is <b>${avgScore().toFixed(1)}</b>. A hit is well above it, a flop well below.</div>
+    ${shelf('💖 Hits — pulled it up','up',hit)}${shelf('🙂 Around your usual','',ok)}${shelf('💔 Flops — pulled it down','down',flop)}`);
+}
+/* P3: one stacked bar, each cover's slice = its share of the score */
+function P3(c){
+  const ts=[...c.titles].map(t=>({...t,w:t.W*Math.exp(t.z)})), tot=ts.reduce((s,t)=>s+t.w,0)+D().k*U();
+  ts.sort((a,b)=>b.w-a.w);
+  const pad=D().k*U()/tot;
+  return card(c, `<div class="small fine" style="margin-bottom:8px">How much of ${esc(c.name)}’s score each title carries. Big slices = titles you loved; tiny ones barely count.</div>
+    <div class="stackbar">${ts.map(t=>`<div class="sl" style="flex:${t.w/tot}" title="${esc(t.t)} ${Math.round(t.w/tot*100)}%"><img src="${cover(t)}"></div>`).join('')}<div class="sl pad" style="flex:${pad}" title="Benefit of the doubt">?</div></div>
+    <div class="small fine" style="margin:4px 0 12px">“?” = the benefit of the doubt every studio starts with (${Math.round(pad*100)}%), so a few titles can’t decide it alone.</div>
+    <div class="lst">${ts.map(t=>`<div class="lr"><img src="${cover(t)}"><span class="strong grow">${esc(t.t)}</span><span class="fine small">${sTxt(t)}</span><span class="pct" style="--p:${Math.min(100,t.w/tot*100*4)}%">${(t.w/tot*100).toFixed(t.w/tot<0.01?1:0)}%</span></div>`).join('')}</div>`);
+}
+/* P4: mochi sentence + top 3 / bottom 3, rest folded */
+function P4(c){
+  const ts=[...c.titles].sort((a,b)=>vsAvg(b)-vsAvg(a)), up=ts.filter(t=>vsAvg(t)>0), dn=ts.filter(t=>vsAvg(t)<0).reverse();
+  const say=`${esc(c.name)} is ${c.rank?`your <b>#${c.rank}</b>`:'on your 🌱 watchlist'}. <b>${up.length}</b> of its ${c.n} titles beat your usual, led by <b>${esc(up[0]?.t||'—')}</b>${dn.length?`; <b>${esc(dn[0].t)}</b> let you down the most`:''}.`;
+  const row=(arr,cls)=>`<div class="covers c6">${arr.slice(0,3).map(t=>cvTile(t,`<span class="pb ${cls}">${cls==='up'?'▲':'▼'}</span>`,cls==='down')).join('')}</div>`;
+  const rest=ts.filter(t=>!up.slice(0,3).includes(t)&&!dn.slice(0,3).includes(t));
+  return card(c, `<div class="speech2"><div class="minimochi">• ᴗ •</div><p>${say}</p></div>
+    <div class="two"><div><div class="sec up">▲ Lifted it most</div>${row(up,'up')}</div><div><div class="sec down">▼ Held it back most</div>${row(dn,'down')}</div></div>
+    <details class="more2" ${st.foldOpen?'open':''} ontoggle="st.foldOpen=this.open"><summary>All ${c.n} titles</summary>${st.fold==='ladder'?`<div style="margin-top:14px">${ladder(c)}</div>`:`<div class="covers" style="margin-top:10px">${rest.map(t=>cvTile(t,`<span class="pb ${vsAvg(t)>=0?'up':'down'}">${vsAvg(t)>=0?'▲':'▼'}</span>`,vsAvg(t)<0)).join('')}</div>`}</details>`);
+}
+/* P5: score ladder — covers placed on your own 1–10 scale, your average marked */
+function ladder(c){
+  const sc=c.titles.filter(t=>t.score!=null), un=c.titles.filter(t=>t.score==null);
+  const cols={}; sc.forEach(t=>{const k=t.score; (cols[k]=cols[k]||[]).push(t)});
+  const keys=Object.keys(cols).map(Number).sort((a,b)=>a-b), lo=Math.min(4,...keys), hi=10;
+  const steps=[]; for(let v=lo; v<=hi; v+=0.5) steps.push(v);
+  const avg=avgScore();
+  return (`<div class="small fine" style="margin-bottom:10px">Every title from ${esc(c.name)} on your own score line. The blue line is your average (${avg.toFixed(1)}) — the further right, the more it lifted the studio.</div>
+    <div class="ladder">${steps.map(v=>`<div class="col ${v>=avg?'hiz':''}">${(cols[v]||[]).map(t=>`<img title="${esc(t.t)} ${t.score}" class="${t.status==='DROPPED'?'drop':''} ${t.fav?'fav':''}" src="${cover(t)}">`).join('')}<div class="tick">${Number.isInteger(v)?v:''}</div></div>`).join('')}
+      <div class="avgline" style="left:${(avg-lo+0.25)/(hi-lo+0.5)*100}%"></div></div>
+    ${un.length?`<div class="sec">No score, but counted</div><div class="shelf2">${un.map(t=>cvTile(t,'',t.status==='DROPPED')).join('')}</div>`:''}
+    <div class="small fine" style="margin-top:8px">★ ring = favourite · faded = dropped</div>`);
+}
+
+const P5=c=>card(c,ladder(c));
+const PANELS=[P1,P2,P3,P4,P5];
+const det = () => P4(cur());
+const back = `<button class="backbtn" data-close="1">← All studios</button>`;
+/* L1: as now — map + panel left, list right; phone stacks map, panel, list */
+function L1(){ MAPFULL=false; return `<div class="V1">${hdr()}<div class="wrap">${whoLine()}${notes()}<div class="lay"><div>${stackMap()}${det()}</div>${rankList()}</div></div></div>`; }
+/* L2: right column swaps between the list and the open studio */
+function L2(){ MAPFULL=false; const open=st.panel;
+  return `<div class="V1 l2">${hdr()}<div class="wrap">${whoLine()}${notes()}<div class="lay wide"><div>${stackMap()}</div><div>${open?back+det():rankList()}</div></div></div></div>`; }
+/* L3: full-width map on top; list + panel side by side below; phone: the open row expands in the list */
+function L3(){ MAPFULL=true;
+  if(isPh()){ const d=D(); const rows=allStudios().map(r=>`${r.wl&&r.idx===d.ranked.length?`<div class="small" style="padding:8px 10px;border-top:1px dashed var(--good)"><b class="up">🌱 Watchlist</b> <span class="fine">· fewer than ${d.gate} titles</span></div>`:''}<div class="it ${st.open===r.idx?'on':''}" data-i="${r.idx}"><span class="rk">${r.rank??'🌱'}</span><img class="av" src="${cover(best(r))}"><span class="strong" style="flex:1">${esc(r.name)}</span>${LAB[r.label][0]}<span class="S small">${fmtS(r.S)}</span></div>${st.open===r.idx?`<div class="inl">${det()}</div>`:''}`).join('');
+    return `<div class="V1">${hdr()}<div class="wrap">${whoLine()}${notes()}${stackMap()}<div class="card rlist" style="margin-top:14px">${rows}</div></div></div>`; }
+  return `<div class="V1">${hdr()}<div class="wrap">${whoLine()}${notes()}${stackMap()}<div class="lay3">${rankList()}<div>${det()}</div></div></div></div>`; }
+/* L4: one column, Map | List tabs in the same spot, panel below */
+function L4(){ MAPFULL=true; const tab=st.tab||'map';
+  return `<div class="V1">${hdr()}<div class="wrap">${whoLine()}${notes()}<div class="tabs"><button data-tab="map" class="${tab==='map'?'on':''}">🫧 Map</button><button data-tab="list" class="${tab==='list'?'on':''}">☰ List</button></div>
+    ${tab==='map'?stackMap():rankList()}${det()}</div></div>`; }
+/* L5: map + list; the open studio slides over as a drawer (phone: bottom sheet) */
+function L5(){ MAPFULL=false;
+  return `<div class="V1">${hdr()}<div class="wrap">${whoLine()}${notes()}<div class="lay"><div>${stackMap()}</div>${rankList()}</div></div>
+    ${st.panel?`<div class="scrim5" data-close="1"></div><div class="drawer5"><button class="x5" data-close="1">✕</button>${det()}</div>`:''}</div>`; }
+const DESIGNS=[
+ ['1 · Panel under the map','As now: map with the open studio under it, the full list on the right. Phone: map → studio → list.',L1],
+ ['2 · List ⇄ studio swap','Map gets more room; the right column is the list, and opening a studio swaps it in place (← All studios). Phone: map, then list/studio.',L2],
+ ['3 · Map on top','Full-width map across the top; below, the list beside the open studio. Phone: the studio opens inside the list, under its row.',L3],
+ ['4 · Map | List tabs','One column. Map and list share one spot behind tabs; the open studio is always below.',L4],
+ ['5 · Drawer','Map and list stay put; opening a studio slides a drawer over them (a bottom sheet on a phone). ✕ / scrim to close.',L5],
+];
+
+function render(){
+  document.documentElement.dataset.theme=st.theme; document.body.classList.toggle('phone',st.phone);
+  const [n,desc,fn]=DESIGNS[st.d]; document.getElementById('app').innerHTML=fn();
+  document.getElementById('dname').textContent=`${n}  (${st.d+1}/${DESIGNS.length})`; document.getElementById('ddesc').textContent=desc;
+  const g=(id,opts,key,val)=>{document.getElementById(id).innerHTML=opts.map(([v,l])=>`<button class="${val===v?'on':''}" data-k="${key}" data-v="${v}">${l}</button>`).join('')};
+  g('gUser',USERS,'user',st.user); g('gWidth',[['desk','🖥 Desktop'],['phone','📱 Phone 390']],'w',st.phone?'phone':'desk'); g('gTheme',[['light','☀ Light'],['dark','☾ Dark']],'t',st.theme); g('gFold',[['grid','All titles → cover grid'],['ladder','All titles → ladder']],'fold',st.fold); localStorage.p89fold=st.fold;
+  localStorage.p89r5d=st.d; localStorage.p89u=st.user; localStorage.p89w=st.phone?'phone':'desk'; localStorage.p89t=st.theme;
+}
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-k]'); if(b){const k=b.dataset.k,v=b.dataset.v; if(k==='user'){st.user=v;st.open=0;st.fan=-1} if(k==='w')st.phone=v==='phone'; if(k==='t')st.theme=v; if(k==='fold'){st.fold=v;st.foldOpen=true} render(); return;}
+  const tb=e.target.closest('#app [data-tab]'); if(tb){st.tab=tb.dataset.tab; render(); return;}
+  if(e.target.closest('#app [data-close]')){st.panel=false; render(); return;}
+  const f=e.target.closest('#app [data-fan]'); if(f){st.fan=+f.dataset.fan; render(); return;}
+  const r=e.target.closest('#app [data-i]'); if(r){const i=+r.dataset.i; st.panel=!(st.d===2&&isPh()&&st.open===i&&st.panel); if(st.d===2&&isPh()&&!st.panel) st.open=-1; else st.open=i; render(); if(st.d===1||st.d===2) document.querySelector('.det')?.scrollIntoView({block:'nearest'});}
+});
+document.getElementById('prev').onclick=()=>{st.d=(st.d+DESIGNS.length-1)%DESIGNS.length;render()};
+document.getElementById('next').onclick=()=>{st.d=(st.d+1)%DESIGNS.length;render()};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return; if(e.key==='ArrowLeft')document.getElementById('prev').click(); if(e.key==='ArrowRight')document.getElementById('next').click();});
+(()=>{const p=document.getElementById('picker'),g=p.querySelector('.grip');let sx,sy,ox,oy;g.onmousedown=e=>{sx=e.clientX;sy=e.clientY;const r=p.getBoundingClientRect();ox=r.left;oy=r.top;
+ const mv=e=>{p.style.left=ox+e.clientX-sx+'px';p.style.top=oy+e.clientY-sy+'px';p.style.right='auto';p.style.bottom='auto'};const up=()=>{removeEventListener('mousemove',mv);removeEventListener('mouseup',up)};addEventListener('mousemove',mv);addEventListener('mouseup',up)}})();
+addEventListener('resize',()=>{clearTimeout(window.__rt);window.__rt=setTimeout(render,150)});
+render();
+</script>
+</body>
+</html>
