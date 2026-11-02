@@ -29,13 +29,15 @@ type PinProps = {
   onOpen: (id: number) => void
   className?: string
   autoFocus?: boolean
+  /** The stack this pin stands for, by its top studio's id (the pin's own studio when not given). */
+  stack?: number
   children?: ReactNode
 }
 
-function Pin({ card, x, y, r, open, name, onOpen, className, autoFocus, children }: PinProps) {
+function Pin({ card, x, y, r, open, name, onOpen, className, autoFocus, stack, children }: PinProps) {
   const style: CSSProperties = { left: x, top: y, width: r * 2, height: r * 2 }
   return (
-    <div className={`st-pin ${className ?? ''}`} style={style} data-stack={card.id}>
+    <div className={`st-pin ${className ?? ''}`} style={style} data-stack={stack ?? card.id}>
       <button
         type="button"
         className={`st-bub${open ? ' on' : ''}${card.rank === null ? ' wl' : ''}`}
@@ -115,17 +117,14 @@ export function LabelMap({ cards, lines, openId, onOpen }: MapProps) {
 }
 
 function StackPin({ bubble, openId, onOpen, onFan }: { bubble: MapBubble; openId: number; onOpen: (id: number) => void; onFan: (id: number) => void }) {
-  const [top, ...rest] = bubble.members
+  const top = bubble.members[0]
+  // A stack holding the open studio shows that studio on its face, with the ring and its name.
   const openMember = bubble.members.find((m) => m.id === openId)
-  // A stack hiding the open studio gets the ring and that studio's name.
-  const name =
-    openMember && openMember !== top
-      ? `${openMember.rank === null ? '🌱' : `${openMember.rank}.`} ${openMember.name}`
-      : (top.rank !== null && top.rank <= NAMED) || openMember
-        ? top.name
-        : null
+  const face = openMember ?? top
+  const rest = bubble.members.filter((m) => m !== face)
+  const name = openMember || (top.rank !== null && top.rank <= NAMED) ? face.name : null
   return (
-    <Pin card={top} x={bubble.x} y={bubble.y} r={bubble.r} open={Boolean(openMember)} name={name} onOpen={onOpen}>
+    <Pin card={face} x={bubble.x} y={bubble.y} r={bubble.r} open={Boolean(openMember)} name={name} onOpen={onOpen} stack={top.id}>
       {rest.length > 0 && (
         <button
           type="button"
