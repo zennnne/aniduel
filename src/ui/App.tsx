@@ -42,6 +42,7 @@ import { isWatched } from '../catchup/watched.ts'
 import { exitOffer, type ExitOffer } from '../catchup/exitOffer.ts'
 import { useCatchUp } from './catchup/useCatchUp.ts'
 import { Kao, SubPill } from './Kao.tsx'
+import { sitePage } from '../sitePages.ts'
 import { AccountMenu, CommandPalette } from './menu/AppMenu.tsx'
 import { buildMenuItems } from './menu/buildMenuItems.ts'
 import { usePreviewImport } from './import/usePreviewImport.ts'
@@ -739,6 +740,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
           switchSortGoal: requestSortGoal,
           openCatchUp,
           clearPassed: () => setDialog('clear-passed'),
+          openTopStudios: () => window.location.assign(sitePage('studios')),
         },
       )
     : []

@@ -135,3 +135,33 @@ _Avoid_: Era answer, start year, age
 **Media Type**:
 Anime or Manga. Each Pool, and so each Ranking, contains only one Media Type.
 _Avoid_: Category, kind
+
+## Top Studios
+
+**Top Studios**:
+A page of its own on the AniDuel! site that ranks one AniList user's animation studios by how much that user liked their titles, read from the user's scores, drops, rewatches and favourite anime. It needs no login, and any username can be looked up. Only a title's main studios count, each in full.
+_Avoid_: Favourite studios (AniList's own list, filled in by hand), studio ranking, studio stats
+
+**Vote**:
+One Watched title on the user's list, as it counts for each of its main studios: how far it sits from the user's own average, and a weight from its length, rewatches and, for a drop or an unfinished title, how much of it was watched. A favourite counts a little higher. An unscored title casts a Vote only if it was dropped (against the studio, at half weight), rewatched (for it) or is a favourite.
+_Avoid_: Entry, title score, rating
+
+**Studio Score**:
+A studio's number on Top Studios: an average of its Votes that leans toward the best ones, pulled toward the user's own average until the studio has enough Votes, plus a small bonus for its Love count. 0 is an average studio for this user. The page shows it as 0–5 hearts against the user's #1.
+_Avoid_: Studio rating, S (outside code and the research spec)
+
+**Love count**:
+How many works by a studio the user loved. Titles of one studio joined by sequel or prequel count once, from their best title, unless two or more of them are favourites, which then count one each. It gives the Studio Score a small bonus for breadth.
+_Avoid_: Hit count, favourites count
+
+**Gate**:
+The fewest Votes a studio needs to be ranked: 6, stepping down to 5 and then 4 while fewer than 10 studios would be ranked. The page says so when the Gate was lowered.
+_Avoid_: Threshold, minimum, cutoff
+
+**Label**:
+What a ranked studio is like for this user, from its share of hits (Votes well above the user's average) and of flops (well below), each compared with the same share across the user's top 20 studios: 💎 Elite (many hits, few flops), 🎲 Bold (many of both), 🛡️ Reliable (few of either), 💤 Meh (few hits, many flops). A share counts as many only 6 points above the top 20's.
+_Avoid_: Badge, tag, category, type
+
+**Watchlist**:
+Up to 5 studios with a high Studio Score that don't reach the Gate, shown after the ranking, apart from it.
+_Avoid_: Rising studios, honourable mentions, unranked

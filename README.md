@@ -129,6 +129,21 @@ The exact rules for placing a title among the Anchors are in [ADR 0009](docs/adr
 ![A Keep My Scale Duel: a picked title against an Anchor, with the Anchors by score in the sidebar](docs/screenshots/keep-my-scale.png)
 *Keep My Scale: each Duel puts a picked title against an Anchor. The sidebar shows the Anchors by score and where the title can still land.*
 
+## Top Studios
+
+**Top Studios** (https://zennnne.github.io/aniduel/studios/) is a page of its own: type an AniList username and see which animation studios that user really likes. Open it from AniDuel!'s menu, or straight from the link.
+
+- **Read from the list, not filled in by hand.** Each watched title is a **Vote** for its main studios, from your score against your own average. Unscored titles count only when you dropped (against), rewatched (for) or favourited them. Planning titles don't count.
+- **Swings beat playing safe.** The **Studio Score** leans toward a studio's best titles, so a studio with some flops and some masterpieces ranks above one that is only ever fine. A small bonus goes to studios behind many works you loved.
+- **A few titles aren't enough.** A studio needs 6 titles to be ranked (fewer on a short list). Strong studios below that wait on the **Watchlist**.
+- **Labels** say how a studio treats you: 💎 Elite, 🎲 Bold, 🛡️ Reliable or 💤 Meh, from its share of hits and flops. Open a studio to see the titles that lifted it most and the ones that held it back.
+- **No login needed**, so you can look up a friend. If you are logged in to AniDuel!, your own name is filled in and your own private list still loads. The page URL (`?user=<name>`) is the share link.
+
+The scoring comes from a research prototype tuned with a group of friends ([research spec](docs/research/top-studio-score.md), [ADR 0015](docs/adr/0015-top-studios-a-separate-page-in-the-same-repo.md)).
+
+![Top Studios: a label map of studio bubbles on the left, the ranked list with the top 3 as podium cards on the right](docs/screenshots/top-studios.png)
+*Top Studios on the fake AniList: the label map (its four corners are the four Labels) beside the ranked list, with the Watchlist at the end. The "How sure is this?" card says when the result rests on little evidence.*
+
 ## Development
 
 Requires Node 22+.
@@ -150,8 +165,9 @@ npm run dev        # http://localhost:5173/aniduel/
 | `npm run eval:catchup` | Holdout eval used to choose the Catch-up suggestion weights |
 | `npm run eval:keep-my-scale` | Simulated-user eval of the Keep My Scale placement rules; run it before and after changing one |
 | `npm run bench:replay` | What one answer costs as the Duel log grows; run it before and after a change to replay |
+| `npm run parity:top-studios` | Checks the Top Studios scoring against the Python prototype on locally cached lists (needs Python; the caches are never committed) |
 
-To see a screen without an AniList login, open `http://localhost:5173/aniduel/?fake-anilist`: the app signed in against a fake AniList with a fixed list (`src/dev/fakeSession.ts`). Dev server only, and every page load starts fresh.
+To see a screen without an AniList login, open `http://localhost:5173/aniduel/?fake-anilist`: the app signed in against a fake AniList with a fixed list (`src/dev/fakeSession.ts`). Dev server only, and every page load starts fresh. Top Studios takes the same switch (`http://localhost:5173/aniduel/studios/?fake-anilist&user=Fake%20Zen`), and the links between the two pages keep it.
 
 Login uses AniList's OAuth implicit grant. Two AniList API clients are registered in `src/config.ts`: one for production (`https://zennnne.github.io/aniduel/`) and one for local dev (`http://localhost:5173/aniduel/`). The redirect URL must match exactly, so run the dev server on port 5173.
 
@@ -174,9 +190,12 @@ src/
                 titles, the "between two scores" choice)
   dev/          Dev-only fake AniList session (`?fake-anilist`)
   ui/           React screens (Start, Picker, Rough Sort, Board, Band choice, Duel, Split, Preview, Import, Catch-up)
-scripts/        Catch-up holdout eval, Keep My Scale simulated-user eval, replay benchmark
+  studios/      Top Studios: its AniList reads, the scoring, `loadTopStudios`, and the page (`ui/`)
+studios/        Top Studios' HTML entry, served at /aniduel/studios/
+scripts/        Catch-up holdout eval, Keep My Scale simulated-user eval, replay benchmark,
+                Top Studios parity script and the Python prototype it checks against
 docs/adr/       Architecture decision records
-docs/research/  Research behind the Catch-up suggestions and Keep My Scale scoring
+docs/research/  Research behind the Catch-up suggestions, Keep My Scale scoring and the Studio Score
 ```
 
 Key design decisions:
@@ -195,3 +214,4 @@ Key design decisions:
 - [ADR 0012](docs/adr/0012-keep-my-scale-a-split-on-a-score-is-not-asked.md): a title split on a score gets that score instead of the Closer-to prompt.
 - [ADR 0013](docs/adr/0013-keep-my-scale-deciding-duels-before-the-closer-to-prompt.md): Deciding Duels before the Closer-to prompt, as the user's choice.
 - [ADR 0014](docs/adr/0014-custom-distribution-at-three-fixed-points.md): the Custom Distribution, shaped by three Quartile scores at fixed points of the Ranking, not by Band score ranges.
+- [ADR 0015](docs/adr/0015-top-studios-a-separate-page-in-the-same-repo.md): Top Studios is a separate page in the same repo, and its scoring is the research prototype's v2.7 as is.
