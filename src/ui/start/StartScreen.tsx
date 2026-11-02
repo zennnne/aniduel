@@ -10,6 +10,7 @@ import { MEDIA_LABEL, pluralWord } from '../meta.ts'
 import { SortGoalSeg, type KeepMyScaleButton } from '../SortGoalSeg.tsx'
 import './start.css'
 import { StartMochi, type StartCatchUp } from './StartMochi.tsx'
+import { sitePage } from '../../sitePages.ts'
 import { statusLabel } from './statusLabel.ts'
 
 
@@ -115,6 +116,7 @@ export function StartScreen(props: {
                 <Reassure />
               </>
             )}
+            <TopStudiosLink />
           </div>
           {form?.catchUp && <StartMochi {...form.catchUp} />}
         </div>
@@ -126,6 +128,15 @@ export function StartScreen(props: {
 function Reassure() {
   return (
     <div className="small fine">Read-only until you confirm an Import. Your progress stays in this browser.</div>
+  )
+}
+
+/** The way into Top Studios (ADR 0015) that needs no login: the menu link only shows inside a Ranking. */
+function TopStudiosLink() {
+  return (
+    <a className="small start-studios" href={sitePage('studios')}>
+      ★ Top Studios: anyone's top animation studios, from their AniList →
+    </a>
   )
 }
 

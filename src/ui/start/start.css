@@ -390,3 +390,17 @@
 .bbars .track.dashed {
   background: repeating-linear-gradient(90deg, var(--fg2) 0 6px, transparent 6px 10px);
 }
+
+/* The Top Studios link under the Start panel (ADR 0015): the one way in that needs no login. */
+.start-studios {
+  display: block;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--fg2);
+  color: var(--blue);
+  text-decoration: none;
+}
+.start-studios:hover,
+.start-studios:focus-visible {
+  text-decoration: underline;
+}
