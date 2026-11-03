@@ -773,7 +773,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
         catchUp: {
           sign: startSign(mediaType, catchUp.queue),
           watched: mediaType === 'ANIME' && list ? watchedCount(list) : null,
-          nearEmpty: mediaType === 'ANIME' && list ? isNearEmpty(list) : false,
+          nearEmpty: mediaType === 'ANIME' && list ? isNearEmpty(list, mediaType) : false,
           onOpen: openCatchUp,
         },
       }

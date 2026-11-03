@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CatchUpMedia } from '../anilist/candidates.ts'
 import type { ListStatus } from '../anilist/types.ts'
-import { suggestCatchUp, type CatchUpInput } from './suggest.ts'
+import { CATCH_UP_WEIGHTS, suggestCatchUp, type AnimeSignal, type CatchUpInput } from './suggest.ts'
 
 const NOW = Date.UTC(2026, 9, 8)
 const DAY = 24 * 60 * 60 * 1000
@@ -16,10 +16,12 @@ function anime(id: number, overrides: Partial<CatchUpMedia> = {}): CatchUpMedia 
     year: 2015,
     format: 'TV',
     status: 'FINISHED',
+    country: 'JP',
     watched: 10_000,
     tags: [],
     relations: [],
     recommendations: [],
+    adaptations: [],
     ...overrides,
   }
 }
@@ -210,7 +212,7 @@ describe('Catch-up suggestions', () => {
       anime(1, { watched: 500 }),
       anime(2, { watched: 900_000 }),
     ]
-    const popularityOnly = { relations: 0, recommendations: 0, popularity: 1, tags: 0 }
+    const popularityOnly = { relations: 0, recommendations: 0, popularity: 1, tags: 0, anime: 0 }
 
     expect(ids(suggestCatchUp(input({ media })))).toEqual([1, 2])
     expect(ids(suggestCatchUp(input({ media, weights: popularityOnly })))).toEqual([2, 1])
@@ -264,6 +266,94 @@ describe('Catch-up suggestions', () => {
       expect(batch.map((s) => s.kind)).toContain('strong')
       // The list's own era (2018) leads, not the Starting era.
       expect(batch.filter((s) => s.media.year === 2005).length).toBeLessThan(batch.length / 2)
+    })
+  })
+
+  describe('manga', () => {
+    function manga(id: number, overrides: Partial<CatchUpMedia> = {}) {
+      return anime(id, { title: { romaji: `Manga ${id}`, english: null, native: null }, format: 'MANGA', ...overrides })
+    }
+    /** Sixty read manga, ids 100–159: the first 45 Korean, the rest Japanese. */
+    const readList = Array.from({ length: 60 }, (_, i) => entry(100 + i, 'COMPLETED', 2015, 'MANGA'))
+    const seeds = readList.map((e, i) => manga(e.mediaId, { country: i < 45 ? 'KR' : 'JP' }))
+
+    function mangaInput(overrides: Partial<CatchUpInput>): CatchUpInput {
+      return input({ mediaType: 'MANGA', list: readList, ...overrides })
+    }
+
+    it('fits formats by format and country together, so Korean manga lead for a reader of mostly Korean manga', () => {
+      const media = [...seeds, manga(1, { country: 'KR', watched: 10_000 }), manga(2, { country: 'JP', watched: 12_000 })]
+
+      expect(ids(suggestCatchUp(mangaInput({ media })))).toEqual([1, 2])
+      // Anime fits formats alone, as before.
+      expect(ids(suggestCatchUp(mangaInput({ media, mediaType: 'ANIME' })))).toEqual([2, 1])
+    })
+
+    const withAnime = { ...CATCH_UP_WEIGHTS.MANGA, anime: 0.2 }
+    const animeEntry = (mediaId: number, status: ListStatus, oldScore100: number) => ({ mediaId, status, oldScore100 })
+    /** Ten more anime scored 70, so the user's anime mean is about 70. */
+    const scoredAt70 = Array.from({ length: 10 }, (_, i) => animeEntry(600 + i, 'COMPLETED', 70))
+
+    it("lifts the manga source of a liked anime, not of a dropped or below-average one", () => {
+      const signal: AnimeSignal = {
+        list: [
+          animeEntry(500, 'COMPLETED', 90),
+          animeEntry(501, 'DROPPED', 90),
+          animeEntry(502, 'COMPLETED', 50),
+          animeEntry(503, 'COMPLETED', 0), // unscored: neutral, still lifts
+          ...scoredAt70,
+        ],
+        favourites: new Set(),
+      }
+      // 1–3 and 6 are each linked to one anime; 4 is a little more popular and linked to none.
+      const media = [
+        ...seeds,
+        manga(1, { watched: 1_000, adaptations: [500] }),
+        manga(2, { watched: 1_000, adaptations: [501] }),
+        manga(3, { watched: 1_000, adaptations: [502] }),
+        manga(4, { watched: 2_000 }),
+        manga(6, { watched: 1_000, adaptations: [503] }),
+      ]
+
+      const batch = suggestCatchUp(mangaInput({ media, anime: signal, weights: withAnime }))
+
+      expect(ids(batch)).toEqual([1, 6, 4, 2, 3])
+    })
+
+    it('lifts the source of a favourite anime more than of a Repeating one, and both more than of a Completed one', () => {
+      const signal: AnimeSignal = {
+        list: [animeEntry(500, 'COMPLETED', 0), animeEntry(501, 'REPEATING', 0), animeEntry(502, 'COMPLETED', 0)],
+        favourites: new Set([502]),
+      }
+      const media = [
+        ...seeds,
+        manga(1, { watched: 1_002, adaptations: [500] }),
+        manga(2, { watched: 1_001, adaptations: [501] }),
+        manga(3, { watched: 1_000, adaptations: [502] }),
+      ]
+
+      expect(ids(suggestCatchUp(mangaInput({ media, anime: signal, weights: withAnime })))).toEqual([3, 2, 1])
+    })
+
+    it("follows the anime's own links to its source as well as the manga's links to its adaptation", () => {
+      const signal: AnimeSignal = {
+        list: [animeEntry(500, 'COMPLETED', 0)],
+        favourites: new Set(),
+        adaptations: new Map([[500, [1]]]),
+      }
+      const media = [...seeds, manga(1, { watched: 1_000 }), manga(2, { watched: 2_000 })]
+
+      expect(ids(suggestCatchUp(mangaInput({ media, anime: signal, weights: withAnime })))).toEqual([1, 2])
+    })
+
+    it('gives the same batch with or without the anime list while its weight is zero', () => {
+      const signal: AnimeSignal = { list: [animeEntry(500, 'COMPLETED', 90)], favourites: new Set([500]) }
+      const media = [...seeds, manga(1, { watched: 1_000, adaptations: [500] }), manga(2, { watched: 2_000 }), ...filler(30)]
+
+      expect(CATCH_UP_WEIGHTS.ANIME.anime).toBe(0)
+      expect(suggestCatchUp(mangaInput({ media, anime: signal, weights: CATCH_UP_WEIGHTS.ANIME }))).toEqual(
+        suggestCatchUp(mangaInput({ media, weights: CATCH_UP_WEIGHTS.ANIME })),
+      )
     })
   })
 })

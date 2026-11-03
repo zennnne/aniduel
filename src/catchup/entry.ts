@@ -3,17 +3,20 @@ import type { ListStatus, MediaType } from '../anilist/types.ts'
 import { queueProgress, type QueueSnapshot } from './queue.ts'
 import { isWatched } from './watched.ts'
 
-/** Below this many watched titles the list is near empty, and the mochi asks for more without being hovered. */
-export const NEAR_EMPTY_BELOW = 30
+/**
+ * Below this many watched titles a list of the Media Type is near empty: the mochi asks for more without being
+ * hovered, and Catch-up starts from the Starting era. Manga's is anime's until its holdout eval (#96) is picked.
+ */
+export const NEAR_EMPTY_BELOW: Readonly<Record<MediaType, number>> = { ANIME: 30, MANGA: 30 }
 
 /** Titles on the list with any status but Planning. */
 export function watchedCount(list: readonly { status: ListStatus }[]): number {
   return list.filter(isWatched).length
 }
 
-/** Fewer than NEAR_EMPTY_BELOW watched titles. */
-export function isNearEmpty(list: readonly { status: ListStatus }[]): boolean {
-  return watchedCount(list) < NEAR_EMPTY_BELOW
+/** Fewer than the Media Type's NEAR_EMPTY_BELOW watched titles. */
+export function isNearEmpty(list: readonly { status: ListStatus }[], mediaType: MediaType): boolean {
+  return watchedCount(list) < NEAR_EMPTY_BELOW[mediaType]
 }
 
 /**

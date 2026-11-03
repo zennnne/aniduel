@@ -97,9 +97,11 @@ function anime(id: number): CatchUpMedia {
     year: 2015,
     format: 'TV',
     status: 'FINISHED',
+    country: 'JP',
     watched: 10_000,
     tags: [],
     relations: [],
     recommendations: [],
+    adaptations: [],
   }
 }

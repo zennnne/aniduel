@@ -1,25 +1,25 @@
-// Catch-up suggestion candidates: what is known about the anime the suggestions choose from. It grows as the user's list
+// Catch-up suggestion candidates: what is known about the anime or manga the suggestions choose from. It grows as the user's list
 // grows: the watched titles (seeds), one hop of their relations and recommendations, and popular titles from the
 // user's era. Each update asks AniList only for what it hasn't asked for before.
 import {
   CANDIDATES_PER_REQUEST,
   fetchCatchUpMedia,
-  fetchPopularAnime,
+  fetchPopularMedia,
   type CatchUpMedia,
   type Era,
 } from '../anilist/candidates.ts'
 import { AniListError } from '../anilist/gateway.ts'
-import type { ListStatus } from '../anilist/types.ts'
+import type { ListStatus, MediaType } from '../anilist/types.ts'
 import { isWatched } from './watched.ts'
 import type { Clock } from '../clock.ts'
 import { DEFAULT_RESET_WAIT_MS, type RequestLimiter } from '../writes/limiter.ts'
 
-/** Where the suggestion candidates are read anime from: AniList, or a fake in tests. */
+/** Where the suggestion candidates are read from: AniList, or a fake in tests. */
 export type CandidateSource = {
-  /** Anime by id; ids AniList doesn't return (deleted, adult) are left out. */
-  media(ids: readonly number[]): Promise<CatchUpMedia[]>
-  /** The most popular anime from the era, or all-time without one. */
-  popular(era: Era | null): Promise<CatchUpMedia[]>
+  /** Titles of `mediaType` by id; ids AniList doesn't return (deleted, adult, the other Media Type) are left out. */
+  media(ids: readonly number[], mediaType: MediaType): Promise<CatchUpMedia[]>
+  /** The most popular titles of `mediaType` from the era, or all-time without one. */
+  popular(era: Era | null, mediaType: MediaType): Promise<CatchUpMedia[]>
 }
 
 export type CandidateLimits = {
@@ -57,7 +57,12 @@ export type SuggestionCandidates = {
   media(): CatchUpMedia[]
 }
 
-export function createSuggestionCandidates(source: CandidateSource, limits: CandidateLimits = DEFAULT_LIMITS): SuggestionCandidates {
+/** Candidates of one Media Type, for the list of that Media Type. */
+export function createSuggestionCandidates(
+  source: CandidateSource,
+  limits: CandidateLimits = DEFAULT_LIMITS,
+  mediaType: MediaType = 'ANIME',
+): SuggestionCandidates {
   const known = new Map<number, CatchUpMedia>()
   const asked = new Set<number>()
   let popularFor: string | null = null
@@ -65,7 +70,7 @@ export function createSuggestionCandidates(source: CandidateSource, limits: Cand
   async function load(ids: number[]) {
     if (ids.length === 0) return
     for (const id of ids) asked.add(id)
-    for (const m of await source.media(ids)) known.set(m.id, m)
+    for (const m of await source.media(ids, mediaType)) known.set(m.id, m)
   }
 
   return {
@@ -77,7 +82,7 @@ export function createSuggestionCandidates(source: CandidateSource, limits: Cand
       // The era comes from the list alone, so its popular titles load while the seeds do.
       const [, popular] = await Promise.all([
         load(watched.filter((id) => !asked.has(id)).slice(0, limits.seeds)),
-        popularFor !== eraKey ? source.popular(era) : null,
+        popularFor !== eraKey ? source.popular(era, mediaType) : null,
       ])
       if (popular) {
         for (const m of popular) {
@@ -146,7 +151,7 @@ export function aniListCandidateSource(deps: { fetch: typeof fetch; token: strin
   }
   const retry = <T>(request: () => Promise<T>) => retryRateLimited(request, { clock: deps.clock, resetAt: () => resetAt })
   return {
-    async media(ids) {
+    async media(ids, mediaType) {
       const chunks: number[][] = []
       for (let i = 0; i < ids.length; i += CANDIDATES_PER_REQUEST) chunks.push(ids.slice(i, i + CANDIDATES_PER_REQUEST))
       const media: CatchUpMedia[][] = []
@@ -157,7 +162,7 @@ export function aniListCandidateSource(deps: { fetch: typeof fetch; token: strin
         while (next < chunks.length && !failed) {
           const i = next++
           try {
-            media[i] = await retry(() => fetchCatchUpMedia(read, chunks[i]))
+            media[i] = await retry(() => fetchCatchUpMedia(read, chunks[i], mediaType))
           } catch (e) {
             failed = true
             throw e
@@ -167,6 +172,6 @@ export function aniListCandidateSource(deps: { fetch: typeof fetch; token: strin
       await Promise.all(Array.from({ length: CONCURRENT_READS }, reader))
       return media.flat()
     },
-    popular: (era) => retry(() => fetchPopularAnime(read, era, POPULAR_PAGES)),
+    popular: (era, mediaType) => retry(() => fetchPopularMedia(read, mediaType, era, POPULAR_PAGES)),
   }
 }

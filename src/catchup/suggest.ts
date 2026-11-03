@@ -1,8 +1,9 @@
-// Catch-up suggestions: picks the next batch of anime the user has probably already watched. Pure: the same input
-// and seed always give the same batch. See docs/research/onboarding-recall-recommendation.md for the signals.
+// Catch-up suggestions: picks the next batch of anime or manga the user has probably already watched (read). Pure:
+// the same input and seed always give the same batch. See docs/research/onboarding-recall-recommendation.md for the
+// signals.
 import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
-import type { ListEntry } from '../anilist/types.ts'
-import { isNearEmpty } from './entry.ts'
+import type { ListEntry, MediaType } from '../anilist/types.ts'
+import { NEAR_EMPTY_BELOW, watchedCount } from './entry.ts'
 import { isWatched } from './watched.ts'
 
 /** How much each signal counts in a candidate's strength. */
@@ -15,21 +16,43 @@ export type CatchUpWeights = {
   popularity: number
   /** Tag overlap with watched titles: a small tie-breaker only. */
   tags: number
+  /** Manga only: links from the anime the user liked to their manga source (`AnimeSignal`). Zero for anime. */
+  anime: number
 }
 
-/** Locked by the holdout eval (#44): 55% of hidden titles in the top 20, against 24% for popularity alone. */
-export const DEFAULT_WEIGHTS: Readonly<CatchUpWeights> = {
-  relations: 0.45,
-  recommendations: 0.3,
-  popularity: 0.25,
-  tags: 0.05,
+/**
+ * The weights each Media Type's suggestions use. Anime's were locked by the holdout eval (#44): 55% of hidden titles in
+ * the top 20, against 24% for popularity alone. Manga's start as anime's, the anime signal off, until its own eval
+ * (#96) is picked.
+ */
+export const CATCH_UP_WEIGHTS: Readonly<Record<MediaType, Readonly<CatchUpWeights>>> = {
+  ANIME: { relations: 0.45, recommendations: 0.3, popularity: 0.25, tags: 0.05, anime: 0 },
+  MANGA: { relations: 0.45, recommendations: 0.3, popularity: 0.25, tags: 0.05, anime: 0 },
+}
+
+/**
+ * Manga Catch-up's weak signal from the user's anime: each Completed or Repeating anime passes strength to the manga it
+ * is adapted from (or that was adapted from it), by how the user liked it.
+ */
+export type AnimeSignal = {
+  /** The user's whole anime list. Only Completed and Repeating count; the scores of every status set the mean. */
+  list: ReadonlyArray<Pick<ListEntry, 'mediaId' | 'status' | 'oldScore100'>>
+  /** The user's favourite anime. */
+  favourites: ReadonlySet<number>
+  /**
+   * The anime's own SOURCE / ADAPTATION links where loaded: anime id → manga ids. The manga's links to their anime come
+   * from `CatchUpInput.media`; either side alone is enough.
+   */
+  adaptations?: ReadonlyMap<number, readonly number[]>
 }
 
 export type CatchUpInput = {
+  /** What is suggested: the Media Type of `list` and `media`. Defaults to anime. */
+  mediaType?: MediaType
   /** The user's whole list, every status. Planning entries are excluded but don't count as watched. */
   list: ReadonlyArray<Pick<ListEntry, 'mediaId' | 'status' | 'year' | 'format'>>
   /**
-   * What's known about the anime: the watched titles (for their relations, recommendations and tags) and the
+   * What's known about the titles: the watched ones (for their relations, recommendations, tags and country) and the
    * candidates to choose from. Anything here that isn't on the list may be suggested.
    */
   media: readonly CatchUpMedia[]
@@ -39,13 +62,20 @@ export type CatchUpInput = {
   now: number
   /** Picks the exploratory titles; the same seed gives the same batch. */
   seed: number
-  /** Defaults to DEFAULT_WEIGHTS; the holdout eval passes its variants here. */
+  /** Defaults to the Media Type's CATCH_UP_WEIGHTS; the holdout eval passes its variants here. */
   weights?: CatchUpWeights
   /**
    * The Starting era, used only while the list is near empty (`isNearEmpty`): the batch is then the
    * most popular titles from it. Null or left out gives all-time favourites.
    */
   startingEra?: Era | null
+  /** Manga only: the user's anime, weighed by `weights.anime`. Left out, or at weight zero, it changes nothing. */
+  anime?: AnimeSignal
+  /**
+   * Below this many watched titles the list is near empty. Defaults to the Media Type's NEAR_EMPTY_BELOW; the holdout
+   * eval lowers it to score short lists the full way.
+   */
+  nearEmptyBelow?: number
 }
 
 /**
@@ -75,6 +105,13 @@ const EXPLORE_POOL_FACTOR = 4
 
 /** Trade-off between rank and novelty when picking each next title (maximal marginal relevance). */
 const DIVERSITY_LAMBDA = 0.7
+
+/** How much more a Repeating anime and a favourite anime count in the anime signal than a Completed one. */
+const REPEATING_FACTOR = 1.5
+const FAVOURITE_FACTOR = 2
+
+/** How much one anime counts at most for its score: at the user's mean it counts 1, one deviation above it 2. */
+const MAX_SCORE_FACTOR = 2
 
 /** Relations too loose to make two titles one franchise. */
 const NOT_FRANCHISE = new Set(['CHARACTER', 'OTHER'])
@@ -139,6 +176,26 @@ function tagSimilarity(a: CatchUpMedia, b: CatchUpMedia): number {
   return shared / (names.size + b.tags.length - shared)
 }
 
+/**
+ * How much each liked anime counts: Completed and Repeating only, by its score against the user's own mean (one
+ * deviation below it or lower counts nothing, unscored counts as the mean), more when Repeating and when a favourite.
+ */
+function animeWeights(signal: AnimeSignal): Map<number, number> {
+  const scores = signal.list.filter((e) => e.oldScore100 > 0).map((e) => e.oldScore100)
+  const mean = scores.reduce((sum, x) => sum + x, 0) / Math.max(1, scores.length)
+  const deviation = Math.sqrt(scores.reduce((sum, x) => sum + (x - mean) ** 2, 0) / Math.max(1, scores.length))
+  const weights = new Map<number, number>()
+  for (const e of signal.list) {
+    if (e.status !== 'COMPLETED' && e.status !== 'REPEATING') continue
+    const z = e.oldScore100 > 0 && deviation > 0 ? (e.oldScore100 - mean) / deviation : 0
+    let weight = Math.min(MAX_SCORE_FACTOR, Math.max(0, 1 + z))
+    if (e.status === 'REPEATING') weight *= REPEATING_FACTOR
+    if (signal.favourites.has(e.mediaId)) weight *= FAVOURITE_FACTOR
+    if (weight > 0) weights.set(e.mediaId, weight)
+  }
+  return weights
+}
+
 /** mulberry32: a small seeded PRNG giving numbers in [0, 1). */
 function random(seed: number): () => number {
   let a = seed >>> 0
@@ -153,7 +210,8 @@ function random(seed: number): () => number {
 
 /** The next batch of up to BATCH_SIZE titles, strongest matches first, then popular-in-era, then exploratory. */
 export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
-  const weights = input.weights ?? DEFAULT_WEIGHTS
+  const mediaType = input.mediaType ?? 'ANIME'
+  const weights = input.weights ?? CATCH_UP_WEIGHTS[mediaType]
   const listed = new Set(input.list.map((e) => e.mediaId))
   const watched = new Set(input.list.filter(isWatched).map((e) => e.mediaId))
   const hidden = (id: number) => {
@@ -183,8 +241,27 @@ export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
   }
   const maxTag = Math.max(0, ...tagProfile.values())
 
-  // Era and format fit, each 0–1: how much of the watched list is near the candidate's year, and in its format.
-  const watchedEntries = input.list.filter((e) => watched.has(e.mediaId))
+  // Anime signal: the summed weight of the liked anime linked to each manga, from either side of the link.
+  const fromAnime = new Map<number, number>()
+  if (input.anime && weights.anime > 0) {
+    const liked = animeWeights(input.anime)
+    const links = new Map<number, Set<number>>()
+    const join = (manga: number, anime: number) => {
+      if (liked.has(anime)) links.set(manga, (links.get(manga) ?? new Set()).add(anime))
+    }
+    for (const m of input.media) for (const a of m.adaptations) join(m.id, a)
+    for (const [a, mangaIds] of input.anime.adaptations ?? []) for (const id of mangaIds) join(id, a)
+    for (const [manga, anime] of links) fromAnime.set(manga, [...anime].reduce((sum, a) => sum + liked.get(a)!, 0))
+  }
+
+  // Era and format fit, each 0–1: how much of the watched list is near the candidate's year, and in its format. Manga
+  // fits format and country together (a Korean MANGA is a manhwa), read from the loaded titles.
+  const country = new Map(input.media.map((m) => [m.id, m.country]))
+  const formatKey = (id: number, format: string | null) =>
+    format === null ? null : mediaType === 'MANGA' ? `${format}·${country.get(id) ?? '?'}` : format
+  const watchedEntries = input.list
+    .filter((e) => watched.has(e.mediaId))
+    .map((e) => ({ year: e.year, format: formatKey(e.mediaId, e.format) }))
   const nearYear = (year: number | null) =>
     year === null
       ? 0
@@ -210,7 +287,8 @@ export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
   const signals = new Map(
     candidates.map((m) => {
       const era = nearYear(m.year) / maxNearYear
-      const formatFit = m.format === null ? 0 : sameFormat(m.format) / maxSameFormat
+      const format = formatKey(m.id, m.format)
+      const formatFit = format === null ? 0 : sameFormat(format) / maxSameFormat
       const popularity = Math.log1p(m.watched) / Math.log1p(maxWatched)
       const popularInEra = popularity * (0.5 + 0.5 * era) * (0.5 + 0.5 * formatFit)
       const tagWeight = m.tags.reduce((sum, t) => sum + t.rank / 100, 0)
@@ -222,7 +300,8 @@ export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
         weights.relations * (relation.get(m.id) ?? 0) +
         weights.recommendations * (1 - Math.exp(-(votes.get(m.id) ?? 0) / 6)) +
         weights.popularity * popularInEra +
-        weights.tags * tagFit
+        weights.tags * tagFit +
+        weights.anime * (1 - Math.exp(-(fromAnime.get(m.id) ?? 0)))
       const fromStartingEra = popularity * startingEraFit(m.year)
       return [m.id, { strength, popularInEra, outsideEra: popularity * (1 - era * formatFit), fromStartingEra }]
     }),
@@ -262,7 +341,7 @@ export function suggestCatchUp(input: CatchUpInput): Suggestion[] {
   const outsideEra = (m: CatchUpMedia) => signals.get(m.id)!.outsideEra
   const fromStartingEra = (m: CatchUpMedia) => signals.get(m.id)!.fromStartingEra
 
-  if (isNearEmpty(input.list)) {
+  if (watchedCount(input.list) < (input.nearEmptyBelow ?? NEAR_EMPTY_BELOW[mediaType])) {
     take('era', BATCH_SIZE, byRank(fromStartingEra)([...left]), fromStartingEra)
     return batch
   }

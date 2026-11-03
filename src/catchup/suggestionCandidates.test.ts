@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
 import { AniListError } from '../anilist/gateway.ts'
-import type { ListStatus } from '../anilist/types.ts'
+import type { ListStatus, MediaType } from '../anilist/types.ts'
 import type { Clock } from '../clock.ts'
 import { createRequestLimiter } from '../writes/limiter.ts'
 import { aniListCandidateSource, createSuggestionCandidates, eraYears, retryRateLimited, type CandidateSource } from './suggestionCandidates.ts'
@@ -16,10 +16,12 @@ function anime(id: number, overrides: Partial<CatchUpMedia> = {}): CatchUpMedia 
     year: 2015,
     format: 'TV',
     status: 'FINISHED',
+    country: 'JP',
     watched: 10_000,
     tags: [],
     relations: [],
     recommendations: [],
+    adaptations: [],
     ...overrides,
   }
 }
@@ -31,17 +33,20 @@ function fakeSource(catalog: CatchUpMedia[], popular: CatchUpMedia[] = []) {
   const byId = new Map(catalog.map((m) => [m.id, m]))
   const asked: number[][] = []
   const eras: Array<Era | null> = []
+  const types: MediaType[] = []
   const source: CandidateSource = {
-    media: async (ids) => {
+    media: async (ids, mediaType) => {
       asked.push([...ids])
+      types.push(mediaType)
       return ids.flatMap((id) => byId.get(id) ?? [])
     },
-    popular: async (era) => {
+    popular: async (era, mediaType) => {
       eras.push(era)
+      types.push(mediaType)
       return popular
     },
   }
-  return { source, asked, eras }
+  return { source, asked, eras, types }
 }
 
 const ids = (media: readonly CatchUpMedia[]) => media.map((m) => m.id).sort((a, b) => a - b)
@@ -123,9 +128,9 @@ describe('Catch-up candidate candidates', () => {
     let seedsLoaded = () => {}
     const slow: CandidateSource = {
       ...source,
-      media: async (ids) => {
+      media: async (ids, mediaType) => {
         await new Promise<void>((resolve) => (seedsLoaded = resolve))
-        return source.media(ids)
+        return source.media(ids, mediaType)
       },
     }
     const candidates = createSuggestionCandidates(slow)
@@ -137,6 +142,18 @@ describe('Catch-up candidate candidates', () => {
     seedsLoaded()
     await updating
     expect(ids(candidates.media())).toEqual([1])
+  })
+
+  it('asks AniList for the Media Type of the list it was made for', async () => {
+    const catalog = () => [anime(1, { relations: [{ type: 'SEQUEL', mediaId: 10 }] }), anime(10)]
+    const anime_ = fakeSource(catalog())
+    await createSuggestionCandidates(anime_.source).update([entry(1)])
+    const manga = fakeSource(catalog())
+    await createSuggestionCandidates(manga.source, undefined, 'MANGA').update([entry(1)])
+
+    expect(new Set(anime_.types)).toEqual(new Set(['ANIME']))
+    expect(new Set(manga.types)).toEqual(new Set(['MANGA']))
+    expect(manga.asked).toEqual([[1], [10]])
   })
 
   it('asks for all-time favourites when no watched title has a year', async () => {
@@ -219,8 +236,8 @@ describe('reading from AniList', () => {
     const { fetch, at } = fakeFetch(clock)
     const source = aniListCandidateSource({ fetch, token: 't', clock, limiter })
 
-    await source.media(Array.from({ length: 100 }, (_, i) => i + 1)) // 2 requests of 50
-    await source.popular(null) // 2 pages
+    await source.media(Array.from({ length: 100 }, (_, i) => i + 1), 'ANIME') // 2 requests of 50
+    await source.popular(null, 'ANIME') // 2 pages
 
     expect(at.map((t) => t - start)).toEqual([0, 0, 60_000, 60_000])
   })
@@ -240,9 +257,45 @@ describe('reading from AniList', () => {
     const source = aniListCandidateSource({ fetch, token: 't', clock, limiter: createRequestLimiter(clock) })
     const asked = Array.from({ length: 500 }, (_, i) => i + 1) // 10 requests of 50
 
-    const media = await source.media(asked)
+    const media = await source.media(asked, 'ANIME')
 
     expect(most).toBe(4)
     expect(media.map((m) => m.id)).toEqual(asked)
+  })
+
+  it('reads manga with their country, keeps relations to manga, and links to anime only by SOURCE or ADAPTATION', async () => {
+    const clock: Clock = { now: () => 0, sleep: async () => {} }
+    const sent: Array<{ variables: Record<string, unknown> }> = []
+    const node = (id: number, type: MediaType) => ({ id, type })
+    const fetch = (async (_url: string, init: RequestInit) => {
+      sent.push(JSON.parse(String(init.body)))
+      const media = [
+        {
+          id: 1,
+          title: { romaji: 'Manhwa', english: null, native: null },
+          siteUrl: '',
+          format: 'MANGA',
+          countryOfOrigin: 'KR',
+          relations: {
+            edges: [
+              { relationType: 'SEQUEL', node: node(2, 'MANGA') },
+              { relationType: 'ADAPTATION', node: node(500, 'ANIME') },
+              { relationType: 'CHARACTER', node: node(501, 'ANIME') },
+              { relationType: 'SOURCE', node: node(502, 'ANIME') },
+            ],
+          },
+        },
+      ]
+      return new Response(JSON.stringify({ data: { Page: { media } } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }) as unknown as typeof globalThis.fetch
+    const source = aniListCandidateSource({ fetch, token: 't', clock, limiter: createRequestLimiter(clock) })
+
+    const [manga] = await source.media([1], 'MANGA')
+    await source.popular(null, 'MANGA')
+
+    expect(sent.map((s) => s.variables.type)).toEqual(['MANGA', 'MANGA', 'MANGA'])
+    expect(manga.country).toBe('KR')
+    expect(manga.relations).toEqual([{ type: 'SEQUEL', mediaId: 2 }])
+    expect(manga.adaptations).toEqual([500, 502])
   })
 })

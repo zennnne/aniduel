@@ -1,18 +1,22 @@
 // Holdout eval for the Catch-up weights (#44): hide part of real AniList lists and count how many hidden titles each
 // weight variant brings back into the batch of 20. A throwaway prototype, kept out of the test suite; it reuses the
 // suggestion module and the candidate query rather than copying them.
-import { fetchCatchUpMedia, fetchPopularAnime, type CatchUpMedia } from '../../src/anilist/candidates.ts'
+import { fetchCatchUpMedia, fetchPopularMedia, type CatchUpMedia } from '../../src/anilist/candidates.ts'
 import { AniListError, request } from '../../src/anilist/gateway.ts'
-import type { ListStatus } from '../../src/anilist/types.ts'
+import type { ListStatus, MediaType } from '../../src/anilist/types.ts'
 import { eraYears } from '../../src/catchup/suggestionCandidates.ts'
 import { isWatched } from '../../src/catchup/watched.ts'
-import { BATCH_SIZE, DEFAULT_WEIGHTS, suggestCatchUp, type CatchUpWeights } from '../../src/catchup/suggest.ts'
+import { BATCH_SIZE, CATCH_UP_WEIGHTS, suggestCatchUp, type CatchUpWeights } from '../../src/catchup/suggest.ts'
 
-export const VARIANTS: ReadonlyArray<{ name: string; weights: CatchUpWeights }> = [
-  { name: 'starting', weights: { ...DEFAULT_WEIGHTS } },
-  { name: 'no tags', weights: { ...DEFAULT_WEIGHTS, tags: 0 } },
-  { name: 'tags 0.2', weights: { ...DEFAULT_WEIGHTS, tags: 0.2 } },
-  { name: 'popularity only', weights: { relations: 0, recommendations: 0, popularity: 1, tags: 0 } },
+const ANIME_WEIGHTS = CATCH_UP_WEIGHTS.ANIME
+
+export type Variant = { name: string; weights: CatchUpWeights }
+
+export const VARIANTS: readonly Variant[] = [
+  { name: 'starting', weights: { ...ANIME_WEIGHTS } },
+  { name: 'no tags', weights: { ...ANIME_WEIGHTS, tags: 0 } },
+  { name: 'tags 0.2', weights: { ...ANIME_WEIGHTS, tags: 0.2 } },
+  { name: 'popularity only', weights: { relations: 0, recommendations: 0, popularity: 1, tags: 0, anime: 0 } },
 ]
 
 /** Share of each list's watched titles hidden from the suggestion module. */
@@ -70,7 +74,14 @@ function random(seed: number): () => number {
   }
 }
 
-export type EvalEntry = { mediaId: number; status: ListStatus; year: number | null; format: string | null }
+export type EvalEntry = {
+  mediaId: number
+  status: ListStatus
+  year: number | null
+  format: string | null
+  /** The user's score on the 100-point scale; 0 means no score. */
+  oldScore100: number
+}
 
 /** Splits the watched (non-Planning) entries into a seeded ~20% hidden set; the rest of the list stays visible. */
 export function holdout(
@@ -85,10 +96,10 @@ export function holdout(
   return { visible: list.filter((e) => !hidden.has(e.mediaId)), hidden }
 }
 
-const USER_LIST_QUERY = `query ($userName: String, $chunk: Int) {
-  MediaListCollection(userName: $userName, type: ANIME, chunk: $chunk, perChunk: 500) {
+const USER_LIST_QUERY = `query ($userName: String, $chunk: Int, $type: MediaType) {
+  MediaListCollection(userName: $userName, type: $type, chunk: $chunk, perChunk: 500) {
     hasNextChunk
-    lists { entries { mediaId status media { startDate { year } format } } }
+    lists { entries { mediaId status score(format: POINT_100) media { startDate { year } format } } }
   }
 }`
 
@@ -99,17 +110,26 @@ type RawUserList = {
       entries: Array<{
         mediaId: number
         status: ListStatus
+        score: number | null
         media: { startDate: { year: number | null } | null; format: string | null }
       }>
     }>
   }
 }
 
-/** A public anime list by user name; needs no login. */
-export async function fetchPublicList(fetchFn: typeof fetch, userName: string): Promise<EvalEntry[]> {
+/** A public anime or manga list by user name; needs no login. */
+export async function fetchPublicList(
+  fetchFn: typeof fetch,
+  userName: string,
+  mediaType: MediaType = 'ANIME',
+): Promise<EvalEntry[]> {
   const byId = new Map<number, EvalEntry>()
   for (let chunk = 1; ; chunk++) {
-    const data = await request<RawUserList>({ fetch: fetchFn, token: null }, USER_LIST_QUERY, { userName, chunk })
+    const data = await request<RawUserList>({ fetch: fetchFn, token: null }, USER_LIST_QUERY, {
+      userName,
+      chunk,
+      type: mediaType,
+    })
     for (const list of data.MediaListCollection.lists) {
       for (const e of list.entries) {
         if (!byId.has(e.mediaId)) {
@@ -118,6 +138,7 @@ export async function fetchPublicList(fetchFn: typeof fetch, userName: string): 
             status: e.status,
             year: e.media.startDate?.year ?? null,
             format: e.media.format,
+            oldScore100: e.score ?? 0,
           })
         }
       }
@@ -151,7 +172,7 @@ export async function evaluateUser(
   deps.log(`${userName}: ${list.length} entries, ${watchedIds.length + hidden.size} watched, ${hidden.size} hidden`)
 
   // Seeds: the visible watched titles, with their relations, recommendations and tags.
-  const seeds = await fetchCatchUpMedia({ fetch: fetchFn, token: '' }, watchedIds)
+  const seeds = await fetchCatchUpMedia({ fetch: fetchFn, token: '' }, watchedIds, 'ANIME')
   // Candidates: one hop out from the seeds, plus popular titles from the user's era, as Catch-up would feed them.
   const expanded = new Set<number>()
   for (const m of seeds) {
@@ -159,11 +180,11 @@ export async function evaluateUser(
     for (const r of m.recommendations) expanded.add(r.mediaId)
   }
   const era = eraYears(visible)
-  const popular = era ? await fetchPopularAnime({ fetch: fetchFn, token: null }, era, ERA_PAGES) : []
+  const popular = era ? await fetchPopularMedia({ fetch: fetchFn, token: null }, 'ANIME', era, ERA_PAGES) : []
   const known = new Set([...seeds, ...popular].map((m) => m.id))
   const candidateIds = [...expanded].filter((id) => !onVisibleList.has(id) && !known.has(id))
   deps.log(`${userName}: ${seeds.length} seeds, fetching ${candidateIds.length} candidates`)
-  const candidates = await fetchCatchUpMedia({ fetch: fetchFn, token: '' }, candidateIds)
+  const candidates = await fetchCatchUpMedia({ fetch: fetchFn, token: '' }, candidateIds, 'ANIME')
   const media = [...new Map([...seeds, ...popular, ...candidates].map((m) => [m.id, m])).values()]
 
   return scoreVariants(userName, visible, hidden, media, seed)
@@ -219,6 +240,10 @@ export function markdownTable(results: readonly UserResult[]): string {
   return lines.join('\n')
 }
 
+export function describeWeights(w: CatchUpWeights): string {
+  return `relations ${w.relations} / recommendations ${w.recommendations} / popularity ${w.popularity} / tags ${w.tags} / anime ${w.anime}`
+}
+
 /** Evaluates each list in turn; a list that fails (private, missing user) is reported and skipped. */
 export async function runEval(deps: EvalDeps, userNames: readonly string[], seed: number): Promise<string> {
   const fetchFn = rateLimitedFetch(deps)
@@ -232,8 +257,7 @@ export async function runEval(deps: EvalDeps, userNames: readonly string[], seed
     }
   }
   const weights = VARIANTS.map(
-    (v) =>
-      `- **${v.name}**: relations ${v.weights.relations} / recommendations ${v.weights.recommendations} / popularity ${v.weights.popularity} / tags ${v.weights.tags}`,
+    (v) => `- **${v.name}**: ${describeWeights(v.weights)}`,
   )
   return [
     `Hidden titles in the batch of ${BATCH_SIZE} (hit rate = hits / ${BATCH_SIZE}). ${HOLDOUT_SHARE * 100}% of each watched list hidden, seed ${seed}. Reachable = hidden titles present among the suggestion candidates at all.`,

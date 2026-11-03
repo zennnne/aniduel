@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fetchCatchUpMedia, fetchPopularAnime } from './candidates.ts'
+import { fetchCatchUpMedia, fetchPopularMedia } from './candidates.ts'
 import { AniListError } from './gateway.ts'
 
 type Call = { init: RequestInit; body: { query: string; variables: Record<string, unknown> } }
@@ -48,7 +48,7 @@ describe('Catch-up candidate query', () => {
       { json: page(...ids.slice(100).map((id) => rawMedia(id))) },
     )
 
-    const media = await fetchCatchUpMedia({ fetch, token: 'tok' }, ids)
+    const media = await fetchCatchUpMedia({ fetch, token: 'tok' }, ids, 'ANIME')
 
     expect(media.map((m) => m.id)).toEqual(ids)
     expect(calls.map((c) => (c.body.variables.ids as number[]).length)).toEqual([50, 50, 20])
@@ -56,7 +56,7 @@ describe('Catch-up candidate query', () => {
       expect(new Headers(call.init.headers).get('Authorization')).toBe('Bearer tok')
       expect(call.body.variables.perPage).toBe(50)
       expect(call.body.query).toContain('id_in: $ids')
-      expect(call.body.query).toContain('type: ANIME')
+      expect(call.body.variables.type).toBe('ANIME')
       expect(call.body.query).toMatch(/relations\s*\{/)
       expect(call.body.query).toMatch(/recommendations\([^)]*sort: RATING_DESC/)
       expect(call.body.query).toMatch(/tags\s*\{/)
@@ -67,11 +67,11 @@ describe('Catch-up candidate query', () => {
 
   it('makes no request for no ids, and asks for each id once', async () => {
     const empty = fakeFetch()
-    expect(await fetchCatchUpMedia({ fetch: empty.fetch, token: 't' }, [])).toEqual([])
+    expect(await fetchCatchUpMedia({ fetch: empty.fetch, token: 't' }, [], 'ANIME')).toEqual([])
     expect(empty.calls).toHaveLength(0)
 
     const { fetch, calls } = fakeFetch({ json: page(rawMedia(1), rawMedia(2)) })
-    await fetchCatchUpMedia({ fetch, token: 't' }, [1, 2, 1, 2])
+    await fetchCatchUpMedia({ fetch, token: 't' }, [1, 2, 1, 2], 'ANIME')
     expect(calls[0].body.variables.ids).toEqual([1, 2])
   })
 
@@ -114,7 +114,7 @@ describe('Catch-up candidate query', () => {
       ),
     })
 
-    const [only] = await fetchCatchUpMedia({ fetch, token: 't' }, [7])
+    const [only] = await fetchCatchUpMedia({ fetch, token: 't' }, [7], 'ANIME')
 
     expect(only).toEqual({
       id: 7,
@@ -125,14 +125,16 @@ describe('Catch-up candidate query', () => {
       year: 2013,
       format: 'TV',
       status: 'FINISHED',
+      country: null,
       watched: 1_063_311 - 72_755,
       tags: [
         { name: 'Military', rank: 92 },
         { name: 'Survival', rank: 80 },
       ],
-      // Relations to manga and novels are left out: Catch-up is anime only.
+      // Relations stay within the Media Type; the manga source is kept apart, as an adaptation link.
       relations: [{ type: 'SEQUEL', mediaId: 8 }],
       recommendations: [{ mediaId: 20, rating: 2893 }],
+      adaptations: [900],
     })
   })
 
@@ -144,7 +146,7 @@ describe('Catch-up candidate query', () => {
     })
     const seen: unknown[] = []
 
-    const error = await fetchCatchUpMedia({ fetch, token: 't', onRateLimit: (r) => seen.push(r) }, [1]).catch(
+    const error = await fetchCatchUpMedia({ fetch, token: 't', onRateLimit: (r) => seen.push(r) }, [1], 'ANIME').catch(
       (e: unknown) => e,
     )
 
@@ -160,7 +162,7 @@ describe('Catch-up candidate query', () => {
     )
 
     const ids = Array.from({ length: 150 }, (_, i) => i + 1)
-    await expect(fetchCatchUpMedia({ fetch, token: 't' }, ids)).rejects.toMatchObject({ kind: 'rate-limited' })
+    await expect(fetchCatchUpMedia({ fetch, token: 't' }, ids, 'ANIME')).rejects.toMatchObject({ kind: 'rate-limited' })
     expect(calls).toHaveLength(2)
   })
 })
@@ -172,13 +174,13 @@ describe('Catch-up popular-in-era query', () => {
       { json: page(rawMedia(3)) },
     )
 
-    const media = await fetchPopularAnime({ fetch, token: 'tok' }, { from: 2010, to: 2016 }, 2)
+    const media = await fetchPopularMedia({ fetch, token: 'tok' }, 'ANIME', { from: 2010, to: 2016 }, 2)
 
     expect(media.map((m) => m.id)).toEqual([1, 2, 3])
     expect(calls.map((c) => c.body.variables.page)).toEqual([1, 2])
     for (const call of calls) {
       expect(call.body.query).toContain('sort: POPULARITY_DESC')
-      expect(call.body.query).toContain('type: ANIME')
+      expect(call.body.variables.type).toBe('ANIME')
       expect(call.body.query).toContain('isAdult: false')
       expect(call.body.query).toMatch(/relations\s*\{/)
       expect(call.body.query).toMatch(/statusDistribution\s*\{\s*status\s+amount\s*\}/)
@@ -190,7 +192,7 @@ describe('Catch-up popular-in-era query', () => {
   it('asks for all-time favourites without an era', async () => {
     const { fetch, calls } = fakeFetch({ json: page(rawMedia(1)) })
 
-    await fetchPopularAnime({ fetch, token: 't' }, null, 1)
+    await fetchPopularMedia({ fetch, token: 't' }, 'ANIME', null, 1)
 
     expect(calls[0].body.variables.from).toBeUndefined()
     expect(calls[0].body.variables.to).toBeUndefined()

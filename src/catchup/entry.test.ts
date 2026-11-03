@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ListStatus } from '../anilist/types.ts'
 import type { WriteStatus } from '../writes/writeQueue.ts'
-import { isNearEmpty, startSign } from './entry.ts'
+import { isNearEmpty, NEAR_EMPTY_BELOW, startSign } from './entry.ts'
 import type { QueueSnapshot } from './queue.ts'
 
 const listOf = (...statuses: ListStatus[]) => statuses.map((status, i) => ({ mediaId: i + 1, status }))
@@ -10,14 +10,19 @@ const completed = (n: number) => listOf(...Array.from({ length: n }, () => 'COMP
 
 describe('a near-empty list', () => {
   it('is one with fewer than 30 watched titles', () => {
-    expect(isNearEmpty(completed(0))).toBe(true)
-    expect(isNearEmpty(completed(29))).toBe(true)
-    expect(isNearEmpty(completed(30))).toBe(false)
+    expect(isNearEmpty(completed(0), 'ANIME')).toBe(true)
+    expect(isNearEmpty(completed(29), 'ANIME')).toBe(true)
+    expect(isNearEmpty(completed(30), 'ANIME')).toBe(false)
   })
 
   it('does not count Planning titles as watched', () => {
-    expect(isNearEmpty([...completed(29), ...listOf('PLANNING', 'PLANNING')])).toBe(true)
-    expect(isNearEmpty([...completed(29), ...listOf('DROPPED')])).toBe(false)
+    expect(isNearEmpty([...completed(29), ...listOf('PLANNING', 'PLANNING')], 'ANIME')).toBe(true)
+    expect(isNearEmpty([...completed(29), ...listOf('DROPPED')], 'ANIME')).toBe(false)
+  })
+
+  it('uses the threshold of the list’s own Media Type', () => {
+    expect(isNearEmpty(completed(NEAR_EMPTY_BELOW.MANGA - 1), 'MANGA')).toBe(true)
+    expect(isNearEmpty(completed(NEAR_EMPTY_BELOW.MANGA), 'MANGA')).toBe(false)
   })
 })
 

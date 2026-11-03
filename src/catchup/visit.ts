@@ -171,11 +171,11 @@ export function createCatchUpVisit(deps: () => CatchUpVisitDeps): CatchUpVisit {
   /** The Starting era's years for the suggestions; they use it only while the list is near empty. */
   const startingEra = () => startingEraYears(eraStore()?.answer() ?? null)
   /** What the suggestion candidates load popular titles for: the Starting era while the list is near empty, else the list's own era. */
-  const candidatesEra = (list: readonly CatchUpEntry[]) => (isNearEmpty(list) ? startingEra() : undefined)
+  const candidatesEra = (list: readonly CatchUpEntry[]) => (isNearEmpty(list, 'ANIME') ? startingEra() : undefined)
 
   /** The era chip's text: while the list is near empty, the Starting era can be changed. */
   function eraChip(view: CatchUpView): string | null {
-    if (view.phase !== 'ready' || !loaded || !isNearEmpty(loaded.list)) return null
+    if (view.phase !== 'ready' || !loaded || !isNearEmpty(loaded.list, 'ANIME')) return null
     const answer = eraStore()?.answer()
     return answer === undefined ? null : startingEraLabel(answer)
   }
@@ -214,7 +214,7 @@ export function createCatchUpVisit(deps: () => CatchUpVisitDeps): CatchUpVisit {
     const { source } = deps()
     if (!source) return
     const asked = closes
-    popular ??= source.popular(null)
+    popular ??= source.popular(null, 'ANIME')
     const covers = (media: CatchUpMedia[]) => {
       if (asked === closes && state.view.phase === 'era') set({ view: { ...state.view, popular: media } })
     }
@@ -301,7 +301,7 @@ export function createCatchUpVisit(deps: () => CatchUpVisitDeps): CatchUpVisit {
         // Titles marked earlier whose writes haven't reached AniList yet are on the list all the same.
         const queued = queue ? (catchUpSnapshot(queue.snapshot()).state?.writes ?? []) : []
         // A near-empty list first asks roughly when the user started watching, once.
-        if (isNearEmpty(withQueuedWrites(read, queued, [])) && eraStore()?.answer() === undefined) {
+        if (isNearEmpty(withQueuedWrites(read, queued, []), 'ANIME') && eraStore()?.answer() === undefined) {
           unanswered = { read, queued }
           askStartingEra()
           return
