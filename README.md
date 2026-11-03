@@ -8,7 +8,7 @@ Build your AniList scores by comparing titles from your own list two at a time, 
 
 AniDuel! is made mostly for people who are new to AniList and whose list is still short. It has three parts, and you use them in this order:
 
-1. **Fill your list with [Catch-up](#catch-up).** A new account has almost nothing on it. Catch-up shows you anime you have probably watched, and you tap the ones you have.
+1. **Fill your list with [Catch-up](#catch-up).** A new account has almost nothing on it. Catch-up shows you anime or manga you have probably already seen, and you tap the ones you have.
 2. **Build your scores once with [Scores or Full Ranking](#how-scores-and-full-ranking-work).** You answer "which one did you like more?" until every title has a score. A list this young is rarely over 100 titles, so this doesn't take long.
 3. **Score what comes next with [Keep My Scale](#keep-my-scale).** Now you have a scoring scale of your own. A new title only has to be compared with titles you already scored, and none of those scores change.
 
@@ -19,14 +19,14 @@ Catch-up ──► Scores / Full Ranking ──► Keep My Scale ◄──► Ca
 (fill your list)  (once, to build a scale)   (score new titles, and repeat)
 ```
 
-Already have a long list with scores you like? Skip straight to Keep My Scale. Catch-up is for anime only; everything else works for manga too.
+Already have a long list with scores you like? Skip straight to Keep My Scale. Everything works for anime and manga alike.
 
 ![Start: Anime chosen, with Keep My Scale selected as the Sort Goal](docs/screenshots/start.png)
 *Start: pick a Media Type and a Sort Goal. Catch-up opens from the mascot on the card.*
 
 ## Catch-up
 
-**Catch-up** shows anime you have probably already watched and lets you add them to your list quickly. Anime only, opened from Start or the menu.
+**Catch-up** shows anime you have probably already watched, or manga you have probably already read, and lets you add them to your list quickly. It opens from Start or the menu, on the Media Type you are on.
 
 It is not only for a new account. Use it to:
 
@@ -37,9 +37,9 @@ It is not only for a new account. Use it to:
 
 How it works:
 
-- **What it suggests:** 20 anime at a time, picked from the sequels, prequels and community recommendations of what is on your list, plus popular titles from the years and formats you watch. With a near-empty list, it first asks roughly when you started watching anime.
-- **What you do:** tap each cover to mark it Completed, Dropped, Planning or Paused, then save to get the next batch. Saves are written to AniList in the background.
-- **Titles you leave unmarked** are **Passed** and aren't suggested again for 30 days.
+- **What it suggests:** 20 titles at a time, picked from the sequels, prequels and community recommendations of what is on your list, plus popular titles from the years and formats you watch or read (for manga, also the countries: manhwa and manhua aren't buried under Japanese hits). With a near-empty list, it first asks roughly when you started watching anime, or reading manga.
+- **What you do:** tap each cover to mark it Completed, Dropped, Planning or Paused, then save to get the next batch. Manga also has **Reading**, for a running series you have caught up with. Saves are written to AniList in the background.
+- **Titles you leave unmarked** are **Passed** and aren't suggested again for 30 days. Anime and manga keep their own Passed titles.
 - **When you are done**, it offers the next step of the loop: [Keep My Scale](#keep-my-scale) if you qualify, with every unscored Completed and Repeating title already picked in the Picker, or your default Sort Goal if not.
 
 ![Catch-up: a batch of 20 suggested anime, some marked Completed, Dropped, Planning or Paused](docs/screenshots/catch-up.png)
