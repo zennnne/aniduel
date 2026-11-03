@@ -117,7 +117,7 @@ A Duel asked under Keep My Scale when a title is left between two scores, agains
 _Avoid_: Extra Duel, tie-break Duel, split Duel
 
 **Catch-up**:
-The screen where a user adds titles to their AniList list, a batch of suggestions at a time, by marking each one Completed, Dropped, Planning or Paused. Most are titles they have already seen; one they haven't seen but want to watch is marked Planning.
+The screen where a user adds titles of one Media Type to their AniList list, a batch of suggestions at a time, by marking each one Completed, Dropped, Planning or Paused, or, for Manga, Reading. Most are titles they have already watched or read; one they haven't but want to is marked Planning. A Manga title the user has caught up with but that hasn't finished is marked Reading.
 _Avoid_: Onboarding, quick add, backfill, import
 
 **Passed**:
@@ -125,11 +125,11 @@ A title shown in Catch-up that the user left unmarked. It isn't suggested again 
 _Avoid_: Skipped, dismissed, not seen
 
 **Watched**:
-A title on the user's list with any status except Planning, however it was scored. Catch-up suggests from watched titles and counts them for the near-empty list.
-_Avoid_: Seen, finished
+A title on the user's list with any status except Planning, however it was scored. For Manga it means read: the one word covers both Media Types. Catch-up suggests from watched titles of its Media Type and counts them for the near-empty list.
+_Avoid_: Seen, finished, read (as a separate term)
 
 **Starting era**:
-Roughly when the user started watching anime, asked by Catch-up only while their list is near empty. It picks the popular titles in the first batches, is stored locally per user, and can be changed until the list grows past the threshold.
+Roughly when the user started watching anime, or reading manga, asked by Catch-up only while their list of that Media Type is near empty. Each Media Type has its own. It picks the popular titles in the first batches, is stored locally per user, and can be changed until the list grows past the threshold.
 _Avoid_: Era answer, start year, age
 
 **Media Type**:
