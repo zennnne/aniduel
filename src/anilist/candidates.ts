@@ -178,3 +178,23 @@ export async function fetchPopularMedia(
   )
   return loaded.flat()
 }
+
+const FAVOURITE_ANIME_QUERY = `query ($userId: Int, $page: Int) {
+  User(id: $userId) {
+    favourites { anime(page: $page, perPage: 25) { pageInfo { hasNextPage } nodes { id } } }
+  }
+}`
+
+type RawFavourites = { User: { favourites: { anime: { pageInfo: { hasNextPage: boolean }; nodes: Array<{ id: number }> } } } }
+
+/** The user's favourite anime, by media id, every page. Throws the gateway's `AniListError` like `fetchCatchUpMedia`. */
+export async function fetchFavouriteAnime(deps: Deps, userId: number): Promise<number[]> {
+  const ids: number[] = []
+  for (let page = 1; ; page++) {
+    await deps.beforeRequest?.()
+    const data = await request<RawFavourites>(deps, FAVOURITE_ANIME_QUERY, { userId, page }, rateLimitHeaders(deps))
+    const { anime } = data.User.favourites
+    ids.push(...anime.nodes.map((n) => n.id))
+    if (!anime.pageInfo.hasNextPage) return ids
+  }
+}

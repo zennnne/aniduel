@@ -96,16 +96,19 @@ export function Screens({ shown, ...props }: ScreensProps & { shown: Shown }): R
     case 'catch-up':
       return (
         <CatchUpScreen
+          mediaType={catchUp.mediaType}
+          marks={catchUp.marks}
           view={catchUp.view}
           queue={catchUp.queue}
           batchExtra={
             catchUp.startingEraLabel !== null && (
-              <StartingEraChip label={catchUp.startingEraLabel} onChange={catchUp.changeStartingEra} />
+              <StartingEraChip mediaType={catchUp.mediaType} label={catchUp.startingEraLabel} onChange={catchUp.changeStartingEra} />
             )
           }
           eraQuestion={
             catchUp.view.phase === 'era' && (
               <StartingEraQuestion
+                mediaType={catchUp.mediaType}
                 popular={catchUp.view.popular}
                 answer={catchUp.view.answer}
                 titleLanguage={shown.viewer.titleLanguage}
@@ -115,7 +118,7 @@ export function Screens({ shown, ...props }: ScreensProps & { shown: Shown }): R
           }
           titleLanguage={shown.viewer.titleLanguage}
           onBack={() => window.history.back()}
-          onReload={catchUp.open}
+          onReload={() => void catchUp.open(catchUp.mediaType)}
           onCycle={catchUp.cycle}
           onMark={catchUp.mark}
           onSave={catchUp.saveAndNext}

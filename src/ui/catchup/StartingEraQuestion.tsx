@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CatchUpMedia } from '../../anilist/candidates.ts'
-import type { TitleLanguage } from '../../anilist/types.ts'
+import type { MediaType, TitleLanguage } from '../../anilist/types.ts'
 import {
   DEFAULT_STARTING_YEAR,
   EARLIEST_STARTING_YEAR,
@@ -62,11 +62,19 @@ function DrapeMochi() {
   )
 }
 
+/** The question on desktop, per Media Type (#95). */
+const QUESTION: Record<MediaType, string> = {
+  ANIME: 'Roughly when did you start watching anime?',
+  MANGA: 'When did you start reading manga?',
+}
+const STARTED: Record<MediaType, string> = { ANIME: 'watching anime', MANGA: 'reading manga' }
+
 /**
  * The Starting era question (#51, UI decisions on #37): a year slider with popular covers from around then on desktop,
  * a timeline of landmark covers on phones. `popular` is all-time favourites, null while loading.
  */
 export function StartingEraQuestion(props: {
+  mediaType: MediaType
   popular: CatchUpMedia[] | null
   /** The saved answer when changing it from the era chip. */
   answer: StartingEraAnswer | undefined
@@ -92,7 +100,7 @@ export function StartingEraQuestion(props: {
     <div className="cu-era">
       <div className="cu-era-card cu-era-desktop">
         <DrapeMochi />
-        <h2>Roughly when did you start watching anime?</h2>
+        <h2>{QUESTION[props.mediaType]}</h2>
         <div className="cu-era-year" aria-live="polite">
           {year <= EARLIEST_STARTING_YEAR ? `${EARLIEST_STARTING_YEAR} or earlier` : year}
         </div>
@@ -101,11 +109,11 @@ export function StartingEraQuestion(props: {
           min={EARLIEST_STARTING_YEAR}
           max={latest}
           value={year}
-          aria-label="Year you started watching anime"
+          aria-label={`Year you started ${STARTED[props.mediaType]}`}
           aria-valuetext={startingEraLabel(year)}
           onChange={(e) => setYear(Number(e.target.value))}
         />
-        <div className="small">shows from around then:</div>
+        <div className="small">{props.mediaType === 'MANGA' ? 'manga' : 'shows'} from around then:</div>
         <div className="cu-era-peek">
           {props.popular === null ? (
             <span className="small fine">Loading…</span>
@@ -140,9 +148,9 @@ export function StartingEraQuestion(props: {
 }
 
 /** The Starting era chip beside "Batch N": "around 2012 ✎" reopens the question. */
-export function StartingEraChip(props: { label: string; onChange: () => void }) {
+export function StartingEraChip(props: { mediaType: MediaType; label: string; onChange: () => void }) {
   return (
-    <button className="cu-erachip" title="Change when you started watching" onClick={props.onChange}>
+    <button className="cu-erachip" title={`Change when you started ${props.mediaType === 'MANGA' ? 'reading' : 'watching'}`} onClick={props.onChange}>
       {props.label} ✎
     </button>
   )

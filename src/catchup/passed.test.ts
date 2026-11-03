@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import type { CatchUpMedia } from '../anilist/candidates.ts'
 import { firstBatch, saveBatch, setMark } from './batch.ts'
+import { deleteSavedProgress } from '../persistence/progress.ts'
 import { createPassedStore } from './passed.ts'
 
 const DAY = 24 * 60 * 60 * 1000
@@ -24,13 +25,13 @@ function memoryStorage(): Storage {
 describe('Passed store', () => {
   it('remembers Passed titles after a reload, for that user only', () => {
     const storage = memoryStorage()
-    createPassedStore(storage, 7).record([1, 2], NOW)
+    createPassedStore(storage, 7, 'ANIME').record([1, 2], NOW)
 
-    expect(createPassedStore(storage, 7).history()).toEqual(new Map([[1, NOW], [2, NOW]]))
-    expect(createPassedStore(storage, 8).history()).toEqual(new Map())
+    expect(createPassedStore(storage, 7, 'ANIME').history()).toEqual(new Map([[1, NOW], [2, NOW]]))
+    expect(createPassedStore(storage, 8, 'ANIME').history()).toEqual(new Map())
   })
   it('counts a title as hidden until 30 days have passed, then not', () => {
-    const store = createPassedStore(memoryStorage(), 7)
+    const store = createPassedStore(memoryStorage(), 7, 'ANIME')
     store.record([1], NOW - 30 * DAY + 1)
     store.record([2], NOW - 30 * DAY)
 
@@ -38,7 +39,7 @@ describe('Passed store', () => {
   })
 
   it('keeps a title out of suggestions for 30 days, then lets it back', () => {
-    const store = createPassedStore(memoryStorage(), 7)
+    const store = createPassedStore(memoryStorage(), 7, 'ANIME')
     store.record([1], NOW - 30 * DAY + 1)
     store.record([2], NOW - 30 * DAY)
     const media = [anime(1), anime(2)]
@@ -50,7 +51,7 @@ describe('Passed store', () => {
 
   it('forgets titles more than 30 days old when it records new ones', () => {
     const storage = memoryStorage()
-    const store = createPassedStore(storage, 7)
+    const store = createPassedStore(storage, 7, 'ANIME')
     store.record([1], NOW - 30 * DAY)
     store.record([2], NOW)
 
@@ -59,18 +60,18 @@ describe('Passed store', () => {
 
   it('clear empties the history, so every title can be suggested again', () => {
     const storage = memoryStorage()
-    createPassedStore(storage, 7).record([1, 2], NOW)
-    createPassedStore(storage, 8).record([3], NOW)
+    createPassedStore(storage, 7, 'ANIME').record([1, 2], NOW)
+    createPassedStore(storage, 8, 'ANIME').record([3], NOW)
 
-    createPassedStore(storage, 7).clear()
+    createPassedStore(storage, 7, 'ANIME').clear()
 
-    expect(createPassedStore(storage, 7).history()).toEqual(new Map())
-    expect(createPassedStore(storage, 7).hiddenCount(NOW)).toBe(0)
-    expect(createPassedStore(storage, 8).history()).toEqual(new Map([[3, NOW]]))
+    expect(createPassedStore(storage, 7, 'ANIME').history()).toEqual(new Map())
+    expect(createPassedStore(storage, 7, 'ANIME').hiddenCount(NOW)).toBe(0)
+    expect(createPassedStore(storage, 8, 'ANIME').history()).toEqual(new Map([[3, NOW]]))
   })
 
   it('records only the titles left unmarked when a batch is saved', () => {
-    const store = createPassedStore(memoryStorage(), 7)
+    const store = createPassedStore(memoryStorage(), 7, 'ANIME')
     const media = [anime(1), anime(2), anime(3), anime(4)]
     let batch = firstBatch({ list, media, passed: store.history(), now: NOW, seed: 1 })
     batch = setMark(batch, 1, 'COMPLETED')
@@ -105,3 +106,36 @@ function anime(id: number): CatchUpMedia {
     adaptations: [],
   }
 }
+
+describe('Passed store per Media Type', () => {
+  it('keeps manga’s Passed titles apart from anime’s, and clears only its own', () => {
+    const storage = memoryStorage()
+    createPassedStore(storage, 7, 'ANIME').record([1], NOW)
+    createPassedStore(storage, 7, 'MANGA').record([2], NOW)
+
+    expect(createPassedStore(storage, 7, 'ANIME').history()).toEqual(new Map([[1, NOW]]))
+    expect(createPassedStore(storage, 7, 'MANGA').history()).toEqual(new Map([[2, NOW]]))
+
+    createPassedStore(storage, 7, 'MANGA').clear()
+
+    expect(createPassedStore(storage, 7, 'MANGA').history()).toEqual(new Map())
+    expect(createPassedStore(storage, 7, 'ANIME').history()).toEqual(new Map([[1, NOW]]))
+  })
+
+  it('reads the anime Passed titles saved before Catch-up had manga', () => {
+    const storage = memoryStorage()
+    storage.setItem('aniduel/progress/7/ANIME/catchup-passed', JSON.stringify([[1, NOW]]))
+
+    expect(createPassedStore(storage, 7, 'ANIME').history()).toEqual(new Map([[1, NOW]]))
+    expect(createPassedStore(storage, 7, 'MANGA').history()).toEqual(new Map())
+  })
+
+  it('is deleted with the rest of the user’s progress', () => {
+    const storage = memoryStorage()
+    createPassedStore(storage, 7, 'MANGA').record([2], NOW)
+
+    deleteSavedProgress(storage, 7)
+
+    expect(createPassedStore(storage, 7, 'MANGA').history()).toEqual(new Map())
+  })
+})

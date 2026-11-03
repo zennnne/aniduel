@@ -117,6 +117,9 @@
 .cu-dot.c {
   background: var(--m-completed);
 }
+.cu-dot.r {
+  background: var(--m-reading);
+}
 .cu-dot.d {
   background: var(--m-dropped);
 }
@@ -176,6 +179,9 @@
 .cu-cover.marked-c {
   box-shadow: 0 0 0 3px var(--m-completed);
 }
+.cu-cover.marked-r {
+  box-shadow: 0 0 0 3px var(--m-reading);
+}
 .cu-cover.marked-d {
   box-shadow: 0 0 0 3px var(--m-dropped);
 }
@@ -198,6 +204,9 @@
 }
 .cu-ribbon.c {
   background: var(--m-completed);
+}
+.cu-ribbon.r {
+  background: var(--m-reading);
 }
 .cu-ribbon.d {
   background: var(--m-dropped);

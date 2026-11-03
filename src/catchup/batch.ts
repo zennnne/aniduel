@@ -1,17 +1,23 @@
 // Catch-up batches: the 20 titles on screen, the user's marks on them, and "Save & next 20". Pure: the screen keeps the
 // current batch and hands every change back through these functions.
 import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
-import type { ListEntry, ListStatus } from '../anilist/types.ts'
+import type { ListEntry, ListStatus, MediaType } from '../anilist/types.ts'
 import type { QueuedWrite, StatusWrite } from '../writes/writeQueue.ts'
-import { suggestCatchUp, type Suggestion } from './suggest.ts'
+import { suggestCatchUp, type AnimeSignal, type Suggestion } from './suggest.ts'
 
-/** What a title can be marked in Catch-up. Unmarked means Passed. */
-export type CatchUpMark = Extract<ListStatus, 'COMPLETED' | 'DROPPED' | 'PLANNING' | 'PAUSED'>
+/** What a title can be marked in Catch-up. Unmarked means Passed. `CURRENT` is manga's Reading. */
+export type CatchUpMark = Extract<ListStatus, 'COMPLETED' | 'CURRENT' | 'DROPPED' | 'PLANNING' | 'PAUSED'>
 
-/** Tapping a cover steps through these, then back to unmarked. */
-export const MARK_CYCLE: readonly CatchUpMark[] = ['COMPLETED', 'DROPPED', 'PLANNING', 'PAUSED']
+/**
+ * The marks of each Media Type, in the order a tap on a cover steps through them, then back to unmarked. Manga has
+ * Reading, for a running series the user has caught up with, and reads from "finished" to "stopped".
+ */
+export const MARKS: Readonly<Record<MediaType, readonly CatchUpMark[]>> = {
+  ANIME: ['COMPLETED', 'DROPPED', 'PLANNING', 'PAUSED'],
+  MANGA: ['COMPLETED', 'CURRENT', 'PAUSED', 'DROPPED', 'PLANNING'],
+}
 
-/** One title on the user's anime list, as Catch-up needs it. */
+/** One title on the user's list, as Catch-up needs it. */
 export type CatchUpEntry = Pick<ListEntry, 'mediaId' | 'status' | 'year' | 'format'>
 
 export type CatchUpBatch = {
@@ -24,6 +30,8 @@ export type CatchUpBatch = {
 
 /** What the next batch is chosen from. */
 export type BatchInput = {
+  /** The Media Type of `list` and `media`; anime when left out. */
+  mediaType?: MediaType
   list: readonly CatchUpEntry[]
   media: readonly CatchUpMedia[]
   /** Passed history: media id → when it was Passed (ms). */
@@ -32,11 +40,13 @@ export type BatchInput = {
   seed: number
   /** The Starting era's years, for a near-empty list (null: all-time favourites). */
   startingEra?: Era | null
+  /** Manga only: the user's anime, for the anime signal. */
+  anime?: AnimeSignal
 }
 
 function suggest(input: BatchInput): Suggestion[] {
-  const { list, media, passed, now, seed, startingEra } = input
-  return suggestCatchUp({ list, media, passed, now, seed, startingEra })
+  const { mediaType, list, media, passed, now, seed, startingEra, anime } = input
+  return suggestCatchUp({ mediaType, list, media, passed, now, seed, startingEra, anime })
 }
 
 export function firstBatch(input: BatchInput): CatchUpBatch {
@@ -54,23 +64,29 @@ export function setMark(batch: CatchUpBatch, id: number, mark: CatchUpMark | nul
   return { ...batch, marks }
 }
 
-/** A tap on a cover: Completed → Dropped → Planning → Paused → unmarked. */
-export function cycleMark(batch: CatchUpBatch, id: number): CatchUpBatch {
+/**
+ * A tap on a cover: the next of the Media Type's MARKS, then unmarked. On anime Completed → Dropped → Planning → Paused;
+ * on manga Completed → Reading → Paused → Dropped → Planning.
+ */
+export function cycleMark(batch: CatchUpBatch, id: number, mediaType: MediaType = 'ANIME'): CatchUpBatch {
+  const cycle = MARKS[mediaType]
   const now = batch.marks.get(id)
-  const next = now === undefined ? MARK_CYCLE[0] : (MARK_CYCLE[MARK_CYCLE.indexOf(now) + 1] ?? null)
+  const next = now === undefined ? cycle[0] : (cycle[cycle.indexOf(now) + 1] ?? null)
   return setMark(batch, id, next)
 }
 
-export type MarkCounts = { completed: number; dropped: number; planning: number; paused: number; passed: number }
+/** How many titles of the batch have each mark, and how many are left unmarked (Passed). */
+export type MarkCounts = Record<CatchUpMark, number> & { passed: number }
 
 export function markCounts(batch: CatchUpBatch): MarkCounts {
   const marks = [...batch.marks.values()]
   const count = (mark: CatchUpMark) => marks.filter((m) => m === mark).length
   return {
-    completed: count('COMPLETED'),
-    dropped: count('DROPPED'),
-    planning: count('PLANNING'),
-    paused: count('PAUSED'),
+    COMPLETED: count('COMPLETED'),
+    CURRENT: count('CURRENT'),
+    DROPPED: count('DROPPED'),
+    PLANNING: count('PLANNING'),
+    PAUSED: count('PAUSED'),
     passed: batch.suggestions.length - marks.length,
   }
 }

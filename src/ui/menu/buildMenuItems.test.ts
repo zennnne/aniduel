@@ -125,10 +125,12 @@ describe('Catch-up in the menu', () => {
       { ...actions, openCatchUp },
     )
 
-  it('is always offered, with or without a Ranking, and says it is for anime', () => {
-    for (const item of [...items('ANIME', false), ...items('MANGA', true)].filter((i) => i.id === 'catch-up')) {
-      expect(item.title).toBe('Catch-up')
-      expect(item.description).toMatch(/anime/i)
+  it('is always offered, with or without a Ranking, and says it is for the open Ranking’s Media Type', () => {
+    for (const [type, word] of [['ANIME', /anime/i], ['MANGA', /manga/i]] as const) {
+      for (const item of [...items(type, false), ...items(type, true)].filter((i) => i.id === 'catch-up')) {
+        expect(item.title).toBe('Catch-up')
+        expect(item.description).toMatch(word)
+      }
     }
     expect(items('ANIME', false).filter((i) => i.id === 'catch-up')).toHaveLength(1)
     expect(items('MANGA', true).filter((i) => i.id === 'catch-up')).toHaveLength(1)

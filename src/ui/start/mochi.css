@@ -35,9 +35,6 @@
 .mochi .paws {
   pointer-events: auto;
 }
-.mochi:disabled {
-  cursor: default;
-}
 .mochi .ink {
   stroke: var(--critter-line);
   stroke-width: 2.4;
@@ -68,15 +65,14 @@
   transition: transform 0.2s;
   transform-origin: 60% 80%;
 }
-.mochi:not(:disabled):hover svg.body {
+.mochi:hover svg.body {
   transform: scale(1.05, 0.95);
 }
 .mochi .face {
   display: none;
 }
 .mochi[data-face='ok'] .face.ok,
-.mochi[data-face='sad'] .face.sad,
-.mochi[data-face='sleep'] .face.sleep {
+.mochi[data-face='sad'] .face.sad {
   display: inline;
 }
 .mochi .sign {
@@ -120,24 +116,11 @@
   border-color: var(--danger);
   color: var(--danger);
 }
-.mochi .sign.asleep {
-  color: var(--tx);
-  font-size: 11px;
-}
 .mochi .paws {
   position: absolute;
   right: 48px;
   top: 45px;
   z-index: 1;
-}
-.mochi .zzz {
-  position: absolute;
-  right: 8px;
-  top: -6px;
-  font-size: 11px;
-  font-weight: 900;
-  color: var(--tx);
-  animation: mochi-float 2s ease-in-out infinite;
 }
 /* The speech bubble: right next to the face, its tail pointing at the mochi. */
 .mochi .bubble {
@@ -213,19 +196,7 @@
     transform: rotate(-5deg);
   }
 }
-@keyframes mochi-float {
-  0%,
-  100% {
-    transform: translateY(0);
-    opacity: 0.5;
-  }
-  50% {
-    transform: translateY(-4px);
-    opacity: 1;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .mochi .zzz,
   .mochi.near-empty svg.body,
   .mochi.near-empty .sign {
     animation: none;

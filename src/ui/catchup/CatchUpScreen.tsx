@@ -1,15 +1,18 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import type { TitleLanguage } from '../../anilist/types.ts'
-import { MARK_CYCLE, markCounts, type CatchUpMark } from '../../catchup/batch.ts'
+import type { MediaType, TitleLanguage } from '../../anilist/types.ts'
+import { markCounts, type CatchUpMark } from '../../catchup/batch.ts'
 import { queueProgress, type QueueSnapshot } from '../../catchup/queue.ts'
 import { BATCH_SIZE } from '../../catchup/suggest.ts'
 import { displayTitle } from '../../pool/pool.ts'
 import { EXT_ICON } from '../icons.tsx'
+import { statusLabel } from '../start/statusLabel.ts'
 import type { CatchUpView } from '../../catchup/visit.ts'
 import './catchup.css'
 
-const MARK_LABEL: Record<CatchUpMark, string> = { COMPLETED: 'Completed', DROPPED: 'Dropped', PLANNING: 'Planning', PAUSED: 'Paused' }
-const MARK_CLASS: Record<CatchUpMark, string> = { COMPLETED: 'c', DROPPED: 'd', PLANNING: 'p', PAUSED: 'u' }
+const MARK_CLASS: Record<CatchUpMark, string> = { COMPLETED: 'c', CURRENT: 'r', DROPPED: 'd', PLANNING: 'p', PAUSED: 'u' }
+
+/** What a batch is, after "Batch N" and while the first one loads. */
+const SUGGESTED: Record<MediaType, string> = { ANIME: 'anime you’ve probably watched', MANGA: 'manga you’ve probably read' }
 
 /** "2013 · TV", "2016 · MOVIE". */
 function metaOf(year: number | null, format: string | null): string {
@@ -48,11 +51,15 @@ function QueueStatus(props: { queue: QueueSnapshot }) {
 }
 
 /**
- * Catch-up (#49, UI decisions on #37 from prototype #42): a grid of 20 covers. Tapping a cover cycles Completed →
- * Dropped → Planning → Paused → none; ⋯ picks a mark directly; ↗ opens the title on AniList (#54). "Save & next 20"
- * queues the marks and shows the next batch.
+ * Catch-up (#49, UI decisions on #37 from prototype #42): a grid of 20 covers. Tapping a cover cycles through the
+ * marks (anime: Completed → Dropped → Planning → Paused; manga: Completed → Reading → Paused → Dropped → Planning) then
+ * none; ⋯ picks a mark directly; ↗ opens the title on AniList (#54). "Save & next 20" queues the marks and shows the
+ * next batch.
  */
 export function CatchUpScreen(props: {
+  mediaType: MediaType
+  /** The visit's marks, in the order a tap steps through them. */
+  marks: readonly CatchUpMark[]
   view: CatchUpView
   queue: QueueSnapshot
   titleLanguage: TitleLanguage
@@ -99,7 +106,7 @@ export function CatchUpScreen(props: {
         {batch && (
           <span className="cu-batch">
             Batch {batch.number}
-            <span className="hide-m"> · {BATCH_SIZE} anime you’ve probably watched</span>
+            <span className="hide-m"> · {BATCH_SIZE} {SUGGESTED[props.mediaType]}</span>
             {props.batchExtra}
           </span>
         )}
@@ -124,7 +131,7 @@ export function CatchUpScreen(props: {
       <div className="cu-body">
         {view.phase === 'loading' || view.phase === 'idle' ? (
           <div className="cu-center">
-            <p className="cu-h2">Finding anime you’ve probably watched…</p>
+            <p className="cu-h2">Finding {SUGGESTED[props.mediaType]}…</p>
             <p className="small">Reading your list and what it links to on AniList. A long list can take a minute.</p>
           </div>
         ) : view.phase === 'era' ? (
@@ -145,11 +152,15 @@ export function CatchUpScreen(props: {
         ) : (
           <>
             <p className="cu-legend">
-              Tap a cover: <span className="cu-dot c" />
-              Completed → <span className="cu-dot d" />
-              Dropped → <span className="cu-dot p" />
-              Planning → <span className="cu-dot u" />
-              Paused → none, or use ⋯. Leave the rest alone.
+              Tap a cover:
+              {props.marks.map((m) => (
+                <span key={m}>
+                  {' '}
+                  <span className={`cu-dot ${MARK_CLASS[m]}`} />
+                  {statusLabel(m, props.mediaType)} →
+                </span>
+              ))}{' '}
+              none, or use ⋯. Leave the rest alone.
             </p>
             <div className="cu-grid">
               {view.batch.suggestions.map(({ media }) => {
@@ -161,11 +172,11 @@ export function CatchUpScreen(props: {
                       <button
                         className={mark ? `cu-cover marked-${MARK_CLASS[mark]}` : 'cu-cover'}
                         style={{ backgroundColor: media.coverColor ?? undefined }}
-                        aria-label={`${name}: ${mark ? MARK_LABEL[mark] : 'not marked'}. Tap to change.`}
+                        aria-label={`${name}: ${mark ? statusLabel(mark, props.mediaType) : 'not marked'}. Tap to change.`}
                         onClick={() => props.onCycle(media.id)}
                       >
                         {media.coverUrl ? <img src={media.coverUrl} alt="" loading="lazy" /> : <span className="cu-noimg">{name}</span>}
-                        {mark && <span className={`cu-ribbon ${MARK_CLASS[mark]}`}>{MARK_LABEL[mark]}</span>}
+                        {mark && <span className={`cu-ribbon ${MARK_CLASS[mark]}`}>{statusLabel(mark, props.mediaType)}</span>}
                       </button>
                       <a className="cu-ext" aria-label={`Open ${name} on AniList`} title="Open on AniList" href={media.siteUrl} target="_blank" rel="noreferrer">
                         {EXT_ICON}
@@ -185,7 +196,7 @@ export function CatchUpScreen(props: {
                     </button>
                     {menuFor === media.id && (
                       <div className="cu-pop" role="menu" onClick={(e) => e.stopPropagation()}>
-                        {MARK_CYCLE.map((m) => (
+                        {props.marks.map((m) => (
                           <button
                             key={m}
                             role="menuitem"
@@ -195,7 +206,7 @@ export function CatchUpScreen(props: {
                             }}
                           >
                             <span className={`cu-dot ${MARK_CLASS[m]}`} />
-                            {MARK_LABEL[m]}
+                            {statusLabel(m, props.mediaType)}
                             {mark === m && ' ✓'}
                           </button>
                         ))}
@@ -227,11 +238,13 @@ export function CatchUpScreen(props: {
       {batch && counts && batch.suggestions.length > 0 && (
         <footer className="cu-foot">
           <span className="cu-sum">
-            <span className="cu-dot c" />
-            {counts.completed} Completed <span className="cu-dot d" />
-            {counts.dropped} Dropped <span className="cu-dot p" />
-            {counts.planning} Planning <span className="cu-dot u" />
-            {counts.paused} Paused <span className="cu-pass">· {counts.passed} Passed (hidden 30 days)</span>
+            {props.marks.map((m) => (
+              <span key={m}>
+                <span className={`cu-dot ${MARK_CLASS[m]}`} />
+                {counts[m]} {statusLabel(m, props.mediaType)}{' '}
+              </span>
+            ))}
+            <span className="cu-pass">· {counts.passed} Passed (hidden 30 days)</span>
           </span>
           <span className="grow" />
           <button className="go" onClick={props.onSave}>

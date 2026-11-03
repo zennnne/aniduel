@@ -39,7 +39,7 @@ export type MenuActions = {
   logout: () => void
   /** Switch the open Ranking to this Sort Goal (#28): Full Ranking asks first, Scores switches at once. */
   switchSortGoal: (goal: SwitchableGoal) => void
-  /** Catch-up (anime only), whichever Media Type the open Ranking is. */
+  /** Catch-up on the open Ranking's Media Type. */
   openCatchUp: () => void
   /** Asks before emptying Catch-up's Passed history. */
   clearPassed: () => void
@@ -164,7 +164,7 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       group: 'App',
       icon: '+',
       title: 'Catch-up',
-      description: 'Add anime you’ve already watched, 20 at a time',
+      description: mediaType === 'MANGA' ? 'Add manga you’ve already read, 20 at a time' : 'Add anime you’ve already watched, 20 at a time',
       run: actions.openCatchUp,
     },
     {

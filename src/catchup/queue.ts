@@ -1,5 +1,6 @@
 // Catch-up's part of the write queue: the list status writes of every saved page, as the Catch-up screen and the
 // sign on Start show them. They are written by the one write queue, in line with Import's scores.
+import type { MediaType } from '../anilist/types.ts'
 import { isStatusWrite, writeSummary, type QueuedWrite, type RunnerStatus, type StatusWrite, type WriteQueueSnapshot } from '../writes/writeQueue.ts'
 
 /** One status write from a saved page, named for the failure bar. */
@@ -13,10 +14,10 @@ export type QueueSnapshot = {
   status: RunnerStatus | null
 }
 
-/** The status writes in the write queue (Catch-up is anime only). */
-export function catchUpSnapshot(queue: WriteQueueSnapshot): QueueSnapshot {
-  const writes = queue.state.writes.flatMap(({ mediaType, ...w }) =>
-    mediaType === 'ANIME' && isStatusWrite(w) ? [{ ...w, name: w.name ?? `Title #${w.mediaId}` }] : [],
+/** The status writes of one Media Type in the write queue: what Catch-up on that Media Type shows of it. */
+export function catchUpSnapshot(queue: WriteQueueSnapshot, mediaType: MediaType): QueueSnapshot {
+  const writes = queue.state.writes.flatMap(({ mediaType: type, ...w }) =>
+    type === mediaType && isStatusWrite(w) ? [{ ...w, name: w.name ?? `Title #${w.mediaId}` }] : [],
   )
   return { state: writes.length > 0 ? { writes } : null, running: queue.running, status: queue.status }
 }
@@ -43,8 +44,16 @@ export function queueProgress(state: NonNullable<QueueSnapshot['state']>): Queue
   }
 }
 
-/** When a run of the queue just ended: the titles now on the user's anime list through Catch-up. Otherwise null. */
-export function settledByRun(before: WriteQueueSnapshot, after: WriteQueueSnapshot): number[] | null {
+/**
+ * When a run of the queue just ended: the titles now on the user's lists through Catch-up, by Media Type (only those
+ * with any). Otherwise null.
+ */
+export function settledByRun(before: WriteQueueSnapshot, after: WriteQueueSnapshot): Map<MediaType, number[]> | null {
   if (!before.running || after.running) return null
-  return (catchUpSnapshot(after).state?.writes ?? []).filter((w) => w.status === 'done').map((w) => w.mediaId)
+  const settled = new Map<MediaType, number[]>()
+  for (const mediaType of ['ANIME', 'MANGA'] as const) {
+    const done = (catchUpSnapshot(after, mediaType).state?.writes ?? []).filter((w) => w.status === 'done').map((w) => w.mediaId)
+    if (done.length > 0) settled.set(mediaType, done)
+  }
+  return settled
 }

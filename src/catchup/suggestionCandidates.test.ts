@@ -45,6 +45,7 @@ function fakeSource(catalog: CatchUpMedia[], popular: CatchUpMedia[] = []) {
       types.push(mediaType)
       return popular
     },
+    favouriteAnime: async () => [],
   }
   return { source, asked, eras, types }
 }
@@ -297,5 +298,23 @@ describe('reading from AniList', () => {
     expect(manga.country).toBe('KR')
     expect(manga.relations).toEqual([{ type: 'SEQUEL', mediaId: 2 }])
     expect(manga.adaptations).toEqual([500, 502])
+  })
+
+  it('reads the user’s favourite anime, page after page', async () => {
+    const clock: Clock = { now: () => 0, sleep: async () => {} }
+    const sent: Array<Record<string, unknown>> = []
+    const fetch = (async (_url: string, init: RequestInit) => {
+      const { variables } = JSON.parse(String(init.body)) as { variables: { page: number } }
+      sent.push(variables)
+      const anime = { pageInfo: { hasNextPage: variables.page === 1 }, nodes: [{ id: variables.page * 10 }] }
+      return new Response(JSON.stringify({ data: { User: { favourites: { anime } } } }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+    }) as unknown as typeof globalThis.fetch
+    const source = aniListCandidateSource({ fetch, token: 't', clock, limiter: createRequestLimiter(clock) })
+
+    expect(await source.favouriteAnime(7)).toEqual([10, 20])
+    expect(sent).toEqual([
+      { userId: 7, page: 1 },
+      { userId: 7, page: 2 },
+    ])
   })
 })

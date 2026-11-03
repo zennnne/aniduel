@@ -1,7 +1,7 @@
 // Start's view of one Media Type's list: the Pool a Ranking has or would start on, its Sort Goal, Keep My Scale's
 // Anchors and eligibility, and every number Start shows. Pure; App adds the handlers.
 import type { ListEntry, ListStatus, ScoreFormat, TitleLanguage } from '../../anilist/types.ts'
-import type { AnimeStanding } from '../../catchup/exitOffer.ts'
+import type { Standing } from '../../catchup/exitOffer.ts'
 import {
   anchorsOf,
   estimateKeepMyScaleDuels,
@@ -162,11 +162,11 @@ export function startView(input: StartInput): StartView {
 }
 
 /**
- * Where the user's anime stands for Catch-up's exit offer (#52), read off Start's view of the anime list so the two
- * can't disagree. Null while the list isn't read or its saved progress can't be used.
+ * Where the user's list of a Media Type stands for Catch-up's exit offer (#52), read off Start's view of that list so
+ * the two can't disagree. Null while the list isn't read or its saved progress can't be used.
  */
-export function animeStanding(anime: StartView): AnimeStanding | null {
-  const unscored = anime.form.keepMyScale.count
-  if (!anime.eligibility || unscored === null || anime.savedRanking === 'broken') return null
-  return { eligibleForKeepMyScale: anime.eligibility.eligible, unscored, saved: anime.savedRanking }
+export function standing(start: StartView): Standing | null {
+  const unscored = start.form.keepMyScale.count
+  if (!start.eligibility || unscored === null || start.savedRanking === 'broken') return null
+  return { eligibleForKeepMyScale: start.eligibility.eligible, unscored, saved: start.savedRanking }
 }

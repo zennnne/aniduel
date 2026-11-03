@@ -74,8 +74,8 @@ export type WriteQueue = {
   subscribe(listener: (snapshot: WriteQueueSnapshot) => void): () => void
   /** Queues list status writes (a saved Catch-up page) behind everything already queued, and writes them. */
   addStatuses(writes: readonly StatusWrite[], mediaType: MediaType): void
-  /** Puts the failed status writes back in line and writes them. */
-  retryStatuses(): void
+  /** Puts the Media Type's failed status writes back in line and writes them. */
+  retryStatuses(mediaType: MediaType): void
   /** Replaces the Media Type's Import with this one and writes it, behind what is already queued. */
   writeImport(mediaType: MediaType, plan: ImportState): void
   /** Stop: no more of the Import is written until `writeImport` again. A write already sent still lands. */
@@ -374,10 +374,10 @@ export function createWriteQueue(deps: WriteQueueDeps): WriteQueue {
       if (run && list) next = reconcile(next, mediaType, list)
       change(next)
     },
-    retryStatuses() {
+    retryStatuses(mediaType) {
       if (detached) return
       const writes = base().writes.map((w) => {
-        if (!isStatusWrite(w) || w.status !== 'failed') return w
+        if (!isStatusWrite(w) || w.status !== 'failed' || w.mediaType !== mediaType) return w
         const { error: _e, ...rest } = w
         return { ...rest, status: 'pending' as const }
       })

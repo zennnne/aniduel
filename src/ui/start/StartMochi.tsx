@@ -1,29 +1,35 @@
+import type { MediaType } from '../../anilist/types.ts'
 import type { StartSign } from '../../catchup/entry.ts'
 import { pluralWord } from '../meta.ts'
 import './mochi.css'
 
 export type StartCatchUp = {
+  /** The selected Media Type, which Catch-up opens on. */
+  mediaType: MediaType
   sign: StartSign
-  /** Watched anime on the list, or null while it loads. */
+  /** Watched titles on its list, or null while it loads. */
   watched: number | null
   /** Fewer than NEAR_EMPTY_BELOW watched: the bubble stays open, the mochi squishes and the sign wiggles. */
   nearEmpty: boolean
   onOpen: () => void
 }
 
+/** "shows" or "manga", for `count` of them. */
+const titlesWord = (mediaType: MediaType, count: number) => (mediaType === 'MANGA' ? 'manga' : pluralWord(count, 'show'))
+
 /** What the bubble beside the mochi says. */
-function bubbleText({ sign, watched, nearEmpty }: StartCatchUp): string {
+function bubbleText({ mediaType, sign, watched, nearEmpty }: StartCatchUp): string {
   if (sign.kind === 'failed') return `(｡•́︿•̀｡) ${sign.count} didn’t save… tap me to retry`
   if (nearEmpty && watched !== null) {
-    return watched === 0 ? '(｡•́︿•̀｡) no shows yet? let’s add some!' : `(｡•́︿•̀｡) only ${watched} ${pluralWord(watched, 'show')}? let’s add more!`
+    return watched === 0
+      ? `(｡•́︿•̀｡) no ${titlesWord(mediaType, 2)} yet? let’s add some!`
+      : `(｡•́︿•̀｡) only ${watched} ${titlesWord(mediaType, watched)}? let’s add more!`
   }
-  return 'Add shows you’ve already watched'
+  return mediaType === 'MANGA' ? 'Add manga you’ve already read' : 'Add shows you’ve already watched'
 }
 
 function SignText({ sign }: { sign: StartSign }) {
   switch (sign.kind) {
-    case 'asleep':
-      return <>anime only</>
     case 'saving':
       return (
         <>
@@ -44,29 +50,22 @@ function SignText({ sign }: { sign: StartSign }) {
   }
 }
 
-const FACE = { 'catch-up': 'ok', saving: 'ok', failed: 'sad', asleep: 'sleep' } as const
+const FACE = { 'catch-up': 'ok', saving: 'ok', failed: 'sad' } as const
 
 /**
  * Catch-up's entry on Start (#52, UI decisions on #37): a pink mochi melted over the Start card's top-right corner,
- * holding a sign in both paws. Tapping it opens Catch-up; while Manga is selected it sleeps and can't be tapped.
+ * holding a sign in both paws. Tapping it opens Catch-up on the selected Media Type.
  */
 export function StartMochi(props: StartCatchUp) {
   const { sign, nearEmpty } = props
-  const asleep = sign.kind === 'asleep'
-  const label = asleep
-    ? 'Catch-up is anime only'
-    : sign.kind === 'failed'
+  const label =
+    sign.kind === 'failed'
       ? `Catch-up: ${sign.count} ${pluralWord(sign.count, 'title')} didn’t save. Open Catch-up to retry.`
-      : 'Catch-up: add anime you’ve already watched'
+      : props.mediaType === 'MANGA'
+        ? 'Catch-up: add manga you’ve already read'
+        : 'Catch-up: add anime you’ve already watched'
   return (
-    <button
-      className={nearEmpty && !asleep ? 'mochi near-empty' : 'mochi'}
-      data-face={FACE[sign.kind]}
-      disabled={asleep}
-      aria-label={label}
-      title={asleep ? 'Catch-up is anime only' : undefined}
-      onClick={props.onOpen}
-    >
+    <button className={nearEmpty ? 'mochi near-empty' : 'mochi'} data-face={FACE[sign.kind]} aria-label={label} onClick={props.onOpen}>
       <svg className="body" width="140" height="140" viewBox="0 0 140 140" aria-hidden="true">
         {/* A dome above the corner; the lip melts over the card's top edge (y=58), a drip runs down its right edge. */}
         <path
@@ -87,16 +86,7 @@ export function StartMochi(props: StartCatchUp) {
           <path d="M77 41 q5 -4 10 0" className="ink thin" />
           <path d="M114 16 q4 6 0 8 q-4 -2 0 -8 z" className="tear" />
         </g>
-        <g className="face sleep">
-          <path d="M65 31 q5 4 10 0 M89 31 q5 4 10 0" className="ink thin" />
-          <path d="M79 39 q3 2 6 0" className="ink thin" />
-        </g>
       </svg>
-      {asleep && (
-        <span className="zzz" aria-hidden="true">
-          z z Z
-        </span>
-      )}
       <span className={`sign ${sign.kind}`} aria-hidden="true">
         <SignText sign={sign} />
       </span>
@@ -104,11 +94,9 @@ export function StartMochi(props: StartCatchUp) {
         <ellipse cx="12" cy="7" rx="8" ry="6" className="ink fill-mochi" />
         <ellipse cx="62" cy="7" rx="8" ry="6" className="ink fill-mochi" />
       </svg>
-      {!asleep && (
-        <span className="bubble" aria-hidden="true">
-          {bubbleText(props)}
-        </span>
-      )}
+      <span className="bubble" aria-hidden="true">
+        {bubbleText(props)}
+      </span>
     </button>
   )
 }

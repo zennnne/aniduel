@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ListEntry, ListStatus } from '../../anilist/types.ts'
 import { anchorsOf } from '../../pool/anchors.ts'
 import { KEEP_MY_SCALE, replay, startLog, startKeepMyScaleLog, type DuelLog } from '../../ranking/engine.ts'
-import { animeStanding, startView, type StartInput } from './startView.ts'
+import { standing, startView, type StartInput } from './startView.ts'
 
 let nextId = 1
 const entry = (oldScore100: number, status: ListStatus = 'COMPLETED'): ListEntry => ({
@@ -43,7 +43,7 @@ describe("Start's view while the list is loading", () => {
     const start = view({})
     expect(start).toMatchObject({ pool: null, oldScores: null, anchors: null, eligibility: null, startOrder: null, scoresPlan: null })
     expect(start.form).toMatchObject({ poolDuels: null, extraDuels: null, keepMyScale: { count: null, enabled: false, reason: null, anchors: 0 } })
-    expect(animeStanding(start)).toBeNull()
+    expect(standing(start)).toBeNull()
   })
 })
 
@@ -180,23 +180,23 @@ describe('a saved Ranking', () => {
   })
 })
 
-describe('where the anime stands for the exit offer', () => {
+describe('where the list stands for the exit offer', () => {
   it("is Start's own Keep My Scale count and eligibility", () => {
     const { list } = scoredList(5)
     const start = view({ list })
-    expect(animeStanding(start)).toEqual({ eligibleForKeepMyScale: true, unscored: start.form.keepMyScale.count, saved: 'none' })
+    expect(standing(start)).toEqual({ eligibleForKeepMyScale: true, unscored: start.form.keepMyScale.count, saved: 'none' })
   })
 
   it('says which Ranking is saved', () => {
     const { anchors, fresh, list } = scoredList(3)
     const other = replayed(startLog({ ...header, ids: ids(list) }))
     const keepMyScale = replayed(startKeepMyScaleLog({ ...header, format: 'POINT_10', anchors: anchorsOf(anchors, 'POINT_10'), ids: ids(fresh) }))
-    expect(animeStanding(view({ list, saved: other }))).toMatchObject({ saved: 'other', unscored: 3 })
-    expect(animeStanding(view({ list, saved: keepMyScale }))).toMatchObject({ saved: 'keep-my-scale', unscored: 3 })
+    expect(standing(view({ list, saved: other }))).toMatchObject({ saved: 'other', unscored: 3 })
+    expect(standing(view({ list, saved: keepMyScale }))).toMatchObject({ saved: 'keep-my-scale', unscored: 3 })
   })
 
   it("is unknown while the saved progress can't be used", () => {
-    expect(animeStanding(view({ list: scoredList(3).list, savedBroken: true }))).toBeNull()
+    expect(standing(view({ list: scoredList(3).list, savedBroken: true }))).toBeNull()
   })
 })
 

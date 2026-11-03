@@ -1,9 +1,8 @@
 // Catch-up's entry on Start (#52): when the mochi asks for more titles, and what its sign says.
 import { describe, expect, it } from 'vitest'
-import type { ListStatus } from '../anilist/types.ts'
-import type { WriteStatus } from '../writes/writeQueue.ts'
+import type { ListStatus, MediaType } from '../anilist/types.ts'
+import type { WriteQueueSnapshot, WriteStatus } from '../writes/writeQueue.ts'
 import { isNearEmpty, NEAR_EMPTY_BELOW, startSign } from './entry.ts'
-import type { QueueSnapshot } from './queue.ts'
 
 const listOf = (...statuses: ListStatus[]) => statuses.map((status, i) => ({ mediaId: i + 1, status }))
 const completed = (n: number) => listOf(...Array.from({ length: n }, () => 'COMPLETED' as const))
@@ -26,12 +25,22 @@ describe('a near-empty list', () => {
   })
 })
 
-/** A queue snapshot whose writes have these statuses. */
-function queueOf(running: boolean, ...statuses: WriteStatus[]): QueueSnapshot {
-  const writes = statuses.map((status, i) => ({ mediaId: i + 1, listStatus: 'COMPLETED' as const, name: `Title ${i + 1}`, status }))
-  return { state: { writes }, running, status: null }
+/** The write queue with Catch-up writes of these statuses, all of `mediaType` (anime unless given). */
+function queueOf(running: boolean, ...statuses: WriteStatus[]): WriteQueueSnapshot {
+  return queueWith(running, statuses.map((status) => ['ANIME', status] as const))
 }
-const NOTHING_SAVED: QueueSnapshot = { state: null, running: false, status: null }
+function queueWith(running: boolean, writes: ReadonlyArray<readonly [MediaType, WriteStatus]>): WriteQueueSnapshot {
+  return {
+    state: {
+      imports: [],
+      writes: writes.map(([mediaType, status], i) => ({ mediaType, mediaId: i + 1, listStatus: 'COMPLETED', name: `Title ${i + 1}`, status })),
+    },
+    running,
+    status: null,
+    released: [],
+  }
+}
+const NOTHING_SAVED: WriteQueueSnapshot | null = null
 
 describe('the sign on Start', () => {
   it('invites to Catch-up while nothing is being saved', () => {
@@ -51,8 +60,25 @@ describe('the sign on Start', () => {
     expect(startSign('ANIME', queueOf(true, 'failed', 'done', 'pending'))).toEqual({ kind: 'saving', saved: 1, total: 2 })
   })
 
-  it('sleeps while Manga is selected, whatever the queue is doing', () => {
-    expect(startSign('MANGA', NOTHING_SAVED)).toEqual({ kind: 'asleep' })
-    expect(startSign('MANGA', queueOf(false, 'failed'))).toEqual({ kind: 'asleep' })
+  it('is awake on Manga too', () => {
+    expect(startSign('MANGA', NOTHING_SAVED)).toEqual({ kind: 'catch-up' })
+  })
+
+  it('counts only the writes of the selected Media Type', () => {
+    const queue = queueWith(true, [
+      ['ANIME', 'failed'],
+      ['ANIME', 'failed'],
+      ['MANGA', 'done'],
+      ['MANGA', 'pending'],
+    ])
+    expect(startSign('MANGA', queue)).toEqual({ kind: 'saving', saved: 1, total: 2 })
+
+    const stopped = queueWith(false, [
+      ['ANIME', 'failed'],
+      ['ANIME', 'failed'],
+      ['MANGA', 'done'],
+    ])
+    expect(startSign('MANGA', stopped)).toEqual({ kind: 'catch-up' })
+    expect(startSign('ANIME', stopped)).toEqual({ kind: 'failed', count: 2 })
   })
 })

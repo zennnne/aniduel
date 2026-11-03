@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { CatchUpMedia, Era } from '../anilist/candidates.ts'
-import { fakeAniList, fakeClock } from '../anilist/fakeAniList.ts'
+import { fakeAniList, fakeClock, START } from '../anilist/fakeAniList.ts'
 import { AniListError, createAniListGateway, type AniListGateway } from '../anilist/gateway.ts'
-import type { ListEntry, ListStatus, Viewer } from '../anilist/types.ts'
+import type { ListEntry, ListStatus, MediaType, Viewer } from '../anilist/types.ts'
 import { memoryStorage } from '../persistence/memoryStorage.ts'
 import { loadWriteQueue, SaveError, saveWriteQueue } from '../persistence/progress.ts'
 import { createWriteQueue, type WriteQueueState } from '../writes/writeQueue.ts'
 import { createPassedStore } from './passed.ts'
+import { NEAR_EMPTY_BELOW } from './entry.ts'
 import { createStartingEraStore } from './startingEra.ts'
 import type { CandidateSource } from './suggestionCandidates.ts'
 import { createCatchUpVisit, type CatchUpVisit, type CatchUpVisitSnapshot } from './visit.ts'
@@ -60,28 +61,40 @@ const popularInEra = (era: Era | null) =>
 const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 /** A fake AniList for the candidates: knows `catalog`, records what was asked, and can hold its answers back. */
-function fakeSource(catalog: CatchUpMedia[], popular: (era: Era | null) => CatchUpMedia[]) {
+function fakeSource(catalog: CatchUpMedia[], popular: (era: Era | null) => CatchUpMedia[], favourites: number[] = []) {
   const byId = new Map(catalog.map((m) => [m.id, m]))
   const asked: number[][] = []
   const eras: Array<Era | null> = []
+  /** The Media Type of each read, `media` and `popular` alike. */
+  const types: MediaType[] = []
+  /** The users whose favourite anime were read. */
+  const favouritesOf: number[] = []
   let held: Promise<void> | null = null
   let release = () => {}
   const source: CandidateSource = {
-    media: async (ids) => {
+    media: async (ids, mediaType) => {
       asked.push([...ids])
+      types.push(mediaType)
       await held
       return ids.flatMap((id) => byId.get(id) ?? [])
     },
-    popular: async (era) => {
+    popular: async (era, mediaType) => {
       eras.push(era)
+      types.push(mediaType)
       await held
       return popular(era)
+    },
+    favouriteAnime: async (userId) => {
+      favouritesOf.push(userId)
+      return favourites
     },
   }
   return {
     source,
     asked,
     eras,
+    types,
+    favouritesOf,
     /** Reads asked from now on don't answer until `release`. */
     hold: () => void (held = new Promise((resolve) => (release = resolve))),
     release: () => {
@@ -107,6 +120,8 @@ function setup(
     statuses?: Record<number, ListStatus>
     /** The anime list as the app has already read it. */
     appList?: ListEntry[]
+    /** The user's favourite anime. */
+    favourites?: number[]
   } = {},
 ) {
   const clock = fakeClock()
@@ -133,24 +148,23 @@ function setup(
   })
   const gateway: AniListGateway =
     options.listFails === undefined ? real : { ...real, mediaList: () => Promise.reject(options.listFails) }
-  const candidates = fakeSource(options.catalog ?? [], options.popular ?? (() => FILLER))
-  const passedStore = createPassedStore(storage, USER)
+  const candidates = fakeSource(options.catalog ?? [], options.popular ?? (() => FILLER), options.favourites)
+  const passedStore = createPassedStore(storage, USER, 'ANIME')
 
   let viewer: Viewer | null = { id: USER, name: 'zen', avatarUrl: null, titleLanguage: 'ROMAJI', scoreFormat: 'POINT_10' }
   let seeds = 0
   // The app's reads of the anime list after a run: each ends when the test says so.
-  const listReads: Array<{ written: number[]; end: () => void }> = []
+  const listReads: Array<{ written: number[]; mediaType: MediaType; end: () => void }> = []
   const visit = createCatchUpVisit(() => ({
     storage,
     gateway: viewer && gateway,
-    animeList: options.appList ?? null,
+    lists: { ANIME: options.appList ?? null, MANGA: null },
     source: viewer && candidates.source,
     viewer,
-    passedStore,
     clock,
     seed: () => ++seeds,
     onGatewayError: (e) => errors.push(e),
-    onWritten: (written) => new Promise<void>((end) => listReads.push({ written, end })),
+    onWritten: (written, mediaType) => new Promise<void>((end) => listReads.push({ written, mediaType, end })),
   }))
   const detach = visit.attach(queue)
   const seen: CatchUpVisitSnapshot[] = []
@@ -165,13 +179,15 @@ function setup(
     detach,
     candidates,
     passedStore,
+    mangaPassedStore: createPassedStore(storage, USER, 'MANGA'),
     errors,
     saveRefusals,
     /** The browser refuses to save the write queue from now on. */
     refuseQueueSaves: () => void (refusing = true),
     seen,
     listReads,
-    eraStore: createStartingEraStore(storage, USER),
+    eraStore: createStartingEraStore(storage, USER, 'ANIME'),
+    mangaEraStore: createStartingEraStore(storage, USER, 'MANGA'),
     logOut: () => {
       queue.stop()
       viewer = null
@@ -634,5 +650,197 @@ describe('the write queue', () => {
     app.detach()
 
     expect(app.visit.snapshot().queue).toEqual({ state: null, running: false, status: null })
+  })
+})
+
+describe('a manga visit', () => {
+  it('reads the manga list and suggests manga', async () => {
+    const app = setup({ listed: LONG_LIST })
+
+    await app.visit.open('MANGA')
+
+    expect(app.visit.snapshot().mediaType).toBe('MANGA')
+    expect(app.aniList.listReads.map((r) => r.type)).toContain('MANGA')
+    expect(new Set(app.candidates.types)).toEqual(new Set(['MANGA']))
+    expect(idsOf(app.visit)).toHaveLength(20)
+  })
+
+  it('offers Reading between Completed and Paused, and a tap cycles in that order', async () => {
+    const app = setup({ listed: LONG_LIST })
+    await app.visit.open('MANGA')
+    expect(app.visit.snapshot().marks).toEqual(['COMPLETED', 'CURRENT', 'PAUSED', 'DROPPED', 'PLANNING'])
+    const [id] = idsOf(app.visit)
+
+    const marks: Array<string | undefined> = []
+    for (let i = 0; i < 6; i++) {
+      app.visit.cycle(id)
+      marks.push(batchOf(app.visit).marks.get(id))
+    }
+
+    expect(marks).toEqual(['COMPLETED', 'CURRENT', 'PAUSED', 'DROPPED', 'PLANNING', undefined])
+  })
+
+  it('leaves the anime marks as they were, without Reading', async () => {
+    const app = setup({ listed: LONG_LIST })
+    await app.visit.open()
+
+    expect(app.visit.snapshot().marks).toEqual(['COMPLETED', 'DROPPED', 'PLANNING', 'PAUSED'])
+    app.visit.mark(idsOf(app.visit)[0], 'CURRENT')
+    expect(batchOf(app.visit).marks.size).toBe(0)
+  })
+
+  it('saves Reading as Current, tagged Manga, and has the app read the manga list again', async () => {
+    const app = setup({ listed: LONG_LIST })
+    await app.visit.open('MANGA')
+    const [reading, completed] = idsOf(app.visit)
+    app.visit.mark(reading, 'CURRENT')
+    app.visit.mark(completed, 'COMPLETED')
+
+    app.visit.saveAndNext()
+
+    expect(app.queue.snapshot().state.writes).toEqual([
+      expect.objectContaining({ mediaType: 'MANGA', mediaId: reading, listStatus: 'CURRENT' }),
+      expect.objectContaining({ mediaType: 'MANGA', mediaId: completed, listStatus: 'COMPLETED' }),
+    ])
+    expect(app.visit.snapshot().added).toBe(2)
+
+    await app.queue.idle()
+    await settle()
+
+    expect(app.aniList.writes.map(({ mediaId, status }) => ({ mediaId, status }))).toEqual([
+      { mediaId: reading, status: 'CURRENT' },
+      { mediaId: completed, status: 'COMPLETED' },
+    ])
+    expect(app.listReads.map(({ written, mediaType }) => ({ written, mediaType }))).toEqual([
+      { written: [reading, completed], mediaType: 'MANGA' },
+    ])
+  })
+
+  it('counts Reading as watched toward the near-empty list', async () => {
+    // One watched title short of the threshold: a Reading title more and the list is past it.
+    const listed = Object.fromEntries(range(NEAR_EMPTY_BELOW.MANGA - 1).map((i) => [100 + i, 0]))
+    const app = setup({ listed, popular: popularInEra })
+    await app.visit.open('MANGA')
+    await app.visit.answerStartingEra(2012)
+    expect(app.visit.snapshot().startingEraLabel).toBe('around 2012')
+
+    app.visit.mark(idsOf(app.visit)[0], 'CURRENT')
+    app.visit.saveAndNext()
+
+    expect(app.visit.snapshot().startingEraLabel).toBeNull()
+  })
+
+  it('shows only its own Media Type’s writes, and Retry retries only them', async () => {
+    const savedQueue: WriteQueueState = {
+      imports: [],
+      writes: [{ mediaType: 'ANIME', mediaId: 1039, listStatus: 'COMPLETED', name: 'Anime 1039', status: 'failed', error: 'network error' }],
+    }
+    const app = setup({ listed: LONG_LIST, savedQueue })
+    await app.visit.open('MANGA')
+    expect(app.visit.snapshot().queue.state).toBeNull()
+
+    app.visit.mark(idsOf(app.visit)[0], 'COMPLETED')
+    app.aniList.script.push({ kind: 'api', status: 500 })
+    app.visit.saveAndNext()
+    await app.queue.idle()
+    expect(app.visit.snapshot().queue.state?.writes.map((w) => w.status)).toEqual(['failed'])
+
+    app.visit.retryWrites()
+    await app.queue.idle()
+
+    expect(app.visit.snapshot().queue.state?.writes.map((w) => w.status)).toEqual(['done'])
+    expect(app.queue.snapshot().state.writes.find((w) => w.mediaType === 'ANIME')?.status).toBe('failed')
+  })
+
+  it('keeps Passed titles apart from anime’s, and Clear Passed leaves the other Media Type alone', async () => {
+    const app = setup({ listed: LONG_LIST })
+    app.passedStore.record([1039], START)
+    await app.visit.open('MANGA')
+    // A title Passed on anime is still a manga suggestion.
+    expect(idsOf(app.visit)).toContain(1039)
+    const shown = idsOf(app.visit)
+
+    app.visit.saveAndNext()
+
+    expect([...app.mangaPassedStore.history().keys()].sort()).toEqual([...shown].sort())
+    expect([...app.passedStore.history().keys()]).toEqual([1039])
+
+    app.visit.clearPassed('MANGA')
+    expect(app.mangaPassedStore.history().size).toBe(0)
+    expect(app.passedStore.history().size).toBe(1)
+
+    app.mangaPassedStore.record([1038], START)
+    app.visit.clearPassed('ANIME')
+    expect(app.passedStore.history().size).toBe(0)
+    expect(app.mangaPassedStore.history().size).toBe(1)
+  })
+
+  it('asks its own Starting era, whatever anime’s answer is', async () => {
+    const app = setup({ popular: popularInEra })
+    app.eraStore.save(2005)
+
+    await app.visit.open('MANGA')
+
+    expect(app.visit.snapshot().view).toMatchObject({ phase: 'era', answer: undefined })
+    await app.visit.answerStartingEra(2018)
+
+    expect(app.mangaEraStore.answer()).toBe(2018)
+    expect(app.eraStore.answer()).toBe(2005)
+    expect(app.visit.snapshot().startingEraLabel).toBe('around 2018')
+    expect(yearsOf(app.visit)).toEqual([2018])
+  })
+
+  it('reads the anime list and the favourite anime for the anime signal', async () => {
+    const app = setup({ listed: LONG_LIST, favourites: [100] })
+
+    await app.visit.open('MANGA')
+
+    expect(app.aniList.listReads.map((r) => r.type).sort()).toEqual(['ANIME', 'MANGA'])
+    expect(app.candidates.favouritesOf).toEqual([USER])
+  })
+
+  it('goes on without the anime signal when the favourite anime can’t be read', async () => {
+    const app = setup({ listed: LONG_LIST })
+    app.candidates.source.favouriteAnime = () => Promise.reject(new AniListError('unreachable', 'AniList can’t be reached'))
+
+    await app.visit.open('MANGA')
+
+    expect(idsOf(app.visit)).toHaveLength(20)
+  })
+
+  it('takes the anime list the app has read instead of reading it again', async () => {
+    const real = createAniListGateway({ fetch: fakeAniList(fakeClock(), LONG_LIST).fetch, token: 't' })
+    const appList = await real.mediaList({ userId: USER, type: 'ANIME', statuses: ['COMPLETED'] })
+    const app = setup({ listed: LONG_LIST, appList })
+
+    await app.visit.open('MANGA')
+
+    expect(app.aniList.listReads.map((r) => r.type)).toEqual(['MANGA'])
+  })
+
+  it('is the only one to read anything for the anime signal', async () => {
+    const app = setup({ listed: LONG_LIST })
+
+    await app.visit.open('ANIME')
+
+    expect(app.candidates.favouritesOf).toEqual([])
+  })
+
+  it('opened after an anime visit starts afresh for manga, and anime starts afresh after it', async () => {
+    const app = setup({ listed: LONG_LIST })
+    await app.visit.open('ANIME')
+    app.visit.cycle(idsOf(app.visit)[0])
+
+    await app.visit.open('MANGA')
+
+    expect(app.visit.snapshot().mediaType).toBe('MANGA')
+    expect(batchOf(app.visit)).toMatchObject({ number: 1, marks: new Map() })
+    expect(app.candidates.types.at(-1)).toBe('MANGA')
+
+    await app.visit.open('ANIME')
+
+    expect(app.visit.snapshot().mediaType).toBe('ANIME')
+    expect(batchOf(app.visit).marks.size).toBe(0)
+    expect(app.candidates.types.at(-1)).toBe('ANIME')
   })
 })

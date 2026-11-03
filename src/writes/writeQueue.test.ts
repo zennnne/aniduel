@@ -90,7 +90,7 @@ const mark = (mediaId: number, listStatus: ListStatus = 'COMPLETED'): CatchUpWri
 const marks = [mark(11), mark(12, 'DROPPED'), mark(13, 'PLANNING')]
 
 /** Catch-up's view of the queue's writes. */
-const catchUp = (queue: WriteQueue) => catchUpSnapshot(queue.snapshot())
+const catchUp = (queue: WriteQueue) => catchUpSnapshot(queue.snapshot(), 'ANIME')
 
 describe('Write queue: throttle', () => {
   it('writes every planned score one at a time, about 2.2 s apart', async () => {
@@ -200,8 +200,8 @@ describe('Write queue: a save the browser refuses', () => {
     queue.addStatuses([mark(13)], 'ANIME')
     await queue.idle()
     refuseSaves()
-    queue.retryStatuses()
-    queue.retryStatuses()
+    queue.retryStatuses('ANIME')
+    queue.retryStatuses('ANIME')
 
     expect(refusals).toEqual([0, 1, 3])
   })
@@ -407,7 +407,7 @@ describe('Write queue: Catch-up pages', () => {
     const { aniList, queue } = setup({})
     const progress: unknown[] = []
     queue.subscribe((snap) => {
-      const state = catchUpSnapshot(snap).state
+      const state = catchUpSnapshot(snap, 'ANIME').state
       if (state) progress.push(queueProgress(state))
     })
 
@@ -450,11 +450,26 @@ describe('Write queue: Catch-up pages', () => {
     await queue.idle()
     expect(queueProgress(catchUp(queue).state!).failed.map((w) => w.name)).toEqual(['Anime 2'])
 
-    queue.retryStatuses()
+    queue.retryStatuses('ANIME')
     await queue.idle()
 
     expect(aniList.writes.map((w) => w.mediaId)).toEqual([1, 3, 2])
     expect(queueProgress(catchUp(queue).state!).failed).toEqual([])
+  })
+
+  it('retries the failed writes of one Media Type, and shows each Media Type only its own', async () => {
+    const { aniList, queue } = setup({})
+    aniList.script.push({ kind: 'network' }, { kind: 'network' })
+    queue.addStatuses([mark(1)], 'ANIME')
+    queue.addStatuses([mark(2)], 'MANGA')
+    await queue.idle()
+
+    queue.retryStatuses('MANGA')
+    await queue.idle()
+
+    expect(aniList.writes.map((w) => w.mediaId)).toEqual([2])
+    expect(queueProgress(catchUpSnapshot(queue.snapshot(), 'MANGA').state!).failed).toEqual([])
+    expect(queueProgress(catchUp(queue).state!).failed).toEqual([mark(1)])
   })
 
   it('keeps failed writes waiting for Retry when a new page is saved', async () => {

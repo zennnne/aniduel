@@ -15,15 +15,15 @@ function create(env: SessionEnv, events: SessionEvents) {
 /**
  * The AniList session (#78) at App level: one module for as long as the app is open, its state on every change, and
  * what it tells the app as of the latest render. It reads the Viewer once there is a login, then the lists the app
- * needs: the selected Media Type's, and with `animeToo` the anime list as well.
+ * needs: the selected Media Type's, and those in `alsoNeeded` as well.
  */
 export function useAniListSession({
   storage,
   fake,
   mediaType,
-  animeToo,
+  alsoNeeded,
   ...events
-}: SessionEvents & { storage: Storage; fake?: AniListSession; mediaType: MediaType; animeToo: boolean }) {
+}: SessionEvents & { storage: Storage; fake?: AniListSession; mediaType: MediaType; alsoNeeded: readonly MediaType[] }) {
   const [{ session, provide }] = useState(() =>
     create({ storage, location: window.location, history: window.history, fetch: browserFetch, clock: browserClock, fake }, events),
   )
@@ -32,6 +32,8 @@ export function useAniListSession({
   const snapshot = useSyncExternalStore(session.subscribe, session.snapshot)
   const { viewer } = snapshot
   // Said again once the Viewer is known: the Media Type to open is only chosen then.
-  useEffect(() => session.need(animeToo ? [mediaType, 'ANIME'] : [mediaType]), [session, viewer, mediaType, animeToo])
+  // A key, so a new array of the same Media Types each render doesn't ask again.
+  const needed = [...new Set([mediaType, ...alsoNeeded])].join(',')
+  useEffect(() => session.need(needed.split(',') as MediaType[]), [session, viewer, needed])
   return { ...session, ...snapshot }
 }

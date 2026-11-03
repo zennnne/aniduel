@@ -67,7 +67,7 @@ import { Screens } from './Screens.tsx'
 import { Shell, type Notice } from './Shell.tsx'
 import { SCREENS, rankingShown, shownScreen, splitBandOf, type Screen } from './shownScreen.ts'
 import { useKeepMyScaleFlow } from './picker/useKeepMyScaleFlow.ts'
-import { animeStanding, startView, type StartView } from './start/startView.ts'
+import { standing, startView, type StartView } from './start/startView.ts'
 import { useTheme } from './theme.ts'
 import { useAniListSession } from './useAniListSession.ts'
 import { useDuelLog } from './useDuelLog.ts'
@@ -123,14 +123,16 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   // The Sort Goal the user picked on Start for a new Ranking (#28), or null while they haven't touched it and it
   // follows the Pool size (#38). A saved Ranking's goal lives in its log. Not reset on logout: logging in again loads the page anew.
   const [pickedGoal, setPickedGoal] = useState<SortGoal | null>(null)
+  // The Media Type Catch-up was last opened on (#95): the selected one, which may change while Catch-up shows.
+  const [catchUpType, setCatchUpType] = useState<MediaType>('ANIME')
 
-  // The login, the Viewer and the lists: the selected Media Type's, and in Catch-up the anime list too, where its exit
-  // offer checks the Anchors (#52).
+  // The login, the Viewer and the lists: the selected Media Type's, and in Catch-up its Media Type's too, where its exit
+  // offer checks the Anchors (#52), with the anime list for manga's anime signal.
   const aniList = useAniListSession({
     storage,
     fake,
     mediaType,
-    animeToo: screen === 'catchup',
+    alsoNeeded: screen === 'catchup' ? [catchUpType, 'ANIME'] : [],
     onViewer: openLastRanking,
     onListRead: syncFetched,
     onExpired: loginExpired,
@@ -168,8 +170,11 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   const entries = useMemo(() => new Map((list ?? []).map((e) => [e.mediaId, e])), [list])
   // Start's collage: the Pool's covers, the list's until there is a Pool, the trending ones before login.
   const covers = useMemo(() => pool?.titles ?? list?.filter(isWatched) ?? trending, [pool, list, trending])
-  // The anime list without its Planning titles, as Catch-up reads it (it reads Planning itself, fresh).
-  const watchedAnime = useMemo(() => lists.ANIME?.filter(isWatched) ?? null, [lists.ANIME])
+  // The lists without their Planning titles, as Catch-up reads them (it reads Planning itself, fresh).
+  const watchedLists = useMemo(
+    () => ({ ANIME: lists.ANIME?.filter(isWatched) ?? null, MANGA: lists.MANGA?.filter(isWatched) ?? null }),
+    [lists.ANIME, lists.MANGA],
+  )
 
   // The way into a Keep My Scale Ranking, from the Picker to the Import that ends it.
   const keepMyScale = useKeepMyScaleFlow({
@@ -218,20 +223,18 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   // The titles the last Keep My Scale Ranking left unsettled, for this user and Media Type (#66).
   const unsettledStore = useMemo(() => (viewerId === null ? null : createUnsettledStore(storage, { userId: viewerId, mediaType })), [storage, viewerId, mediaType])
 
-  const passedStore = useMemo(() => (viewerId === null ? undefined : createPassedStore(storage, viewerId)), [storage, viewerId])
   const catchUp = useCatchUp({
     storage,
-    passedStore,
     gateway,
-    animeList: watchedAnime,
+    lists: watchedLists,
     queue: writes.queue,
     source: candidateSource,
     viewer,
     clock: browserClock,
     seed: newSeed,
     onGatewayError: aniList.failed,
-    // Titles Catch-up added can join the anime Pool: read the list again, which syncs a saved Ranking.
-    onWritten: () => aniList.refresh('ANIME'),
+    // Titles Catch-up added can join their Pool: read their list again, which syncs a saved Ranking.
+    onWritten: (_, type) => aniList.refresh(type),
   })
 
   const needTrending = !token && trending.length === 0
@@ -680,31 +683,36 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
     if (!openRanking({ userId: viewer.id, mediaType: type }, inRankingNow) && inRankingNow) goTo('start')
   }
 
-  /** Catch-up, from the menu or the mochi on Start: anime only, whichever Ranking is open. */
+  /** Catch-up, from the menu or the mochi on Start: on the selected Media Type, the open Ranking's. */
   function openCatchUp() {
+    setCatchUpType(mediaType)
     if (screen !== 'catchup') goTo('catchup')
-    void catchUp.open()
+    void catchUp.open(mediaType)
   }
+
+  // The Media Type in view, whose Passed titles Clear Passed clears: in Catch-up its own, elsewhere the selected one.
+  const passedType = screen === 'catchup' ? catchUp.mediaType : mediaType
 
   /** Runs only after the user confirmed in the Clear Passed dialog. */
   function clearPassed() {
-    catchUp.clearPassed()
-    showToast('Catch-up’s Passed list is cleared')
+    catchUp.clearPassed(passedType)
+    showToast(`Catch-up’s ${MEDIA_LABEL[passedType]} Passed list is cleared`)
   }
 
   /**
-   * Leaving Catch-up through its exit offer, on anime. A Keep My Scale offer opens the Picker with every unscored
+   * Leaving Catch-up through its exit offer, on its Media Type. A Keep My Scale offer opens the Picker with every unscored
    * Completed and Repeating title ticked (#65), asking first about remembered unsettled titles (#66); Keep My Scale
    * is picked so Back leads to Start with it selected, and Confirm asks to replace a Ranking on another Sort Goal.
    * Otherwise on to Start: nothing is picked so the Sort Goal follows the Pool size (#38); a saved Ranking shows as it is.
    */
   function takeExitOffer(offer: ExitOffer) {
-    switchMediaType('ANIME')
+    const type = catchUp.mediaType
+    switchMediaType(type)
     if (offer.target === 'picker') {
       setPickedGoal(KEEP_MY_SCALE)
       // Start goes into the history under the Picker, so Back from the Picker lands there.
       goTo('start')
-      keepMyScale.openPicker({ from: 'catch-up' }, 'ANIME')
+      keepMyScale.openPicker({ from: 'catch-up' }, type)
       return
     }
     if (offer.target === 'default-sort-goal') setPickedGoal(null)
@@ -712,7 +720,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
   }
 
   const hasProgress = Boolean(log) || savedBroken
-  const passedHidden = passedStore?.hiddenCount(browserClock.now()) ?? 0
+  const passedHidden = viewerId === null ? 0 : createPassedStore(storage, viewerId, passedType).hiddenCount(browserClock.now())
   const menuItems = viewer
     ? buildMenuItems(
         { mediaType, statuses, hasLog: Boolean(log), hasProgress, ranking, choosingBand: screen === 'bands', splitOffers: offers, passedHidden },
@@ -771,21 +779,23 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
         onChooseTitles: savedBroken ? undefined : () => keepMyScale.openPicker({ from: 'start' }),
         onRestore: () => setDialog('restore'),
         catchUp: {
-          sign: startSign(mediaType, catchUp.queue),
-          watched: mediaType === 'ANIME' && list ? watchedCount(list) : null,
-          nearEmpty: mediaType === 'ANIME' && list ? isNearEmpty(list, mediaType) : false,
+          mediaType,
+          sign: startSign(mediaType, writes.snapshot),
+          watched: list ? watchedCount(list) : null,
+          nearEmpty: list ? isNearEmpty(list, mediaType) : false,
           onOpen: openCatchUp,
         },
       }
     : null
-  // Catch-up's exit offer (#52) is about anime, whichever Media Type is selected: on Manga, the anime Ranking and
-  // statuses are the saved ones.
-  const animeList = lists.ANIME
-  const savedAnimeStart = useMemo((): StartView | null => {
-    if (mediaType === 'ANIME' || viewerId === null || !viewerFormat || !titleLanguage) return null
-    const saved = lifecycle.saved({ userId: viewerId, mediaType: 'ANIME' })
+  // Catch-up's exit offer (#52) is about the visit's Media Type, whichever is selected: on the other one, its Ranking
+  // and statuses are the saved ones.
+  const visitType = catchUp.mediaType
+  const visitList = lists[visitType]
+  const savedVisitStart = useMemo((): StartView | null => {
+    if (visitType === mediaType || viewerId === null || !viewerFormat || !titleLanguage) return null
+    const saved = lifecycle.saved({ userId: viewerId, mediaType: visitType })
     return startView({
-      list: animeList ?? null,
+      list: visitList ?? null,
       statuses: saved.statuses,
       scoreFormat: viewerFormat,
       titleLanguage,
@@ -793,10 +803,10 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
       saved: saved.kind === 'usable' ? { log: saved.log, ranking: saved.ranking } : null,
       savedBroken: saved.kind === 'unusable',
     })
-  }, [lifecycle, mediaType, viewerId, viewerFormat, titleLanguage, animeList])
-  const animeStart = mediaType === 'ANIME' ? start : savedAnimeStart
+  }, [lifecycle, visitType, mediaType, viewerId, viewerFormat, titleLanguage, visitList])
+  const visitStart = visitType === mediaType ? start : savedVisitStart
   // The offer waits until the saves are written and the list read again, so it counts the titles just added.
-  const offer = exitOffer({ added: catchUp.added, anime: catchUp.listed && animeStart ? animeStanding(animeStart) : null })
+  const offer = exitOffer({ added: catchUp.added, standing: catchUp.listed && visitStart ? standing(visitStart) : null })
 
   // The one screen to show; everything below renders by it.
   const shown = shownScreen({

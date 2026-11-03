@@ -25,11 +25,6 @@ export function userStorageKey(userId: number, part: string): string {
   return `${userPrefix(userId)}${part}`
 }
 
-/** A part saved under the user's anime progress (Catch-up is anime only), so logout deletes it with the rest. */
-export function animeProgressKey(userId: number, part: string): ProgressKey {
-  return { userId, mediaType: 'ANIME', part }
-}
-
 /** The browser refused to save (its storage is full or blocked). What was saved before is still there. */
 export class SaveError extends Error {
   constructor() {

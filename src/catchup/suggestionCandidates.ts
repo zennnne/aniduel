@@ -4,6 +4,7 @@
 import {
   CANDIDATES_PER_REQUEST,
   fetchCatchUpMedia,
+  fetchFavouriteAnime,
   fetchPopularMedia,
   type CatchUpMedia,
   type Era,
@@ -20,6 +21,8 @@ export type CandidateSource = {
   media(ids: readonly number[], mediaType: MediaType): Promise<CatchUpMedia[]>
   /** The most popular titles of `mediaType` from the era, or all-time without one. */
   popular(era: Era | null, mediaType: MediaType): Promise<CatchUpMedia[]>
+  /** The user's favourite anime, by media id: manga Catch-up's anime signal counts them more. */
+  favouriteAnime(userId: number): Promise<number[]>
 }
 
 export type CandidateLimits = {
@@ -173,5 +176,6 @@ export function aniListCandidateSource(deps: { fetch: typeof fetch; token: strin
       return media.flat()
     },
     popular: (era, mediaType) => retry(() => fetchPopularMedia(read, mediaType, era, POPULAR_PAGES)),
+    favouriteAnime: (userId) => retry(() => fetchFavouriteAnime(read, userId)),
   }
 }

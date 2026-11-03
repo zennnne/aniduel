@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CatchUpMedia } from '../anilist/candidates.ts'
-import { cycleMark, firstBatch, markCounts, saveBatch, setMark, withQueuedWrites, type CatchUpBatch } from './batch.ts'
+import { cycleMark, firstBatch, MARKS, markCounts, saveBatch, setMark, withQueuedWrites, type CatchUpBatch } from './batch.ts'
 
 const NOW = Date.UTC(2026, 9, 8)
 
@@ -42,7 +42,7 @@ describe('Catch-up batch: marks', () => {
 
     expect(batch.number).toBe(1)
     expect(batch.suggestions).toHaveLength(20)
-    expect(markCounts(batch)).toEqual({ completed: 0, dropped: 0, planning: 0, paused: 0, passed: 20 })
+    expect(markCounts(batch)).toEqual({ COMPLETED: 0, CURRENT: 0, DROPPED: 0, PLANNING: 0, PAUSED: 0, passed: 20 })
   })
 
   it('cycles a tapped title Completed → Dropped → Planning → Paused → none', () => {
@@ -69,7 +69,29 @@ describe('Catch-up batch: marks', () => {
       [a, 'PLANNING'],
       [c, 'PAUSED'],
     ])
-    expect(markCounts(batch)).toEqual({ completed: 0, dropped: 0, planning: 1, paused: 1, passed: 18 })
+    expect(markCounts(batch)).toEqual({ COMPLETED: 0, CURRENT: 0, DROPPED: 0, PLANNING: 1, PAUSED: 1, passed: 18 })
+  })
+
+  it('cycles a manga title Completed → Reading → Paused → Dropped → Planning → none', () => {
+    let batch = start(filler(40))
+    const id = ids(batch)[0]
+    const seen: Array<string | undefined> = []
+    for (let i = 0; i < 6; i++) {
+      batch = cycleMark(batch, id, 'MANGA')
+      seen.push(batch.marks.get(id))
+    }
+
+    expect(seen).toEqual(['COMPLETED', 'CURRENT', 'PAUSED', 'DROPPED', 'PLANNING', undefined])
+    expect(MARKS.MANGA).toEqual(['COMPLETED', 'CURRENT', 'PAUSED', 'DROPPED', 'PLANNING'])
+  })
+
+  it('counts a Reading title as on the list for the next batch', () => {
+    const batch = setMark(start(filler(40)), ids(start(filler(40)))[0], 'CURRENT')
+
+    const saved = saveBatch(batch, { list: [], media: filler(40), passed: new Map(), now: 0, seed: 1 })
+
+    expect(saved.writes[0].listStatus).toBe('CURRENT')
+    expect(saved.list).toEqual([expect.objectContaining({ status: 'CURRENT' })])
   })
 
   it('ignores a title that is not in the batch', () => {
