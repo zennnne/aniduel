@@ -16,7 +16,7 @@ export const VARIANTS: readonly Variant[] = [
   { name: 'starting', weights: { ...ANIME_WEIGHTS } },
   { name: 'no tags', weights: { ...ANIME_WEIGHTS, tags: 0 } },
   { name: 'tags 0.2', weights: { ...ANIME_WEIGHTS, tags: 0.2 } },
-  { name: 'popularity only', weights: { relations: 0, recommendations: 0, popularity: 1, tags: 0, anime: 0 } },
+  { name: 'popularity only', weights: { relations: 0, recommendations: 0, popularity: 1, tags: 0, animeSignal: 0 } },
 ]
 
 /** Share of each list's watched titles hidden from the suggestion module. */
@@ -241,7 +241,7 @@ export function markdownTable(results: readonly UserResult[]): string {
 }
 
 export function describeWeights(w: CatchUpWeights): string {
-  return `relations ${w.relations} / recommendations ${w.recommendations} / popularity ${w.popularity} / tags ${w.tags} / anime ${w.anime}`
+  return `relations ${w.relations} / recommendations ${w.recommendations} / popularity ${w.popularity} / tags ${w.tags} / anime signal ${w.animeSignal}`
 }
 
 /** Evaluates each list in turn; a list that fails (private, missing user) is reported and skipped. */

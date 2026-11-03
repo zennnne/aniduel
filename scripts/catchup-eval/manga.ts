@@ -10,6 +10,7 @@ import {
   describeWeights,
   fetchPublicList,
   holdout,
+  HOLDOUT_SHARE,
   rateLimitedFetch,
   type EvalDeps,
   type EvalEntry,
@@ -18,19 +19,25 @@ import {
 
 const ANIME_WEIGHTS = CATCH_UP_WEIGHTS.ANIME
 
-/** Decided on #95: the anime weights, with the anime signal at three strengths, popularity only, recommendations ±1 step. */
+/**
+ * Decided on #95: the anime weights, with the anime signal at three strengths, popularity only, and recommendations one
+ * step (0.1) down and up.
+ */
 export const MANGA_VARIANTS: readonly Variant[] = [
-  { name: 'anime weights', weights: { ...ANIME_WEIGHTS, anime: 0 } },
-  { name: 'anime signal 0.05', weights: { ...ANIME_WEIGHTS, anime: 0.05 } },
-  { name: 'anime signal 0.10', weights: { ...ANIME_WEIGHTS, anime: 0.1 } },
-  { name: 'anime signal 0.20', weights: { ...ANIME_WEIGHTS, anime: 0.2 } },
-  { name: 'popularity only', weights: { relations: 0, recommendations: 0, popularity: 1, tags: 0, anime: 0 } },
-  { name: 'recommendations 0.2', weights: { ...ANIME_WEIGHTS, recommendations: 0.2, anime: 0 } },
-  { name: 'recommendations 0.4', weights: { ...ANIME_WEIGHTS, recommendations: 0.4, anime: 0 } },
+  { name: 'anime weights', weights: { ...ANIME_WEIGHTS, animeSignal: 0 } },
+  { name: 'anime signal 0.05', weights: { ...ANIME_WEIGHTS, animeSignal: 0.05 } },
+  { name: 'anime signal 0.10', weights: { ...ANIME_WEIGHTS, animeSignal: 0.1 } },
+  { name: 'anime signal 0.20', weights: { ...ANIME_WEIGHTS, animeSignal: 0.2 } },
+  { name: 'popularity only', weights: { relations: 0, recommendations: 0, popularity: 1, tags: 0, animeSignal: 0 } },
+  { name: 'recommendations 0.2', weights: { ...ANIME_WEIGHTS, recommendations: 0.2, animeSignal: 0 } },
+  { name: 'recommendations 0.4', weights: { ...ANIME_WEIGHTS, recommendations: 0.4, animeSignal: 0 } },
 ]
 
 /** Watched-list sizes the near-empty threshold is chosen from (#95). */
 export const THRESHOLD_SIZES = [10, 15, 20, 30] as const
+
+/** Points of hit rate the weights must beat popularity only by for the list to stop being near empty (#95). */
+export const THRESHOLD_LEAD_POINTS = 10
 
 /** Pages of 50 popular manga fetched from the user's era, standing in for Catch-up's popular-in-era candidates. */
 const ERA_PAGES = 2
@@ -62,11 +69,11 @@ type Scenario = { hits: Record<string, number>; hidden: number; reachable: numbe
 export type MangaUserResult = {
   userName: string
   watched: number
-  /** Share of the visible read manga that is Korean, Chinese or Taiwanese (manhwa, manhua). */
+  /** Share of the visible watched manga that is Korean, Chinese or Taiwanese (manhwa, manhua). */
   webtoonShare: number
   animeLiked: number
   holdout: Scenario & { candidates: number }
-  /** Watched-list size → the run truncated to that many visible read titles. */
+  /** Watched-list size → the run truncated to that many visible watched titles. */
   sizes: Record<number, Scenario>
 }
 
@@ -78,7 +85,7 @@ async function evaluateUser(deps: EvalDeps, fetchFn: typeof fetch, userName: str
   const favourites = await fetchFavouriteAnime(fetchFn, userName)
   const { visible, hidden } = holdout(list, seed)
   const watchedVisible = visible.filter(isWatched)
-  deps.log(`${userName}: ${list.filter(isWatched).length} read manga (${hidden.size} hidden), ${animeList.length} anime`)
+  deps.log(`${userName}: ${list.filter(isWatched).length} watched manga (${hidden.size} hidden), ${animeList.length} anime`)
 
   const known = new Map<number, CatchUpMedia>()
   const asked = new Set<number>()
@@ -123,7 +130,7 @@ async function evaluateUser(deps: EvalDeps, fetchFn: typeof fetch, userName: str
   deps.log(`${userName}: fetching ${allNeighbours.size + fromAnime.size} candidates`)
   await load([...allNeighbours, ...fromAnime])
 
-  /** Runs every variant on `visibleList`, with the candidates its read titles call for. */
+  /** Runs every variant on `visibleList`, with the candidates its watched titles call for. */
   const run = async (visibleList: readonly EvalEntry[], hiddenIds: ReadonlySet<number>, nearEmptyBelow?: number) => {
     const seeds = visibleList.filter(isWatched)
     const ids = new Set([...seeds.map((e) => e.mediaId), ...neighbours(seeds), ...fromAnime])
@@ -157,9 +164,9 @@ async function evaluateUser(deps: EvalDeps, fetchFn: typeof fetch, userName: str
     }
   }
 
-  const full = await run(visible, hidden)
+  const full = await run(visible, hidden, 0)
 
-  // Truncated lists: the first N read titles of the visible list in a seeded order stay; every other read title is
+  // Truncated lists: the first N watched titles of the visible list in a seeded order stay; every other watched one is
   // hidden. Near-empty is turned off so the weights run the full way.
   const order = [...watchedVisible].sort((a, b) => hash(a.mediaId, seed) - hash(b.mediaId, seed) || a.mediaId - b.mediaId)
   const notWatched = visible.filter((e) => !isWatched(e))
@@ -206,7 +213,7 @@ export function mangaReport(results: readonly MangaUserResult[], seed: number): 
   )
   const total = (n: string) => results.reduce((sum, r) => sum + r.holdout.hits[n], 0)
   const holdoutTable = [
-    `| List | Read | KR/CN | Anime liked | Hidden | Candidates | Reachable | ${names.join(' | ')} |`,
+    `| List | Watched | KR/CN/TW | Anime liked | Hidden | Candidates | Reachable | ${names.join(' | ')} |`,
     `|---|---:|---:|---:|---:|---:|---:|${names.map(() => '---:').join('|')}|`,
     ...holdoutRows,
     `| **Total** | ${results.reduce((s, r) => s + r.watched, 0)} | | | ${results.reduce((s, r) => s + r.holdout.hidden, 0)} | | ${results.reduce((s, r) => s + r.holdout.reachable, 0)} | ${names
@@ -214,26 +221,40 @@ export function mangaReport(results: readonly MangaUserResult[], seed: number): 
       .join(' | ')} |`,
   ]
 
-  const sizeRows = THRESHOLD_SIZES.map((size) => {
+  /** Size → variant → hits summed over the lists, and the batch slots they had. */
+  const bySize = THRESHOLD_SIZES.map((size) => {
     const runs = results.flatMap((r) => r.sizes[size] ?? [])
-    const of = BATCH_SIZE * runs.length
     const sum = (n: string) => runs.reduce((s, r) => s + r.hits[n], 0)
+    const of = BATCH_SIZE * runs.length
     const popularity = sum('popularity only')
-    const lead = (n: string) => (of === 0 ? '' : ` ${(100 * (sum(n) - popularity)) / of >= 0 ? '+' : ''}${((100 * (sum(n) - popularity)) / of).toFixed(0)}`)
-    return `| ${size} | ${runs.length} | ${names.map((n) => (of === 0 ? '–' : `${pct(sum(n), of)}${n === 'popularity only' ? '' : lead(n)}`)).join(' | ')} |`
+    /** Points of hit rate ahead of popularity only. */
+    const lead = (n: string) => (of === 0 ? 0 : (100 * (sum(n) - popularity)) / of)
+    return { size, lists: runs.length, of, sum, lead }
   })
+  const sizeRows = bySize.map(({ size, lists, of, sum, lead }) => {
+    const cell = (n: string) => {
+      if (of === 0) return '–'
+      if (n === 'popularity only') return pct(sum(n), of)
+      return `${pct(sum(n), of)} ${lead(n) >= 0 ? '+' : ''}${lead(n).toFixed(0)}`
+    }
+    return `| ${size} | ${lists} | ${names.map(cell).join(' | ')} |`
+  })
+  const firstSize = (n: string) => bySize.find((s) => s.of > 0 && s.lead(n) >= THRESHOLD_LEAD_POINTS)?.size ?? '–'
+  sizeRows.push(
+    `| **First size ≥ +${THRESHOLD_LEAD_POINTS}** | | ${names.map((n) => (n === 'popularity only' ? '' : `**${firstSize(n)}**`)).join(' | ')} |`,
+  )
   const sizeTable = [
-    `| Read titles kept | Lists | ${names.join(' | ')} |`,
+    `| Watched titles kept | Lists | ${names.join(' | ')} |`,
     `|---:|---:|${names.map(() => '---:').join('|')}|`,
     ...sizeRows,
   ]
 
   return [
-    `**Holdout**: ${20}% of each read list hidden, seed ${seed}; hits = hidden titles in the batch of ${BATCH_SIZE}. Reachable = hidden titles among the candidates at all. KR/CN = share of the read manga that is Korean or Chinese.`,
+    `**Holdout**: ${HOLDOUT_SHARE * 100}% of each watched manga list hidden, seed ${seed}, near-empty off; hits = hidden titles in the batch of ${BATCH_SIZE}. Reachable = hidden titles among the candidates at all. KR/CN/TW = share of the watched manga that is Korean, Chinese or Taiwanese.`,
     '',
     ...holdoutTable,
     '',
-    `**Threshold**: each list cut to N read titles (a seeded draw from the visible ones), every other read title hidden, near-empty off so the weights run the full way. Hits summed over the lists; the number after each = points ahead of popularity only.`,
+    `**Threshold**: each list cut to N watched titles (a seeded draw from the visible ones), every other watched title hidden, near-empty off so the weights run the full way. Hits summed over the lists; the number after each = points ahead of popularity only.`,
     '',
     ...sizeTable,
     '',

@@ -146,12 +146,12 @@ describe('Catch-up candidate candidates', () => {
 
   it('asks AniList for the Media Type of the list it was made for', async () => {
     const catalog = () => [anime(1, { relations: [{ type: 'SEQUEL', mediaId: 10 }] }), anime(10)]
-    const anime_ = fakeSource(catalog())
-    await createSuggestionCandidates(anime_.source).update([entry(1)])
+    const forAnime = fakeSource(catalog())
+    await createSuggestionCandidates(forAnime.source).update([entry(1)])
     const manga = fakeSource(catalog())
     await createSuggestionCandidates(manga.source, undefined, 'MANGA').update([entry(1)])
 
-    expect(new Set(anime_.types)).toEqual(new Set(['ANIME']))
+    expect(new Set(forAnime.types)).toEqual(new Set(['ANIME']))
     expect(new Set(manga.types)).toEqual(new Set(['MANGA']))
     expect(manga.asked).toEqual([[1], [10]])
   })

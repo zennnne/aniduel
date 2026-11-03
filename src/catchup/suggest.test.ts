@@ -212,7 +212,7 @@ describe('Catch-up suggestions', () => {
       anime(1, { watched: 500 }),
       anime(2, { watched: 900_000 }),
     ]
-    const popularityOnly = { relations: 0, recommendations: 0, popularity: 1, tags: 0, anime: 0 }
+    const popularityOnly = { relations: 0, recommendations: 0, popularity: 1, tags: 0, animeSignal: 0 }
 
     expect(ids(suggestCatchUp(input({ media })))).toEqual([1, 2])
     expect(ids(suggestCatchUp(input({ media, weights: popularityOnly })))).toEqual([2, 1])
@@ -273,12 +273,12 @@ describe('Catch-up suggestions', () => {
     function manga(id: number, overrides: Partial<CatchUpMedia> = {}) {
       return anime(id, { title: { romaji: `Manga ${id}`, english: null, native: null }, format: 'MANGA', ...overrides })
     }
-    /** Sixty read manga, ids 100–159: the first 45 Korean, the rest Japanese. */
-    const readList = Array.from({ length: 60 }, (_, i) => entry(100 + i, 'COMPLETED', 2015, 'MANGA'))
-    const seeds = readList.map((e, i) => manga(e.mediaId, { country: i < 45 ? 'KR' : 'JP' }))
+    /** Sixty watched manga, ids 100–159: the first 45 Korean, the rest Japanese. */
+    const watchedManga = Array.from({ length: 60 }, (_, i) => entry(100 + i, 'COMPLETED', 2015, 'MANGA'))
+    const seeds = watchedManga.map((e, i) => manga(e.mediaId, { country: i < 45 ? 'KR' : 'JP' }))
 
     function mangaInput(overrides: Partial<CatchUpInput>): CatchUpInput {
-      return input({ mediaType: 'MANGA', list: readList, ...overrides })
+      return input({ mediaType: 'MANGA', list: watchedManga, ...overrides })
     }
 
     it('fits formats by format and country together, so Korean manga lead for a reader of mostly Korean manga', () => {
@@ -289,17 +289,17 @@ describe('Catch-up suggestions', () => {
       expect(ids(suggestCatchUp(mangaInput({ media, mediaType: 'ANIME' })))).toEqual([2, 1])
     })
 
-    const withAnime = { ...CATCH_UP_WEIGHTS.MANGA, anime: 0.2 }
+    const withAnime = { ...CATCH_UP_WEIGHTS.MANGA, animeSignal: 0.2 }
     const animeEntry = (mediaId: number, status: ListStatus, oldScore100: number) => ({ mediaId, status, oldScore100 })
     /** Ten more anime scored 70, so the user's anime mean is about 70. */
     const scoredAt70 = Array.from({ length: 10 }, (_, i) => animeEntry(600 + i, 'COMPLETED', 70))
 
-    it("lifts the manga source of a liked anime, not of a dropped or below-average one", () => {
+    it('lifts the manga source of a liked anime, not of a dropped one or one scored well below the mean', () => {
       const signal: AnimeSignal = {
         list: [
           animeEntry(500, 'COMPLETED', 90),
           animeEntry(501, 'DROPPED', 90),
-          animeEntry(502, 'COMPLETED', 50),
+          animeEntry(502, 'COMPLETED', 50), // over two deviations below the mean: counts nothing
           animeEntry(503, 'COMPLETED', 0), // unscored: neutral, still lifts
           ...scoredAt70,
         ],
@@ -350,7 +350,7 @@ describe('Catch-up suggestions', () => {
       const signal: AnimeSignal = { list: [animeEntry(500, 'COMPLETED', 90)], favourites: new Set([500]) }
       const media = [...seeds, manga(1, { watched: 1_000, adaptations: [500] }), manga(2, { watched: 2_000 }), ...filler(30)]
 
-      expect(CATCH_UP_WEIGHTS.ANIME.anime).toBe(0)
+      expect(CATCH_UP_WEIGHTS.ANIME.animeSignal).toBe(0)
       expect(suggestCatchUp(mangaInput({ media, anime: signal, weights: CATCH_UP_WEIGHTS.ANIME }))).toEqual(
         suggestCatchUp(mangaInput({ media, weights: CATCH_UP_WEIGHTS.ANIME })),
       )

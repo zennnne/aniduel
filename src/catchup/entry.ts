@@ -14,9 +14,13 @@ export function watchedCount(list: readonly { status: ListStatus }[]): number {
   return list.filter(isWatched).length
 }
 
-/** Fewer than the Media Type's NEAR_EMPTY_BELOW watched titles. */
-export function isNearEmpty(list: readonly { status: ListStatus }[], mediaType: MediaType): boolean {
-  return watchedCount(list) < NEAR_EMPTY_BELOW[mediaType]
+/** Fewer than the Media Type's NEAR_EMPTY_BELOW watched titles, or than `below` where given (the holdout eval). */
+export function isNearEmpty(
+  list: readonly { status: ListStatus }[],
+  mediaType: MediaType,
+  below: number = NEAR_EMPTY_BELOW[mediaType],
+): boolean {
+  return watchedCount(list) < below
 }
 
 /**
