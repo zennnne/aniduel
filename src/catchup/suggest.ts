@@ -22,8 +22,9 @@ export type CatchUpWeights = {
 
 /**
  * The weights each Media Type's suggestions use. Anime's were locked by the holdout eval (#44): 55% of hidden titles in
- * the top 20, against 24% for popularity alone. Manga's start as anime's, the anime signal off, until its own eval
- * (#96) is picked.
+ * the top 20, against 24% for popularity alone. Manga's were picked on #95 from its own eval (#96): anime's, the anime
+ * signal off, at 26% of hidden titles against 19% for popularity alone. The signal at 0.2 reached 29%, but from two of
+ * six lists only, and lost on the mainly-webtoon one.
  */
 export const CATCH_UP_WEIGHTS: Readonly<Record<MediaType, Readonly<CatchUpWeights>>> = {
   ANIME: { relations: 0.45, recommendations: 0.3, popularity: 0.25, tags: 0.05, animeSignal: 0 },

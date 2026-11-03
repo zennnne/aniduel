@@ -5,7 +5,8 @@ import { isWatched } from './watched.ts'
 
 /**
  * Below this many watched titles a list of the Media Type is near empty: the mochi asks for more without being
- * hovered, and Catch-up starts from the Starting era. Manga's is anime's until its holdout eval (#96) is picked.
+ * hovered, and Catch-up starts from the Starting era. Manga's was picked on #95 from its holdout eval (#96): no size
+ * from 10 to 30 let the weights lead popularity alone by 10 points, and 30 led it most (+6).
  */
 export const NEAR_EMPTY_BELOW: Readonly<Record<MediaType, number>> = { ANIME: 30, MANGA: 30 }
 
