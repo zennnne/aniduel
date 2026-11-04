@@ -32,6 +32,7 @@ const vote = (z: number, weight = 1, options: TitleOptions = {}, flags: Partial<
   title: title({ score: 7, ...options }),
   z,
   weight,
+  rateWeight: weight,
   favourite: false,
   scored: (options.score ?? 7) > 0,
   ...flags,

@@ -1,4 +1,4 @@
-// Parity check for Top Studios (#90): the TypeScript port against the Python prototype at v2.7.
+// Parity check for Top Studios (#90): the TypeScript port against the Python prototype at v2.8.
 // Usage: node scripts/top-studio-parity.ts [--cache <dir>] [user ...]
 // Reads the prototype's AniList caches (list_<user>.json, favs_<user>.json; default scripts/top-studio-score, every user
 // cached there), feeds each through a fake AniList into loadTopStudios, runs prototype.py --json on the same caches and
@@ -22,6 +22,7 @@ const LABEL_NAMES: Record<StudioScore['label'], string> = {
 
 type PythonStudio = { name: string; S: number; n: number; hit: number; flop: number; tag: string }
 type PythonResult = { user: string; gate: number; u_bar: number; ranked: PythonStudio[]; watchlist: PythonStudio[] }
+type PythonTooFew = { user: string; too_few_scored: number }
 
 const args = process.argv.slice(2)
 let cacheDir = PROTOTYPE_DIR
@@ -58,7 +59,7 @@ function cachedAniList(user: string): typeof fetch {
   }) as typeof fetch
 }
 
-function runPrototype(user: string): PythonResult {
+function runPrototype(user: string): PythonResult | PythonTooFew {
   const out = execFileSync(
     process.env.PYTHON ?? 'python',
     ['-I', join(PROTOTYPE_DIR, 'prototype.py'), user, '--json', `--cache=${cacheDir}`],
@@ -97,13 +98,20 @@ for (const user of users) {
     continue
   }
   const loaded = await loadTopStudios({ fetch: cachedAniList(user), token: null }, user)
+  const py = runPrototype(user)
+  if ('too_few_scored' in py) {
+    // Both sides must refuse the list for the same count of scored titles.
+    const same = !loaded.ok && loaded.failure.kind === 'too-few-scored' && loaded.failure.scored === py.too_few_scored
+    console.log(`| ${user} | | | | | | ${py.too_few_scored} scored: too few to rank | ${same ? 'match' : 'MISMATCH'} |`)
+    if (!same) failed = true
+    continue
+  }
   if (!loaded.ok) {
     console.log(`| ${user} | | | | | | | TS failed: ${loaded.failure.kind} |`)
     failed = true
     continue
   }
   const ts: TopStudios = loaded.topStudios
-  const py = runPrototype(user)
   const ranked = compareStudios('ranked', ts.studios, py.ranked)
   const watch = compareStudios('watchlist', ts.watchlist, py.watchlist)
   const problems = [...ranked.problems, ...watch.problems]

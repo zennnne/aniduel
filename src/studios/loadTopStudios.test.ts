@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { loadTopStudios, type TopStudios, type TopStudiosLoad } from './loadTopStudios.ts'
+import { entropicMean, K } from './scoring.ts'
 
 type Call = { url: string; init: RequestInit; body: { query: string; variables: Record<string, unknown> } }
 type Canned = { status?: number; json: unknown }
@@ -179,8 +180,13 @@ describe('loadTopStudios: love count', () => {
       [2000, 2001, 3000, 3001],
     )
 
-    expect(scoreOf(result, SAFE)).toBeCloseTo(scoreOf(result, SWING)!, 12)
-    expect(scoreOf(result, MIDDLE)!).toBeLessThan(scoreOf(result, TINY)!)
+    // A joined title weighs less (the Franchise factor), so compare only the love bonus: S less the first term.
+    const loveBonus = (studio: Studio) => {
+      const s = result.studios.find((x) => x.id === studio[0])!
+      return s.score - (entropicMean(s.votes, K, result.averageUtility) - Math.log(result.averageUtility))
+    }
+    expect(loveBonus(SAFE)).toBeCloseTo(loveBonus(SWING), 12)
+    expect(loveBonus(MIDDLE)).toBeLessThan(loveBonus(TINY))
   })
 
   it('joins titles into a franchise only within one studio', async () => {
@@ -272,10 +278,10 @@ describe('loadTopStudios: labels', () => {
     // Pooled: 6 hits and 6 flops in 40 titles, 15% each; a rate is high above 21%.
     const result = await load(fourCorners())
 
-    expect(studio(result, ELITE)).toMatchObject({ label: 'elite', hitRate: 0.3, flopRate: 0 })
-    expect(studio(result, BOLD)).toMatchObject({ label: 'bold', hitRate: 0.3, flopRate: 0.3 })
+    expect(studio(result, ELITE)).toMatchObject({ label: 'elite', hitRate: expect.closeTo(0.3, 12), flopRate: 0 })
+    expect(studio(result, BOLD)).toMatchObject({ label: 'bold', hitRate: expect.closeTo(0.3, 12), flopRate: expect.closeTo(0.3, 12) })
     expect(studio(result, RELIABLE)).toMatchObject({ label: 'reliable', hitRate: 0, flopRate: 0 })
-    expect(studio(result, MEH)).toMatchObject({ label: 'meh', hitRate: 0, flopRate: 0.3 })
+    expect(studio(result, MEH)).toMatchObject({ label: 'meh', hitRate: 0, flopRate: expect.closeTo(0.3, 12) })
   })
 
   it('gives the lines a rate must pass to read high, which the label map draws its corners on', async () => {
@@ -290,7 +296,7 @@ describe('loadTopStudios: labels', () => {
     // Pooled hit rate 8 in 50 = 16%: Near's 20% is above it but under 22%, so it stays low.
     const result = await load([...fourCorners(), ...tenTitles(NEAR, 2, 0)])
 
-    expect(studio(result, NEAR)).toMatchObject({ label: 'reliable', hitRate: 0.2 })
+    expect(studio(result, NEAR)).toMatchObject({ label: 'reliable', hitRate: expect.closeTo(0.2, 12) })
     expect(studio(result, ELITE).label).toBe('elite')
   })
 
@@ -304,7 +310,7 @@ describe('loadTopStudios: labels', () => {
 
     expect(result.studios).toHaveLength(25)
     expect(result.studios.slice(20).every((s) => s.name.startsWith('Flopping'))).toBe(true)
-    expect(studio(result, BOLD)).toMatchObject({ label: 'bold', hitRate: 0.2, flopRate: 0.1 })
+    expect(studio(result, BOLD)).toMatchObject({ label: 'bold', hitRate: expect.closeTo(0.2, 12), flopRate: expect.closeTo(0.1, 12) })
   })
 
   it('labels the watchlist too', async () => {

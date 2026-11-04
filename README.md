@@ -134,9 +134,9 @@ The exact rules for placing a title among the Anchors are in [ADR 0009](docs/adr
 **Top Studios** (https://zennnne.github.io/aniduel/studios/) is a page of its own: type an AniList username and see which animation studios that user really likes. Open it from AniDuel!'s menu, or straight from the link.
 
 - **Read from the list, not filled in by hand.** Each watched title is a **Vote** for its main studios, from your score against your own average. Unscored titles count only when you dropped (against), rewatched (for) or favourited them. Planning titles don't count.
-- **Swings beat playing safe.** The **Studio Score** leans toward a studio's best titles, so a studio with some flops and some masterpieces ranks above one that is only ever fine. A small bonus goes to studios behind many works you loved.
+- **Swings beat playing safe.** The **Studio Score** leans toward a studio's best titles, so a studio with some flops and some masterpieces ranks above one that is only ever fine. A small bonus goes to studios behind many works you loved, and each title of a long franchise weighs a little less, so one long series doesn't carry a studio on its own.
 - **A few titles aren't enough.** A studio needs 6 titles to be ranked (fewer on a short list). Strong studios below that wait on the **Watchlist**.
-- **Labels** say how a studio treats you: 💎 Elite, 🎲 Bold, 🛡️ Reliable or 💤 Meh, from its share of hits and flops. Open a studio to see the titles that lifted it most and the ones that held it back.
+- **Labels** say how a studio treats you: 💎 Elite, 🎲 Bold, 🛡️ Reliable or 💤 Meh, from its share of hits and flops, a long show counting for more than a short one. Open a studio to see the titles that lifted it most and the ones that held it back.
 - **No login needed**, so you can look up a friend. If you are logged in to AniDuel!, your own name is filled in and your own private list still loads. The page URL (`?user=<name>`) is the share link.
 
 The scoring comes from a research prototype tuned with a group of friends ([research spec](docs/research/top-studio-score.md), [ADR 0015](docs/adr/0015-top-studios-a-separate-page-in-the-same-repo.md)).
@@ -214,4 +214,4 @@ Key design decisions:
 - [ADR 0012](docs/adr/0012-keep-my-scale-a-split-on-a-score-is-not-asked.md): a title split on a score gets that score instead of the Closer-to prompt.
 - [ADR 0013](docs/adr/0013-keep-my-scale-deciding-duels-before-the-closer-to-prompt.md): Deciding Duels before the Closer-to prompt, as the user's choice.
 - [ADR 0014](docs/adr/0014-custom-distribution-at-three-fixed-points.md): the Custom Distribution, shaped by three Quartile scores at fixed points of the Ranking, not by Band score ranges.
-- [ADR 0015](docs/adr/0015-top-studios-a-separate-page-in-the-same-repo.md): Top Studios is a separate page in the same repo, and its scoring is the research prototype's v2.7 as is.
+- [ADR 0015](docs/adr/0015-top-studios-a-separate-page-in-the-same-repo.md): Top Studios is a separate page in the same repo, and its scoring is ported from the research prototype (v2.7 at first, v2.8 since 2026-11-04).

@@ -2,7 +2,7 @@
 
 A score function that ranks an AniList user's **top animation studios** from their own list — without using their *favourite studios* (that's the answer we're trying to infer, not an input).
 
-Status: v2.7 (v2.1 from the grilling session on 2026-11-01; on 2026-11-02 fixes from a scrutinize review, a k decision, the user-average prior, label margins, one vote per entry, a gate that steps down for small lists, and a love count per franchise), prototyped in Python at `scripts/top-studio-score/prototype.py`, run on 8 real users. Ported to TypeScript as AniDuel!'s Top Studios page (spec #87, ADR 0015), unchanged; the prototype stays the reference, and `npm run parity:top-studios` checks the port against it.
+Status: v2.8 (v2.1 from the grilling session on 2026-11-01; on 2026-11-02 fixes from a scrutinize review, a k decision, the user-average prior, label margins, one vote per entry, a gate that steps down for small lists, and a love count per franchise; on 2026-11-04 a franchise factor on vote weight and length-weighted labels, §13), prototyped in Python at `scripts/top-studio-score/prototype.py`, run on 8 real users up to v2.7 and 33 at v2.8 (§14). Ported to TypeScript as AniDuel!'s Top Studios page (spec #87, ADR 0015) at v2.7, then v2.8; the prototype stays the reference, and `npm run parity:top-studios` checks the port against it.
 
 ## Intent
 
@@ -43,6 +43,7 @@ Status: v2.7 (v2.1 from the grilling session on 2026-11-01; on 2026-11-02 fixes 
 ### 5. Votes (per studio), v2.5
 - **Every entry is its own vote**: sequels, movies, recaps (SUMMARY), alternative versions, everything. Up to v2.4 entries joined into franchise groups over SEQUEL/PREQUEL; see §11 for why that was dropped.
 - Vote `Z = z`, `W = √w`, then rescale all W so mean W = 1 (so `k` reads as "k entry votes").
+- **v2.8:** then every entry of an n-entry franchise (SEQUEL/PREQUEL chain within the studio) gets `W × n^−0.3`, whatever its order. The rescale comes before this factor, so `k` still counts undiscounted entries. The gate still counts entries in full. See §13.
 
 ### 6. Fav staff affinity (pseudo-vote), off by default since v2.2
 - **Off unless `--staff`.** On all 8 users the top 10 is the same 9–10 of 10 with or without it, and the owner's order doesn't change. It also counts evidence twice (fav staff come from titles already scored), uses a fixed Z = +1 for everyone, and is most of the AniList calls (~10 min first run). Kept for comparison only.
@@ -75,7 +76,7 @@ The first term is an entropic (log-sum-exp) mean with `k` pseudo-votes at the us
 ### 8. Ranking & labels
 - Ranked list only includes studios with **≥ 6 entries** (≥ 5 franchises up to v2.4); the rest with high S show as **🌱 watchlist** (top 5).
 - **v2.6:** if fewer than 10 studios pass, the gate drops one entry at a time (5, then 4) until 10 pass or it reaches 4. Users with 10+ studios at 6 are unchanged. The output header shows the gate when it was lowered.
-- Per-studio hit rate (vote Z ≥ 1.2) and flop rate (Z ≤ −1), compared to the **pooled rate of the top 20 ranked studios** of that user. Each rate counts as high only above the pool rate **+ 6 points** (+4 in v2.4, raised in v2.6, see Known issues #9):
+- Per-studio hit rate (vote Z ≥ 1.2) and flop rate (Z ≤ −1), **weighted by W without the mid-score halving** (v2.8, §13; up to v2.7 every entry counted 1), compared to the **pooled rate of the top 20 ranked studios** of that user, pooled by the same weight. Each rate counts as high only above the pool rate **+ 6 points** (+4 in v2.4, raised in v2.6, see Known issues #9):
   - 💎 Elite (hit↑ flop↓) · 🎲 Bold (hit↑ flop↑) · 🛡️ Reliable (hit↓ flop↓) · 💤 Meh (hit↓ flop↑)
 - By construction 🛡️ rarely reaches the top 10 (S rewards hits; 🛡️ means few hits). That is intended for this owner's taste; a lower α would surface it.
 
@@ -166,6 +167,38 @@ The check moves less than 1 rank, which is noise (§10). The change makes the ow
 
 Owner's top 10 at v2.7: Kyoto Animation 💎 +0.70, Shaft 🛡️, TRIGGER 💎, Kinema Citrus 🎲, GAINAX 💎, Brain's Base 🛡️, MADHOUSE 🛡️, Shin-Ei Animation 🛡️, Toei Animation 🛡️, WHITE FOX 🛡️ +0.32 (ufotable #9 → #11).
 
+### 13. Franchise factor and length-weighted labels (v2.8)
+Grilled on 2026-11-04 from an outside review of the score function, which raised six points. Three were kept as they are: α = 1 leaning toward the best titles (intended; 🎲 is what shows flops), the fav bonus (it is already in SD units, so it scales with each user's spread), and the mid-score halving (a neutral title says little; its step stays Known issue #7). The constants and the check set are in §14. Two things changed:
+
+**Franchise factor.** Long franchises still had an edge. AniList splits Monogatari into 13 entries but keeps a 50-episode show as one, and `w` is a log of runtime, so the split entries weigh more than one long show of the same length. The owner rejected the first proposal, which left franchises of up to 3 entries untouched so that Gridman would be spared: "short franchises get nothing, so it targets only some titles". The rule has to be **the same for every franchise**: each entry of an n-entry franchise weighs `n^−p`, whatever its order. It applies to W, so to the score and, through W, to the labels. The gate still counts entries. A fractional gate (sum of factors ≥ 6) is a cliff: a 6-entry studio with one sequel pair drops to 5.9 and out. That happened to the owner's GAINAX and Keennaja's WIT and david production, and it stepped down two users' gates.
+
+p was picked on the §14 check (gate in full, labels per entry). The owner's rules were reported, not enforced:
+
+| p | 0 (v2.7) | 0.1 | 0.25 | 0.3 | 0.35 | 0.4 | 0.45 | 0.5 |
+|---|---|---|---|---|---|---|---|---|
+| favourite mean rank | 7.93 | 7.92 | 7.88 | **7.81** | 7.82 | 7.81 | 7.86 | 7.85 |
+
+All of these differences are noise (±0.2 on 111 labels). Every p keeps the owner's KyoAni > Shaft > TRIGGER > Kinema. From 0.45 GAINAX passes Kinema, then TRIGGER. The owner first took 0.25, because from 0.3 TRIGGER read 🛡️ with per-entry labels. With length-weighted labels TRIGGER is 💎 at every p, so **p = 0.3 was chosen**: the smallest p with the best check score, and CloverWorks (an owner favourite) enters the top 10 there. Factors: 2 entries ×0.81, 3 ×0.72, 6 (Euphonium) ×0.58, 13 (Monogatari) ×0.46.
+
+Effect on the owner (p = 0.3 vs 0): Shaft −0.06, the most (Monogatari and Madoka), ufotable −0.03, TRIGGER −0.02, KyoAni −0.02, Kinema −0.01. Some studios gain: CloverWorks, MADHOUSE and Production I.G +0.03 each, because their franchises (SPY×FAMILY, Overlord) score below their single works.
+
+**Length-weighted labels.** S weighed votes by W, but hit and flop rates counted every entry as 1, so a 1-episode OVA flop moved a label as much as a 2-cour flop. Rates now use W without the mid-score halving. A neutral title is still one watch, and with the halving both rates would rise because the denominator shrinks. W is a compressed length (a 2-cour show ≈ 2.2× a 1-episode OVA, a 2-hour film ≈ 1.5×), with rewatches and drops as in §4. Raw minutes were rejected for the same reason as in the score. The margin stays ±6: across all 33 users' top 10s the labels went 💎 114 → 117, 🎲 13 → 11, 🛡️ 142 → 144, 💤 41 → 38 (26 of 330 changed), and the lines moved 1–4 points.
+
+Changes for the owner: Shaft 🛡️ → 💎 (hit 14% → 17%, over a 17% line). Its 4 hits are Madoka TV, Rebellion, Monogatari S2 and Owari S2; its flops are ordinary 12-episode shows. MADHOUSE and Brain's Base stay 🛡️. Friends: AnimeICU TRIGGER and CygamesPictures 💎 → 🛡️, Arisa WHITE FOX 🛡️ → 💎, HidinginPublic Shaft 🎲 → 💎 (🎲 again at p = 0.3), PlzSayNothing Studio DEEN 💎 → 🛡️ and Shaft 🛡️ → 💤.
+
+Owner's top 10 at v2.8: Kyoto Animation 💎 +0.68, Shaft 💎 +0.59, TRIGGER 💎 +0.54, Kinema Citrus 🎲 +0.53, GAINAX 💎 +0.52, Brain's Base 🛡️ +0.48, MADHOUSE 🛡️ +0.46, Shin-Ei Animation 🛡️ +0.36, Toei Animation 🛡️ +0.35, CloverWorks 🛡️ +0.30 (WHITE FOX #10 → #11).
+
+### 14. The favourite check, 25 users (v2.8)
+§10's 13 labels from 3 users were too few to tell a change from noise. v2.8 checks against the AniList favourite studios of everyone in the owner's AniList social list who has any: 24 users plus the owner, 111 labels (`scripts/top-studio-score/fav_studios.json`, gitignored like the list caches; `favcheck.py` runs it). The lists range from small (DerpPlayer, 143) to large (IustinMakihige, 1384), and from harsh (PlzSayNothing, mean 50.7, SD 25.7) to generous (Sencha, mean 84, SD 7.7). A favourite counts if it is the main studio of at least one counted entry. It scores its rank, or last + 1 when it doesn't rank, so a change that pushes a favourite out of the ranking is penalised. Producers with no entry (Bandai Namco Entertainment, KADOKAWA, Alice Soft) are skipped. Three more users were run to look at by eye: korishere and Weerachai (no favourites) and NutsuruSama (5 scored titles, too few to rank).
+
+**It can't tune k.** Favourite studios have more votes than ranked studios in general (median 16 vs 11), because people favourite what they watched most. A larger k favours studios with many votes, so the check improves steadily with k (p = 0.3, length-weighted labels):
+
+| k | 4 | 8 | **13.1** | 16 | 20 | 30 | 45 | 70 |
+|---|---|---|---|---|---|---|---|---|
+| mean rank | 8.13 | 7.95 | 7.81 | 7.77 | 7.73 | 7.61 | 7.52 | 7.50 |
+
+At k = 70 the ranking is close to "most watched" (the owner's MADHOUSE at #2), which the owner rejected as the meaning of top in v2.1. Between 8 and 20, all users' top 10s change in 3–7 places. **k stays 13.1** for everyone. Rescaling W after the franchise factor (so `k` would count discounted entries) gives 7.88 and swaps CloverWorks back out, so it wasn't adopted. Per-user k was re-checked and stays rejected: `--k=est` (empirical Bayes, k ≈ 3 for most) gives 8.14, scaling by list size is §9's unfairness, and scaling by each user's entries per franchise was a tie in v2.5.
+
 ## Decisions rejected (and why)
 - Mean + λ·SD — symmetric, rewards flops too.
 - Hit-rate threshold as the score — cliff at the threshold.
@@ -174,23 +207,26 @@ Owner's top 10 at v2.7: Kyoto Animation 💎 +0.70, Shaft 🛡️, TRIGGER 💎,
 - Staff career-wide works — dilutes with old key-animation credits; in-list only.
 - Median-based label thresholds — degenerate to 0% (most studios have no hits).
 - Labels from "studio style" (original ratio, community score variance) — would change the label from *user's taste* to *studio's nature*; owner declined.
-- Down-weighting long franchises, 1/√n per entry (tried 2026-11-02 after v2.5): franchise = SEQUEL/PREQUEL chain within the studio, the same factor on vote weight and love count. It took the owner's Shaft from +0.78 (#1) to +0.58 (#2, under KyoAni), with Monogatari being 14 of its 27 entries. Favourite check 5.0 mean rank, 9/13 in top 5 (v2.5: 5.3, 10/13). Rejected because AniList relations can't tell a continuation from a new story in the same universe: SSSS.GRIDMAN → DYNAZENON → Gridman Universe is a SEQUEL chain, so TRIGGER got divided too and fell below Kinema Citrus (#5 vs #4), breaking the owner's rule. Title matching fails on Monogatari, and character overlap needs more data and still trips on crossovers like Gridman Universe. Shaft at #1 is real taste anyway: Monogatari alone scores +0.74. Down-weighting only partly (n^-0.25) wasn't run; it has the same false matches.
+- Down-weighting long franchises, 1/√n per entry (tried 2026-11-02 after v2.5): franchise = SEQUEL/PREQUEL chain within the studio, the same factor on vote weight and love count. It took the owner's Shaft from +0.78 (#1) to +0.58 (#2, under KyoAni), with Monogatari being 14 of its 27 entries. Favourite check 5.0 mean rank, 9/13 in top 5 (v2.5: 5.3, 10/13). Rejected because AniList relations can't tell a continuation from a new story in the same universe: SSSS.GRIDMAN → DYNAZENON → Gridman Universe is a SEQUEL chain, so TRIGGER got divided too and fell below Kinema Citrus (#5 vs #4), breaking the owner's rule. Title matching fails on Monogatari, and character overlap needs more data and still trips on crossovers like Gridman Universe. Shaft at #1 is real taste anyway: Monogatari alone scores +0.74. Down-weighting only partly (n^-0.25) wasn't run; it has the same false matches. **Superseded by v2.8 (§13):** at n^−0.3, with the gate in full and length-weighted labels, a 3-entry Gridman chain weighs the same as a 3-entry Made in Abyss, so the false match costs TRIGGER no more than Kinema, and the owner's order holds.
+- Franchises of up to m entries untouched, then √(m/n) (2026-11-04, m = 3 picked so Gridman is spared): the owner rejected it as unfair. One rule must apply to every franchise (§13).
+- Gate as the sum of franchise factors: a cliff for any 6-entry studio with one sequel pair (§13).
 
 ## Findings from 8 users
 See §10 and §11 for v2.4 and v2.5. Owner (zennnne) top 10 at v2.1 (γ = 0.1): Kyoto Animation 💎, TRIGGER 💎, Shaft 💎, MADHOUSE 🎲, Kinema Citrus 🎲, GAINAX 💎, Brain's Base 💎, Studio Ghibli 💎, CloverWorks 💎, Shin-Ei Animation 🎲.
 At v2, GAINAX and Kinema Citrus showed up near the top for most of the friend group. The 7 friends have not been re-run on v2.1.
 
 ## Known issues / open
-0. Favourite studios that rank low (v2.5): CloverWorks (a favourite of 2 users) at #12 and #15, ufotable (1 user) at #12. Only 13 favourite-studio labels from 3 users; more users with favourite studios would make the check meaningful.
+0. Favourite studios that rank low (v2.5): CloverWorks (a favourite of 2 users) at #12 and #15, ufotable (1 user) at #12. Only 13 favourite-studio labels from 3 users; more users with favourite studios would make the check meaningful. v2.8 widened it to 111 labels (§14); at v2.8 the owner's CloverWorks is #10.
+10. The favourite check is biased toward studios the user watched most (§14), so it can't pick k. A check that compares favourites with non-favourites of a similar vote count wouldn't be; not built yet.
 9. Labels after v2.5, settled in v2.6. With per-entry rates the owner's MADHOUSE went back to 💤: 6 flops in 36 (17%) against a 15% cutoff (11% pool + 4), and half of them are Overlord I–III, scored 4 each. Measured on all 8 users' top 10s:
    - flop margin +7, hit margin +4: only owner MADHOUSE → 🛡️ and AnimeICU Shin-Ei 🎲 → 💎.
    - **±6 on both, chosen by the owner**, so both rates follow one rule.
    - shrinking rates toward the pool (20 pseudo-entries): almost everything becomes 🛡️.
    Changes at ±6 vs ±4 for the owner: Shaft 💎 → 🛡️ (hit 15% < 16%), MADHOUSE 💤 → 🛡️, Shin-Ei 💎 → 🛡️. Others: AnimeICU Shin-Ei 🎲 → 🛡️, Arisa WHITE FOX 💎 → 🛡️, ManMode KyoAni 💎 → 🛡️, Tine Kinema Citrus 🎲 → 💤. Side note: the owner's 8.5 is z = +1.19, just under the 1.2 hit line, so many of the owner's 8.5s (Orb, Bakemonogatari, 3-gatsu) miss being hits by 0.01.
 1. Ranking gate, small lists. v2.5 left Keennaja and SigmaZzz with 4 ranked studios each. Two v2.5 changes caused it: dropping unscored completed entries (SigmaZzz scored 128 of 221, so this was the bigger cut) and the gate going 5 franchises → 6 entries. A gate of 4 for everyone was measured and rejected: favourite check 6.1 mean, 9/13 (gate 5: 5.5, 10/13). It let 4–5-entry studios into big lists (ManMode's OLM +0.60 and Tatsunoko +0.57, Tine's GAINAX +0.73 at #2). Fixed in v2.6 by the step-down gate: SigmaZzz gets 10 at gate 4, Keennaja 6 at gate 4 (the list is too small for 10), everyone else stays at 6, and the check stays 5.3 and 10/13.
-2. Users who score < ~50% of their list: unscored drops (−1, half weight since v2.5) still count fully in the flop rate → noisy 🎲 labels; `MIN_SCORED = 10` is too low a gate. Candidate: gate on scored fraction.
+2. Users who score < ~50% of their list: unscored drops (−1, half weight since v2.5) counted fully in the flop rate up to v2.7 → noisy 🎲 labels (since v2.8 they count at their half weight there too); `MIN_SCORED = 10` is too low a gate. Candidate: gate on scored fraction.
 3. Multi-studio titles (Evangelion → GAINAX + Tatsunoko + Production I.G) give full credit to each. Simple fix: 1/m credit per studio.
 7. The mid-score halving at |z| < 0.5 is a step (owner: a 7 gets half weight, a 7.5 full).
-8. Adding one above-average but not loved title can lower a studio's S (rate-like score). With one vote per entry, a long run of middling sequels weighs more than before. Acceptable if "top" means typical quality, not volume.
+8. Adding one above-average but not loved title can lower a studio's S (rate-like score). With one vote per entry, a long run of middling sequels weighs more than before (lightened by the v2.8 franchise factor). Acceptable if "top" means typical quality, not volume.
 4. Fav staff who are only voice actors contribute nothing (by design).
 5. Owner *feels* TRIGGER is 🎲, but their scores say otherwise (mostly 6–8, one flop).

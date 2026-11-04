@@ -1,9 +1,10 @@
-"""Top Studio Score v2.7 (Python prototype). Spec: docs/research/top-studio-score.md
+"""Top Studio Score v2.8 (Python prototype). Spec: docs/research/top-studio-score.md
 usage: python -I prototype.py <user> [--detail | --compact | --json] [--alpha=1.0] [--gamma=0.1]
-       [--staff] [--prior=user|zero] [--k=<number>|est] [--cache=<dir>]
+       [--staff] [--prior=user|zero] [--k=<number>|est] [--franchise-p=0.3] [--cache=<dir>]
   --staff         add the fav-staff pseudo-vote (off by default; first fetch ~10 min)
   --prior=zero    v2.3 rule: put the k pseudo-votes at Z=0, not at the user's average entry (default since v2.4)
   --k=est         estimate k per user from within/between-studio variance
+  --franchise-p=  v2.8: every entry of an n-entry franchise weighs n^-p (0 = v2.7)
   --json          print every ranked and watchlist studio at full precision, one JSON object per user
                   (read by scripts/top-studio-parity.ts)
   --cache=<dir>   read and write the caches there instead of next to this file
@@ -28,6 +29,9 @@ K_FIXED = 13.1  # pseudo-votes at the prior: "a studio needs this much evidence"
 K_MODE = next((a.split("=")[1] for a in sys.argv if a.startswith("--k=")), str(K_FIXED))
 K_EST_RANGE = (2.0, 8.0)
 HIT_Z, FLOP_Z = 1.2, -1.0
+# v2.8: an n-entry franchise (SEQUEL/PREQUEL chain inside the studio) weighs each entry × n^-p, whatever its order.
+# One rule for every franchise; the gate still counts entries in full.
+FRANCHISE_P = next((float(a.split("=")[1]) for a in sys.argv if a.startswith("--franchise-p=")), 0.3)
 LABEL_MARGIN = 0.06  # hit/flop rate counts as high only if > baseline + 6 points (v2.4: 4 on franchises, v2.6: 6 on entries); 1 title shouldn't flip a label
 MIN_N = 6  # entries a studio needs to be ranked (v2.4: 5 franchises × 1.21)
 MIN_N_FLOOR = 4  # v2.6: a small list lowers the gate one step at a time until 10 studios rank, never below this
@@ -136,10 +140,8 @@ def estimate_k(groups_zw):
     return min(max(k, K_EST_RANGE[0]), K_EST_RANGE[1])
 
 
-def love_count(gs, Z):
-    """v2.7: soft count of loved *works*, not entries. Entries joined by SEQUEL/PREQUEL inside the studio
-    are one franchise worth at most 1 (its best entry). Fav split (v2.1): in a franchise with ≥ 2 fav
-    entries, each fav counts on its own; the non-fav rest stays one."""
+def franchise_roots(gs):
+    """Index of each entry's franchise: entries of one studio joined by SEQUEL/PREQUEL."""
     ents = [g[0] for g in gs]
     ids = {x["mediaId"]: i for i, x in enumerate(ents)}
     par = list(range(len(ents)))
@@ -150,10 +152,26 @@ def love_count(gs, Z):
         for ed in x["media"]["relations"]["edges"]:
             if ed["relationType"] in ("SEQUEL", "PREQUEL") and ed["node"]["id"] in ids:
                 par[root(i)] = root(ids[ed["node"]["id"]])
-    favs = Counter(root(i) for i, x in enumerate(ents) if x["fav"])
+    return [root(i) for i in range(len(ents))]
+
+
+def franchise_factors(gs):
+    """v2.8: n^-p for every entry of an n-entry franchise."""
+    roots = franchise_roots(gs)
+    size = Counter(roots)
+    return [size[r] ** -FRANCHISE_P for r in roots]
+
+
+def love_count(gs, Z):
+    """v2.7: soft count of loved *works*, not entries. Entries joined by SEQUEL/PREQUEL inside the studio
+    are one franchise worth at most 1 (its best entry). Fav split (v2.1): in a franchise with ≥ 2 fav
+    entries, each fav counts on its own; the non-fav rest stays one."""
+    ents = [g[0] for g in gs]
+    roots = franchise_roots(gs)
+    favs = Counter(roots[i] for i, x in enumerate(ents) if x["fav"])
     best = {}
     for i, z in enumerate(Z):
-        key = ("fav", i) if ents[i]["fav"] and favs[root(i)] >= 2 else root(i)
+        key = ("fav", i) if ents[i]["fav"] and favs[roots[i]] >= 2 else roots[i]
         best[key] = max(best.get(key, 0.0), sigmoid((z - LOVE_Z) / LOVE_SOFT))
     return sum(best.values())
 
@@ -172,6 +190,10 @@ def run(user):
     # ---- per-entry z, w
     scored = [e["score"] for e in es if e["score"] > 0]
     use_z = len(scored) >= MIN_SCORED
+    if not use_z:  # too little to rank, as the app says (#91)
+        if "--json" in sys.argv: print(json.dumps(dict(user=user, too_few_scored=len(scored))))
+        else: print(f"\n## {user}: only {len(scored)} scored titles (needs {MIN_SCORED}), too little to rank")
+        return
     mu = sum(scored) / len(scored) if scored else 0
     sd = max(math.sqrt(sum((s - mu) ** 2 for s in scored) / len(scored)), SD_FLOOR) if scored else 1
     for e in es:
@@ -215,9 +237,13 @@ def run(user):
         if e["w"] > 0:
             for s in main_studios(e): groups[s].append([e])
     allW = [math.sqrt(sum(x["w"] for x in g)) for gs in groups.values() for g in gs]
-    scale = len(allW) / sum(allW)
+    scale = len(allW) / sum(allW)  # before the franchise factor: k stays "k average entries", not discounted ones
+    FF = {s: franchise_factors(gs) for s, gs in groups.items()}
     ZW = {s: ([lse([x["z"] for x in g], [x["w"] for x in g]) for g in gs],
-              [math.sqrt(sum(x["w"] for x in g)) * scale for g in gs]) for s, gs in groups.items()}
+              [math.sqrt(sum(x["w"] for x in g)) * scale * f for g, f in zip(gs, FF[s])]) for s, gs in groups.items()}
+    # v2.8: hit and flop rates are weighted by W without the mid-band halving (a neutral entry is still one watch)
+    RW = {s: [w / math.sqrt(MID_W) if abs(g[0]["z"]) < MID_BAND else w for w, g in zip(ZW[s][1], gs)]
+          for s, gs in groups.items()}
 
     if K_MODE == "est": k = estimate_k(ZW.values())
     else: k = float(K_MODE)
@@ -235,10 +261,12 @@ def run(user):
         n_love = love_count(gs, Z)
         S = lse(zs, ws, k, u_bar) - base + GAMMA * math.log(1 + n_love)
         n = len(gs)
+        rw = RW[s]
         items = [x for g in gs for x in g]
         sc = [x["score"] for x in items if x["has_score"]]
         rows.append(dict(S=S, name=s, n=n, ne=len(items), mean=(sum(sc) / len(sc) if sc else None),
-                         hit=sum(z >= HIT_Z for z in Z) / n, flop=sum(z <= FLOP_Z for z in Z) / n,
+                         hit=sum(r for z, r in zip(Z, rw) if z >= HIT_Z) / sum(rw),
+                         flop=sum(r for z, r in zip(Z, rw) if z <= FLOP_Z) / sum(rw), rw=sum(rw),
                          fav=sum(x["fav"] for x in items), A=A[s], who=A_who[s],
                          best=max(items, key=lambda x: (x["z"], x["w"])),
                          parts=sorted(zip(Z, W, gs), key=lambda t: -t[1] * math.exp(ALPHA * t[0]))))
@@ -248,15 +276,15 @@ def run(user):
     watch = [r for r in rows if r["n"] < gate][:5]
     rows = [r for r in rows if r["n"] >= gate]
     top = rows[:20]  # label baseline = pooled rates among top-20 eligible studios
-    N = sum(r["n"] for r in top)
-    mh, mf = sum(r["hit"] * r["n"] for r in top) / N, sum(r["flop"] * r["n"] for r in top) / N
+    N = sum(r["rw"] for r in top)  # no ranked studio: baseline 0, as the app does
+    mh, mf = (sum(r["hit"] * r["rw"] for r in top) / N, sum(r["flop"] * r["rw"] for r in top) / N) if N else (0.0, 0.0)
     for r in rows + watch:
         hi, fl = r["hit"] > mh + LABEL_MARGIN, r["flop"] > mf + LABEL_MARGIN
         r["tag"] = {(1, 0): "💎 Elite", (1, 1): "🎲 Bold", (0, 0): "🛡️ Reliable", (0, 1): "💤 Meh"}[(hi, fl)]
 
     if "--json" in sys.argv:
         studio = lambda r: dict(name=r["name"], S=r["S"], n=r["n"], hit=r["hit"], flop=r["flop"], tag=r["tag"].split()[1])
-        print(json.dumps(dict(user=user, gate=gate, u_bar=u_bar, ranked=[studio(r) for r in rows],
+        print(json.dumps(dict(user=user, gate=gate, u_bar=u_bar, counted=sorted(groups), ranked=[studio(r) for r in rows],
                               watchlist=[studio(r) for r in watch]), ensure_ascii=False))
         return
     if "--compact" in sys.argv:

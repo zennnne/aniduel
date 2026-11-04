@@ -14,6 +14,8 @@ The page shares the AniList gateway's `request` helper (so errors and headers be
 
 The Python prototype stays in the repo as the research reference. A change to the scoring is tried there first and measured with the favourite-studio check, then ported, and the parity script must pass again.
 
+Update 2026-11-04: the first such change, v2.8 (a franchise factor on vote weight and length-weighted labels, research spec §13), went through this path. It was measured on a wider favourite check (§14), and parity passes on 33 cached users.
+
 ## Considered Options
 
 - **A screen inside the AniDuel! app**: the app's screens follow from its state, and ADR 0004 says there are no deep links into them, so a shareable `?user=` result would be the one exception. The app is also built around a logged-in user's Ranking, while Top Studios needs no login and looks up anyone; every screen would have to tell the two apart.

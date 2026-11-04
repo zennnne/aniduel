@@ -44,7 +44,7 @@ export type CountedTitle = {
   how: string
   /** The score on the 10-point scale, or null when it counted without one. */
   score: number | null
-  /** Its vote weight W: longer shows and rewatches weigh more. */
+  /** Its vote weight W: longer shows and rewatches weigh more, the titles of a long Franchise a little less. */
   weight: number
   favourite: boolean
   dropped: boolean

@@ -1,4 +1,4 @@
-// Studio Score v2.7 (research spec docs/research/top-studio-score.md, prototype scripts/top-studio-score/prototype.py).
+// Studio Score v2.8 (research spec docs/research/top-studio-score.md, prototype scripts/top-studio-score/prototype.py).
 // Pure: takes the titles on the user's list and their favourite anime, returns the ranked studios. No I/O.
 import type { ListStatus } from '../anilist/types.ts'
 import { isDropped, rewatchesOf, type StudioTitle } from './types.ts'
@@ -22,13 +22,18 @@ const MID_WEIGHT = 0.5
 /** An unscored drop weighs half: it says less than a real score. */
 const UNSCORED_DROP_WEIGHT = 0.5
 /** Pseudo-votes at the user's average every studio starts with: "a studio needs this much evidence". */
-const K = 13.1
+export const K = 13.1
 /** γ: weight of the love count, ln(1 + n_love), which rewards the number of loved works. */
 const GAMMA = 0.1
 /** A vote counts as loved from about this z (≈ 8+ on the owner's scale)... */
 const LOVE_Z = 0.9
 /** ...with this soft edge, σ((Z − LOVE_Z) / LOVE_SOFT), so there is no cliff at LOVE_Z. */
 const LOVE_SOFT = 0.15
+/**
+ * Every Vote of an n-title Franchise weighs n^−p, whatever its order: one rule for every Franchise, light on short ones.
+ * The Gate still counts each Vote in full.
+ */
+const FRANCHISE_P = 0.3
 /** Votes a studio needs to be ranked. */
 export const GATE = 6
 /** A short list lowers the gate one Vote at a time until this many studios rank... */
@@ -67,8 +72,13 @@ export type StudioVote = {
   title: StudioTitle
   /** How much the user liked it, in SDs from their mean (status defaults and the fav bonus included). */
   z: number
-  /** Its vote weight W: √(runtime weight), rescaled so the mean W over every vote of every studio is 1. */
+  /**
+   * Its vote weight W: √(runtime weight), rescaled so the mean W over every vote of every studio is 1 before the
+   * Franchise factor n^−p, which then lightens the titles of long Franchises.
+   */
   weight: number
+  /** What it weighs in the hit and flop rates: W without the mid-band halving (a neutral title is still one watch). */
+  rateWeight: number
   favourite: boolean
   /** Whether z comes from a score, not from a drop or rewatch default. */
   scored: boolean
@@ -81,9 +91,9 @@ export type StudioScore = {
   score: number
   /** The counted titles, in list order. Their count is what the gate reads. */
   votes: StudioVote[]
-  /** Share of its votes at z ≥ 1.2. */
+  /** Share of its votes at z ≥ 1.2, by rate weight. */
   hitRate: number
-  /** Share of its votes at z ≤ −1. */
+  /** Share of its votes at z ≤ −1, by rate weight. */
   flopRate: number
   /** From whether its hit and flop rates pass `labelLines` (see LABEL_GRID). */
   label: StudioLabel
@@ -121,7 +131,11 @@ function scaleOf(scores: readonly number[]): ScoreScale {
 }
 
 /** A title's z and its runtime weight w (0 when it casts no Vote). */
-function titleVote(e: StudioTitle, scale: ScoreScale, favourite: boolean): { z: number; w: number; scored: boolean } {
+function titleVote(
+  e: StudioTitle,
+  scale: ScoreScale,
+  favourite: boolean,
+): { z: number; w: number; scored: boolean; mid: boolean } {
   const dropped = isDropped(e)
   const rewatches = rewatchesOf(e)
   const scored = e.score > 0
@@ -139,15 +153,16 @@ function titleVote(e: StudioTitle, scale: ScoreScale, favourite: boolean): { z: 
   if (dropped) episodes = Math.min(Math.max(e.progress || 1, 1), episodes)
   let w = Math.log(1 + (episodes * (e.duration || 24)) / 24) * Math.min(1 + 0.5 * rewatches, 2)
   if (WATCHING.has(e.status)) w *= Math.min((e.progress || 0) / episodes, 1)
-  if (Math.abs(z) < MID_BAND) w *= MID_WEIGHT
+  const mid = Math.abs(z) < MID_BAND
+  if (mid) w *= MID_WEIGHT
   if (!scored && !favourite) {
     if (dropped) w *= UNSCORED_DROP_WEIGHT
     else if (!rewatches) w = 0
   }
-  return { z, w, scored }
+  return { z, w, scored, mid }
 }
 
-/** Ranks the user's studios by Studio Score v2.7. */
+/** Ranks the user's studios by Studio Score v2.8. */
 export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterable<number>): StudioScoring {
   const watched = list.filter((e) => e.status !== 'PLANNING')
   const scores = watched.filter((e) => e.score > 0).map((e) => e.score)
@@ -156,13 +171,14 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
   const favourites = new Set(favouriteIds)
 
   // Every title casts its own Vote at each of its main studios (sequels, films and recaps included).
-  const byStudio = new Map<number, { name: string; votes: Array<{ title: StudioTitle; z: number; w: number; scored: boolean; favourite: boolean }> }>()
+  type GroupVote = { title: StudioTitle; z: number; w: number; scored: boolean; favourite: boolean; mid: boolean }
+  const byStudio = new Map<number, { name: string; votes: GroupVote[] }>()
   let countedCount = 0
   let countedScoredCount = 0
   for (const title of watched) {
     const favourite = favourites.has(title.mediaId)
     const vote = titleVote(title, scale, favourite)
-    const { w, scored } = vote
+    const { w, scored, mid } = vote
     if (w <= 0) continue
     // A Vote's Z is the entropic mean of its titles (one per Vote since v2.5), as the prototype computes it:
     // ln(w·e^z / w) is z up to rounding, and that rounding decides whether an unscored drop (z −1) is a flop,
@@ -173,24 +189,26 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
     for (const studio of title.studios) {
       let group = byStudio.get(studio.id)
       if (!group) byStudio.set(studio.id, (group = { name: studio.name, votes: [] }))
-      group.votes.push({ title, z, w, scored, favourite })
+      group.votes.push({ title, z, w, scored, favourite, mid })
     }
   }
 
-  // W = √w, rescaled so the mean W over every vote is 1: k then reads as "k average Votes".
+  // W = √w, rescaled so the mean W over every vote is 1: k then reads as "k average Votes", before the Franchise factor.
   const rootWeights = [...byStudio.values()].flatMap((g) => g.votes.map((v) => Math.sqrt(v.w)))
   const rescale = rootWeights.length / rootWeights.reduce((a, b) => a + b, 0)
-  const studios = [...byStudio].map(([id, group]) => ({
-    id,
-    name: group.name,
-    votes: group.votes.map(({ title, z, w, scored, favourite }): StudioVote => ({
-      title,
-      z,
-      weight: Math.sqrt(w) * rescale,
-      favourite,
-      scored,
-    })),
-  }))
+  const studios = [...byStudio].map(([id, group]) => {
+    const franchises = franchisesOf(group.votes)
+    const size = new Map<number, number>()
+    for (const f of franchises) size.set(f, (size.get(f) ?? 0) + 1)
+    return {
+      id,
+      name: group.name,
+      votes: group.votes.map(({ title, z, w, scored, favourite, mid }, i): StudioVote => {
+        const weight = Math.sqrt(w) * rescale * (size.get(franchises[i]) ?? 1) ** -FRANCHISE_P
+        return { title, z, weight, rateWeight: mid ? weight / Math.sqrt(MID_WEIGHT) : weight, favourite, scored }
+      }),
+    }
+  })
 
   const allVotes = studios.flatMap((s) => s.votes)
   const averageUtility =
@@ -201,8 +219,8 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
     .map((s) => ({
       ...s,
       score: entropicMean(s.votes, K, averageUtility) - base + GAMMA * Math.log(1 + loveCount(s.votes)),
-      hitRate: s.votes.filter((v) => v.z >= HIT_Z).length / s.votes.length,
-      flopRate: s.votes.filter((v) => v.z <= FLOP_Z).length / s.votes.length,
+      hitRate: rateOf(s.votes, (v) => v.z >= HIT_Z),
+      flopRate: rateOf(s.votes, (v) => v.z <= FLOP_Z),
     }))
     .sort((a, b) => b.score - a.score)
 
@@ -214,8 +232,8 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
   // The label baseline: hit and flop rates pooled over the top ranked studios' votes (none ranked: 0).
   const pool = ranked.slice(0, LABEL_POOL)
   const pooled = (rate: (s: (typeof pool)[number]) => number) => {
-    const votes = pool.reduce((a, s) => a + s.votes.length, 0)
-    return votes ? pool.reduce((a, s) => a + rate(s) * s.votes.length, 0) / votes : 0
+    const mass = pool.reduce((a, s) => a + rateMass(s.votes), 0)
+    return mass ? pool.reduce((a, s) => a + rate(s) * rateMass(s.votes), 0) / mass : 0
   }
   const hitLine = pooled((s) => s.hitRate) + LABEL_MARGIN
   const flopLine = pooled((s) => s.flopRate) + LABEL_MARGIN
@@ -238,12 +256,16 @@ export function scoreStudios(list: readonly StudioTitle[], favouriteIds: Iterabl
   }
 }
 
-/**
- * n_love: a soft count of the studio's loved works, not titles. Its titles joined by SEQUEL/PREQUEL form one
- * franchise, worth at most 1 (its best vote). Fav split: in a franchise with two or more favourites, each favourite
- * counts on its own and the rest stays one.
- */
-function loveCount(votes: readonly StudioVote[]): number {
+/** The votes' total rate weight. */
+const rateMass = (votes: readonly StudioVote[]) => votes.reduce((a, v) => a + v.rateWeight, 0)
+
+/** The rate-weighted share of the votes that pass `test`. */
+function rateOf(votes: readonly StudioVote[], test: (v: StudioVote) => boolean): number {
+  return votes.reduce((a, v) => a + (test(v) ? v.rateWeight : 0), 0) / rateMass(votes)
+}
+
+/** Each vote's Franchise, as the index of one of its titles: the studio's titles joined by SEQUEL/PREQUEL. */
+function franchisesOf(votes: ReadonlyArray<{ title: StudioTitle }>): number[] {
   const index = new Map(votes.map((v, i) => [v.title.mediaId, i]))
   const parent = votes.map((_, i) => i)
   const root = (i: number): number => {
@@ -256,6 +278,17 @@ function loveCount(votes: readonly StudioVote[]): number {
       if (j !== undefined) parent[root(i)] = root(j)
     }
   })
+  return votes.map((_, i) => root(i))
+}
+
+/**
+ * n_love: a soft count of the studio's loved works, not titles. Its titles joined by SEQUEL/PREQUEL form one
+ * franchise, worth at most 1 (its best vote). Fav split: in a franchise with two or more favourites, each favourite
+ * counts on its own and the rest stays one.
+ */
+function loveCount(votes: readonly StudioVote[]): number {
+  const franchises = franchisesOf(votes)
+  const root = (i: number) => franchises[i]
   const favouritesIn = new Map<number, number>()
   votes.forEach((v, i) => {
     if (v.favourite) favouritesIn.set(root(i), (favouritesIn.get(root(i)) ?? 0) + 1)
