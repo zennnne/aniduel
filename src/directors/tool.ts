@@ -20,7 +20,7 @@ export const TOP_DIRECTORS: Tool = {
     score: 'Director Score',
     intro:
       'Type an AniList username to see which anime directors they really like, from their scores, drops, rewatches and favourites.',
-    reading: 'Counting directors, weighing every score. A long list takes a few seconds.',
+    reading: "Reading every title's staff credits, then weighing every score. A long list takes a while: about 7 seconds per 500 titles.",
   },
   scoring: {
     gate: { start: GATE, target: GATE_TARGET, floor: GATE_FLOOR },

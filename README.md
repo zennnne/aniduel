@@ -129,20 +129,38 @@ The exact rules for placing a title among the Anchors are in [ADR 0009](docs/adr
 ![A Keep My Scale Duel: a picked title against an Anchor, with the Anchors by score in the sidebar](docs/screenshots/keep-my-scale.png)
 *Keep My Scale: each Duel puts a picked title against an Anchor. The sidebar shows the Anchors by score and where the title can still land.*
 
-## Top Studios
+## AniLyze
 
-**Top Studios** (https://zennnne.github.io/aniduel/studios/) is a page of its own: type an AniList username and see which animation studios that user really likes. Open it from AniDuel!'s menu, or straight from the link.
+**AniLyze** (https://zennnne.github.io/aniduel/anilyze/) is a set of tools that read anyone's AniList list by name and tell them something about their taste. Open it from AniDuel!'s Start screen or menu, or straight from the link.
+
+- **No login needed**, so you can look up a friend. Type a username once on the hub and each tool opens with it. If you are logged in to AniDuel!, your own name is filled in and your own private list still loads.
+- **The page URL (`?user=<name>`) is the share link.** Each tool links to the others with the same name.
+- **Nothing is saved.** Each tool reads the list fresh every time; a long list shows how many titles it has read so far.
+
+### Top Studios
+
+**Top Studios** (https://zennnne.github.io/aniduel/anilyze/studios/) shows which animation studios a user really likes. It used to live at `/aniduel/studios/`; old links still work and forward here.
 
 - **Read from the list, not filled in by hand.** Each watched title is a **Vote** for its main studios, from your score against your own average. Unscored titles count only when you dropped (against), rewatched (for) or favourited them. Planning titles don't count.
 - **Swings beat playing safe.** The **Studio Score** leans toward a studio's best titles, so a studio with some flops and some masterpieces ranks above one that is only ever fine. A small bonus goes to studios behind many works you loved, and each title of a long franchise weighs a little less, so one long series doesn't carry a studio on its own.
 - **A few titles aren't enough.** A studio needs 6 titles to be ranked (fewer on a short list). Strong studios below that wait on the **Watchlist**.
 - **Labels** say how a studio treats you: 💎 Elite, 🎲 Bold, 🛡️ Reliable or 💤 Meh, from its share of hits and flops, a long show counting for more than a short one. Open a studio to see the titles that lifted it most and the ones that held it back.
-- **No login needed**, so you can look up a friend. If you are logged in to AniDuel!, your own name is filled in and your own private list still loads. The page URL (`?user=<name>`) is the share link.
 
 The scoring comes from a research prototype tuned with a group of friends ([research spec](docs/research/top-studio-score.md), [ADR 0015](docs/adr/0015-top-studios-a-separate-page-in-the-same-repo.md)).
 
 ![Top Studios: a label map of studio bubbles on the left, the ranked list with the top 3 as podium cards on the right](docs/screenshots/top-studios.png)
 *Top Studios on the fake AniList: the label map (its four corners are the four Labels) beside the ranked list, with the Watchlist at the end. The "How sure is this?" card says when the result rests on little evidence.*
+
+### Top Directors
+
+**Top Directors** (https://zennnne.github.io/aniduel/anilyze/directors/) does the same for anime directors, with the same layout, Labels and Watchlist.
+
+- **Who counts as a Director:** a Director, Chief Director or Series Director credit on the title, including credits for only some episodes. A credit for directing only the opening or ending doesn't count.
+- **Same scoring, scaled down.** A person directs far fewer titles than a studio makes, so the **Director Score** asks for less: a Director needs 4 titles to be ranked (3 on a short list), and the Labels allow a wider margin.
+- **Faces, not covers:** the top three show the Director's picture, and each Director links to their AniList page.
+- **Slower than Top Studios.** It reads every title's staff credits, so a long list takes several seconds per 500 titles.
+
+The numbers were picked with a favourite-director check on the same group of friends ([research spec](docs/research/top-director-score.md)).
 
 ## Development
 
@@ -167,7 +185,7 @@ npm run dev        # http://localhost:5173/aniduel/
 | `npm run bench:replay` | What one answer costs as the Duel log grows; run it before and after a change to replay |
 | `npm run parity:top-studios` | Checks the Top Studios scoring against the Python prototype on locally cached lists (needs Python; the caches are never committed) |
 
-To see a screen without an AniList login, open `http://localhost:5173/aniduel/?fake-anilist`: the app signed in against a fake AniList with a fixed list (`src/dev/fakeSession.ts`). Dev server only, and every page load starts fresh. Top Studios takes the same switch (`http://localhost:5173/aniduel/studios/?fake-anilist&user=Fake%20Zen`), and the links between the two pages keep it.
+To see a screen without an AniList login, open `http://localhost:5173/aniduel/?fake-anilist`: the app signed in against a fake AniList with a fixed list (`src/dev/fakeSession.ts`). Dev server only, and every page load starts fresh. AniLyze and its tools take the same switch (`http://localhost:5173/aniduel/anilyze/?fake-anilist`, or a tool straight away with `http://localhost:5173/aniduel/anilyze/directors/?fake-anilist&user=Fake%20Zen`), and the links between the pages keep it.
 
 Login uses AniList's OAuth implicit grant. Two AniList API clients are registered in `src/config.ts`: one for production (`https://zennnne.github.io/aniduel/`) and one for local dev (`http://localhost:5173/aniduel/`). The redirect URL must match exactly, so run the dev server on port 5173.
 
@@ -190,12 +208,15 @@ src/
                 titles, the "between two scores" choice)
   dev/          Dev-only fake AniList session (`?fake-anilist`)
   ui/           React screens (Start, Picker, Rough Sort, Board, Band choice, Duel, Split, Preview, Import, Catch-up)
-  studios/      Top Studios: its AniList reads, the scoring, `loadTopStudios`, and the page (`ui/`)
-studios/        Top Studios' HTML entry, served at /aniduel/studios/
+  anilyze/      AniLyze: the hub, the list read and scoring every tool shares, and the shared tool page (`ui/`)
+  studios/      Top Studios: its studio reads, its numbers, `loadTopStudios` and its page (`ui/`)
+  directors/    Top Directors: its staff-credit reads, its numbers, `loadTopDirectors` and its page (`ui/`)
+anilyze/        HTML entries of the hub and each tool, served at /aniduel/anilyze/…
+studios/        The old Top Studios path, which only forwards to /aniduel/anilyze/studios/
 scripts/        Catch-up holdout eval, Keep My Scale simulated-user eval, replay benchmark,
                 Top Studios parity script and the Python prototype it checks against
 docs/adr/       Architecture decision records
-docs/research/  Research behind the Catch-up suggestions, Keep My Scale scoring and the Studio Score
+docs/research/  Research behind the Catch-up suggestions, Keep My Scale scoring, the Studio Score and the Director Score
 ```
 
 Key design decisions:
@@ -215,3 +236,4 @@ Key design decisions:
 - [ADR 0013](docs/adr/0013-keep-my-scale-deciding-duels-before-the-closer-to-prompt.md): Deciding Duels before the Closer-to prompt, as the user's choice.
 - [ADR 0014](docs/adr/0014-custom-distribution-at-three-fixed-points.md): the Custom Distribution, shaped by three Quartile scores at fixed points of the Ranking, not by Band score ranges.
 - [ADR 0015](docs/adr/0015-top-studios-a-separate-page-in-the-same-repo.md): Top Studios is a separate page in the same repo, and its scoring is ported from the research prototype (v2.7 at first, v2.8 since 2026-11-04).
+- [ADR 0016](docs/adr/0016-anilyze-a-hub-with-its-tools-under-anilyze.md): AniLyze, a hub page with its tools under `/aniduel/anilyze/`; the old Top Studios path forwards for good.
