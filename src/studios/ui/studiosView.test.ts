@@ -1,5 +1,5 @@
 // The Top Studios page's view: who is looked up, what it says when it can't rank, and how sure a result is.
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { TopStudiosFailure, TopStudiosLoad } from '../loadTopStudios.ts'
 import { searchFor, studiosView, type StudiosViewInput } from './studiosView.ts'
 
@@ -52,6 +52,23 @@ describe('who the page looks up', () => {
 
   it('shows the name being read while it loads', () => {
     expect(view({ load: { kind: 'loading', userName: 'Friend' } }).screen).toEqual({ kind: 'loading', userName: 'Friend' })
+  })
+})
+
+describe('the link to Top Directors', () => {
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('opens Top Directors for the same ?user=', () => {
+    vi.stubEnv('BASE_URL', '/aniduel/')
+    expect(view({ search: '?user=Fake Zen', own: zen }).crossLink).toEqual({
+      text: '🎬 Top Directors →',
+      href: '/aniduel/anilyze/directors/?user=Fake%20Zen',
+    })
+  })
+
+  it('opens it blank when no one is looked up', () => {
+    vi.stubEnv('BASE_URL', '/aniduel/')
+    expect(view({ own: zen }).crossLink.href).toBe('/aniduel/anilyze/directors/')
   })
 })
 

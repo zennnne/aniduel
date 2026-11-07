@@ -52,6 +52,8 @@ export type FakeMedia = {
   coverColor?: string
   studios?: Array<{ id: number; name: string; isMain: boolean }>
   relations?: Array<{ relationType: string; mediaId: number }>
+  /** Staff credits, as Top Directors reads them (#103): who, their picture (null for none), and the role text. */
+  staff?: Array<{ id: number; name: string; image: string | null; role: string }>
 }
 
 /** What the fake answers to `Viewer`. Change `scoreFormat` to play the user changing it on AniList. */
@@ -160,7 +162,7 @@ function listEntry(mediaId: number, score: number, status = 'COMPLETED', romaji 
   }
 }
 
-/** A list entry as Top Studios' list query reads it: the score on the 10-point decimal scale, studios and links. */
+/** A list entry as the AniLyze tools' list query reads it: the score on the 10-point decimal scale, studios, staff and links. */
 function studioListEntry(mediaId: number, score: number, status = 'COMPLETED', romaji = `T${mediaId}`, more: FakeMedia = {}) {
   return {
     mediaId,
@@ -178,6 +180,12 @@ function studioListEntry(mediaId: number, score: number, status = 'COMPLETED', r
       duration: more.duration ?? 24,
       studios: { edges: (more.studios ?? []).map(({ id, name, isMain }) => ({ isMain, node: { id, name } })) },
       relations: { edges: (more.relations ?? []).map(({ relationType, mediaId: id }) => ({ relationType, node: { id } })) },
+      staff: {
+        edges: (more.staff ?? []).map(({ id, name, image, role }) => ({
+          role,
+          node: { id, name: { full: name }, image: { large: image }, siteUrl: '' },
+        })),
+      },
     },
   }
 }

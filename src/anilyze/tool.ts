@@ -2,6 +2,9 @@
 // components take a Tool; Top Studios passes TOP_STUDIOS (src/studios/tool.ts), Top Directors its own.
 import type { ScoringParams } from './scoring.ts'
 
+/** AniLyze's tools by page name, each a page under /aniduel/anilyze/ (src/sitePages.ts). */
+export type ToolName = 'studios' | 'directors'
+
 export type ToolWords = {
   /** The tool's name: "Top Studios". */
   name: string
@@ -17,7 +20,10 @@ export type ToolWords = {
   reading: string
 }
 
-export type Tool = { words: ToolWords; scoring: ScoringParams }
+/** The other AniLyze tool, linked from the dark header with the same `?user=` (#99's L1): "🎬 Top Directors →". */
+export type CrossLink = { tool: ToolName; text: string }
+
+export type Tool = { words: ToolWords; scoring: ScoringParams; crossLink: CrossLink }
 
 /** "studio" or "studios" for this count. */
 export const countOf = (words: ToolWords, n: number) => (n === 1 ? words.one : words.many)

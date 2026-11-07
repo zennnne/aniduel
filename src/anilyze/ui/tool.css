@@ -84,6 +84,19 @@ img {
   color: var(--navtx);
   text-decoration: underline;
 }
+/* The other tool, for the same ?user= (#99's L1) */
+.st-xl {
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: #ffffff1a;
+  border-radius: 6px;
+  padding: 4px 10px;
+  text-decoration: none;
+}
+.st-xl:hover {
+  background: #ffffff33;
+}
 .st-hdr-form {
   display: flex;
   gap: 6px;
@@ -327,6 +340,27 @@ img {
   width: 64px;
   height: 64px;
   border: 3px solid var(--fg);
+}
+/* A face AniList has no picture of (Top Directors): initials on the mochi pink, round wherever it sits. */
+.st-noface,
+.st-tile .st i.st-noface {
+  display: grid;
+  place-items: center;
+  background: var(--mochi);
+  color: #2b2d42;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  border-radius: 50%;
+  overflow: hidden;
+  text-transform: uppercase;
+}
+.st-bub .st-noface {
+  width: 100%;
+  height: 100%;
+}
+.st-av.big.st-noface {
+  font-size: 22px;
 }
 
 /* The label map */

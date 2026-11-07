@@ -1,6 +1,7 @@
 // An AniLyze tool page's view (spec #87, Top Studios first): from the URL query, the AniDuel! login (if any) and the
 // load, which name to look up, what the search page says, and how sure a result is, in the tool's own words. Pure: the
 // page renders it and does what it says.
+import { toolLink } from '../../sitePages.ts'
 import { pluralWord } from '../../ui/meta.ts'
 import type { ToolFailure } from '../load.ts'
 import type { OwnName } from '../login.ts'
@@ -39,6 +40,8 @@ export type ToolView = {
   /** The name the field holds: the `?user=` one, else the logged-in user's own. */
   formName: string
   screen: ToolScreen
+  /** The header's link to the other tool, for the `?user=` looked up (blank when there is none). */
+  crossLink: { text: string; href: string }
 }
 
 /** How a tool reads its own load: the Ranking it holds, or why there is none. */
@@ -66,7 +69,8 @@ export function toolView<Loaded>(
 ): ToolView {
   const shared = userOf(search)
   const formName = shared ?? (own.kind === 'known' ? own.name : '')
-  return { loadNow: load.kind === 'idle' ? shared : null, formName, screen: screenOf(load, own, tool, read, picture) }
+  const crossLink = { text: tool.crossLink.text, href: toolLink(tool.crossLink.tool, shared ?? '', search) }
+  return { loadNow: load.kind === 'idle' ? shared : null, formName, screen: screenOf(load, own, tool, read, picture), crossLink }
 }
 
 function screenOf<Loaded>(load: LoadState<Loaded>, own: OwnName, tool: Tool, read: ReadLoad<Loaded>, picture?: CardPicture): ToolScreen {

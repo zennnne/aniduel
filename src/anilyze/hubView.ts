@@ -33,6 +33,13 @@ export type HubView = { field: string; login: HubLogin; cards: HubCard[] }
 /** The tools that exist, in the hub's order (no "coming soon"). */
 const TOOLS: ReadonlyArray<Pick<HubCard, 'tool' | 'icon' | 'name' | 'noun' | 'blurb'>> = [
   { tool: 'studios', icon: '🏢', name: 'Top Studios', noun: 'studios', blurb: 'Ranked from scores, drops, rewatches and favourites.' },
+  {
+    tool: 'directors',
+    icon: '🎬',
+    name: 'Top Directors',
+    noun: 'directors',
+    blurb: 'Same rules as Top Studios, for the people who directed them.',
+  },
 ]
 
 export function hubView({ own, typed }: HubViewInput): HubView {

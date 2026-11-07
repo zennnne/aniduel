@@ -1,3 +1,5 @@
+import type { ToolName } from './anilyze/tool.ts'
+
 /**
  * The site's pages (ADR 0015, ADR 0016): AniDuel! at /aniduel/, the AniLyze hub at /aniduel/anilyze/ and its tools
  * under it. Under `npm run dev`, a link from a page opened with `?fake-anilist` keeps the switch, so the fake AniList
@@ -6,7 +8,7 @@
 export type SitePage = 'aniduel' | 'anilyze' | Tool
 
 /** AniLyze's tools, each a page under /aniduel/anilyze/. */
-export type Tool = 'studios' | 'directors'
+export type Tool = ToolName
 
 const PATHS: Record<SitePage, string> = {
   aniduel: '',
@@ -19,14 +21,17 @@ export function sitePage(page: SitePage): string {
   return linkTo(page, [])
 }
 
-/** A tool opened for `userName` with `?user=`, so the result loads at once; blank (no `user`) when the name is empty. */
-export function toolLink(tool: Tool, userName: string): string {
+/**
+ * A tool opened for `userName` with `?user=`, so the result loads at once; blank (no `user`) when the name is empty.
+ * `from` is the query of the page the link is on (by default the open page's), which may carry the fake's switch.
+ */
+export function toolLink(tool: Tool, userName: string, from?: string): string {
   const name = userName.trim()
-  return linkTo(tool, name ? [`user=${encodeURIComponent(name)}`] : [])
+  return linkTo(tool, name ? [`user=${encodeURIComponent(name)}`] : [], from)
 }
 
-function linkTo(page: SitePage, params: string[]): string {
-  const fake = import.meta.env.DEV && new URLSearchParams(window.location.search).has('fake-anilist')
+function linkTo(page: SitePage, params: string[], from?: string): string {
+  const fake = import.meta.env.DEV && new URLSearchParams(from ?? window.location.search).has('fake-anilist')
   const query = [...(fake ? ['fake-anilist'] : []), ...params]
   return `${import.meta.env.BASE_URL}${PATHS[page]}${query.length ? `?${query.join('&')}` : ''}`
 }

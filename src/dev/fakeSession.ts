@@ -161,6 +161,88 @@ const STUDIO_FACTS: Readonly<Record<string, StudioFacts>> = {
   'Shingeki no Kyojin Season 3 Part 2': { by: ['Wit Studio'], sequelOf: 'Shingeki no Kyojin', episodes: 10 },
 }
 
+/** A staff credit on the fixed list: who, and the role as AniList writes it ("Director" when left out). */
+type Credit = [name: string, role?: string]
+
+/**
+ * The fixed list's staff credits, by title, for Top Directors (#103). Loosely after the real ones, bent so that a few
+ * Directors reach 3 Votes (the gate steps down to 3), many sit on the watchlist, and the Director rule shows: co-directors
+ * (Kaguya-sama, Steins;Gate), a credit for some episodes, a Series and a Chief Director, and credits that must not count
+ * (an episode director, an opening director, a series episode director). A title without credits counts for no one.
+ */
+const DIRECTOR_CREDITS: Readonly<Record<string, Credit[]>> = {
+  'Fullmetal Alchemist: Brotherhood': [['Yasuhiro Irie']],
+  'Steins;Gate': [['Hiroshi Hamasaki'], ['Takuya Satou']],
+  'Hunter x Hunter (2011)': [['Hiroshi Koujina']],
+  'Mob Psycho 100': [['Yuzuru Tachikawa']],
+  'Sousou no Frieren': [['Keiichirou Saitou']],
+  Monster: [['Masayuki Kojima']],
+  'Cowboy Bebop': [['Shinichirou Watanabe']],
+  'Violet Evergarden': [['Taichi Ishidate']],
+  'Vinland Saga': [['Shuuhei Yabuta']],
+  'Haikyuu!!': [['Susumu Mitsunaka']],
+  'Kaguya-sama wa Kokurasetai: Tensai-tachi no Renai Zunousen': [['Mamoru Hatakeyama'], ['Shinichi Omata', 'Series Director']],
+  Mushishi: [['Hiroshi Nagahama']],
+  'Spy x Family': [['Kazuhiro Furuhashi'], ['Takahiro Harada', 'Director (eps 13-25)']],
+  'Kimetsu no Yaiba': [['Haruo Sotozaki']],
+  'Dr. Stone': [['Shinya Iino']],
+  'Yuru Camp': [['Yoshiaki Kyougoku']],
+  'K-On!': [['Naoko Yamada']],
+  'Bocchi the Rock!': [['Keiichirou Saitou']],
+  'Sword Art Online': [['Tomohiko Itou']],
+  'Fairy Tail': [['Shinji Ishihira']],
+  'Tokyo Ghoul': [['Shuuhei Morita']],
+  'Black Clover': [['Tatsuya Yoshihara']],
+  'Nanatsu no Taizai': [['Tensai Okamura'], ['Shuuhei Morita', 'Chief Director']],
+  'Boku no Hero Academia': [['Kenji Nagasaki']],
+  'Dungeon Meshi': [['Yoshihiro Miyajima']],
+  'Odd Taxi': [['Baku Kinoshita']],
+  'Ping Pong the Animation': [['Masaaki Yuasa']],
+  'Tensei Shitara Slime Datta Ken': [['Yasuhito Kikuchi']],
+  'Shingeki no Kyojin': [['Tetsurou Araki'], ['Episode Director Only', 'Episode Director (eps 3, 7)']],
+  'Made in Abyss': [['Masayuki Kojima']],
+  'Neon Genesis Evangelion': [['Hideaki Anno'], ['Opening Director Only', 'Director (OP)']],
+  Hyouka: [['Yasuhiro Takemoto']],
+  'One Piece': [['Kounosuke Uda', 'Series Director (eps 1-278)']],
+  'Kusuriya no Hitorigoto': [['Norihiro Naganuma']],
+  Gintama: [['Shinji Takamatsu']],
+  'Detective Conan': [['Kenji Kodama']],
+  'Boruto: Naruto Next Generations': [['Noriyuki Abe']],
+  'Mahouka Koukou no Rettousei': [['Manabu Ono']],
+  Akira: [['Katsuhiro Otomo']],
+  'Chainsaw Man': [['Ryuu Nakayama']],
+  'Mob Psycho 100 II': [['Yuzuru Tachikawa'], ['Yuzuru Tachikawa', 'Director (eps 1-6)']],
+  'Mob Psycho 100 III': [['Takahiro Hasui'], ['Yuzuru Tachikawa', 'Chief Director']],
+  'Kaguya-sama wa Kokurasetai?: Tensai-tachi no Renai Zunousen': [['Mamoru Hatakeyama'], ['Shinichi Omata', 'Chief Director']],
+  'Kaguya-sama wa Kokurasetai: Ultra Romantic': [['Mamoru Hatakeyama'], ['Shinichi Omata', 'Chief Director']],
+  'Steins;Gate 0': [['Kenichi Kawamura'], ['Hiroshi Hamasaki', 'Chief Director']],
+  'Vinland Saga Season 2': [['Shuuhei Yabuta']],
+  'Jujutsu Kaisen': [['Sunghoo Park']],
+  'Jujutsu Kaisen 2nd Season': [['Shouta Goshozono']],
+  Dorohedoro: [['Yuuichirou Hayashi']],
+  'Tokyo Ghoul √A': [['Shuuhei Morita']],
+  'Hibike! Euphonium': [['Tatsuya Ishihara'], ['Naoko Yamada', 'Series Director'], ['Taichi Ogawa', 'Series Episode Director']],
+  'Koe no Katachi': [['Naoko Yamada']],
+  'One Punch Man': [['Shingo Natsume']],
+  // Shingeki no Kyojin Season 3 Part 2: none, so it counts for no one.
+}
+
+const staffNames = [...new Set(Object.values(DIRECTOR_CREDITS).flatMap((credits) => credits.map(([name]) => name)))]
+
+/**
+ * The fake has no real pictures: every other Director gets a drawn face (a data URL, so nothing is fetched), the rest
+ * none, which the page shows as initials.
+ */
+function faceOf(staffId: number): string | null {
+  if (staffId % 2) return null
+  const hue = (staffId * 47) % 360
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60"><rect width="60" height="60" fill="hsl(${hue} 30% 80%)"/>` +
+    `<ellipse cx="30" cy="62" rx="24" ry="20" fill="hsl(${hue} 25% 35%)"/><circle cx="30" cy="28" r="13" fill="#f2d3b8"/>` +
+    `<path d="M16 27c0-14 28-14 28 0c-4-7-24-7-28 0z" fill="hsl(${(hue + 180) % 360} 30% 25%)"/></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
+}
+
 /** The fake has no cover images; Top Studios shows a title's cover colour in their place. */
 const COVER_COLORS = ['#e4a15d', '#5da1e4', '#e45d86', '#5de4a1', '#a15de4', '#e4d65d', '#5dd6e4', '#e4765d']
 
@@ -187,6 +269,10 @@ function mediaOf({ name, year, completed, genres, tags }: FixedTitle): FakeMedia
       ...(sequelOf ? [{ relationType: 'PREQUEL', mediaId: idOf(sequelOf) }] : []),
       ...sequels.map((sequel) => ({ relationType: 'SEQUEL', mediaId: idOf(sequel) })),
     ],
+    staff: (DIRECTOR_CREDITS[name] ?? []).map(([staffName, role = 'Director']) => {
+      const id = staffNames.indexOf(staffName) + 1
+      return { id, name: staffName, image: faceOf(id), role }
+    }),
   }
 }
 
@@ -218,6 +304,6 @@ export function fakeSession(storage: Storage, clock: Clock = browserClock): AniL
  * The Top Studios page on the same fake AniList (#93): logged in as Fake Zen, whose list it ranks; any other name is
  * no such user. Top Studios saves nothing, so there is nothing to throw away.
  */
-export function fakeStudiosSession(clock: Clock = browserClock): AniListSession {
+export function fakeToolSession(clock: Clock = browserClock): AniListSession {
   return { fetch: fixedAniList(clock).fetch, token: 'fake' }
 }

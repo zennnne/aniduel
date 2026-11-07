@@ -122,6 +122,9 @@ export function ToolPage<Result extends { ok: true }>({ session, tool, load: loa
         <a className="st-back" href={sitePage('anilyze')}>
           ← AniLyze
         </a>
+        <a className="st-xl" href={view.crossLink.href}>
+          {view.crossLink.text}
+        </a>
         {screen.kind === 'result' && (
           <form className="st-hdr-form" onSubmit={submit} role="search">
             {field}

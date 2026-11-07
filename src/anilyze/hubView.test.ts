@@ -53,8 +53,21 @@ describe('the line under the field', () => {
 })
 
 describe('the cards', () => {
-  it('are only the tools that exist: Top Studios', () => {
-    expect(view({}).cards.map((card) => card.name)).toEqual(['Top Studios'])
+  it('are only the tools that exist: Top Studios and Top Directors', () => {
+    expect(view({}).cards.map((card) => card.name)).toEqual(['Top Studios', 'Top Directors'])
+  })
+
+  it('open Top Directors with the name in the field too, or blank', () => {
+    expect(view({ typed: 'Fake Zen' }).cards[1]).toMatchObject({
+      tool: 'directors',
+      icon: '🎬',
+      noun: 'directors',
+      blurb: 'Same rules as Top Studios, for the people who directed them.',
+      who: 'does Fake Zen',
+      button: 'Show Fake Zen’s top directors →',
+      href: '/aniduel/anilyze/directors/?user=Fake%20Zen',
+    })
+    expect(view({}).cards[1]).toMatchObject({ button: 'Open Top Directors →', href: '/aniduel/anilyze/directors/' })
   })
 
   it('open the tool with the name in the field, so the result loads at once', () => {

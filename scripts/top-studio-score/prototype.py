@@ -252,9 +252,11 @@ def run(user):
     if BY == "director":  # who a title counts for: its Directors, keyed by name ("name (id)" if two share a name)
         dcred = cached(f"directors_{user}.json", lambda: fetch_directors(user, [e["mediaId"] for e in es]))
         name_of = {sid: nm for cr in dcred.values() for sid, nm, _ in cr}
-        per_name = Counter(name_of[sid] for sid in {sid for cr in dcred.values() for sid in directors_of(cr)})
+        director_ids = {sid for cr in dcred.values() for sid in directors_of(cr)}
+        per_name = Counter(name_of[sid] for sid in director_ids)
         key = {sid: nm if per_name[nm] == 1 else f"{nm} ({sid})" for sid, nm in name_of.items()}
-        ids_of = {key[sid]: sid for sid in key}
+        # Only Directors: a non-Director credit can share a Director's name and key (#103's parity found one).
+        ids_of = {key[sid]: sid for sid in director_ids}
         owners = lambda e: [key[sid] for sid in directors_of(dcred.get(str(e["mediaId"]), []))]
     fav_ids = {a["id"] for a in favs["anime"]}
     staff_name = {str(s["id"]): s["name"]["full"] for s in favs["staff"]}

@@ -7,9 +7,9 @@ export type ToolSession = { fetch: typeof fetch; token: string | null }
 
 /**
  * Who a title counts for on a tool: a studio on Top Studios, a Director on Top Directors. `image` is their own picture
- * where AniList has one (a Director's face; a studio has none).
+ * where AniList has one (a Director's face; a studio has none), `siteUrl` their own AniList page where the tool reads it.
  */
-export type Who = { id: number; name: string; image?: string | null }
+export type Who = { id: number; name: string; image?: string | null; siteUrl?: string }
 
 /** A SEQUEL/PREQUEL link from a title to another one, which joins titles into a Franchise (the Love count, #90). */
 export type FranchiseRelation = { type: 'SEQUEL' | 'PREQUEL'; mediaId: number }

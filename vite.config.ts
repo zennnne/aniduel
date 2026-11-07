@@ -10,11 +10,12 @@ export default defineConfig({
   build: {
     rolldownOptions: {
       // One page each, no router (ADR 0004, ADR 0016): AniDuel! at /aniduel/, the AniLyze hub at /aniduel/anilyze/,
-      // Top Studios under it, and Top Studios' old path /aniduel/studios/, which only forwards there.
+      // Top Studios and Top Directors under it, and Top Studios' old path /aniduel/studios/, which only forwards there.
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         anilyze: fileURLToPath(new URL('./anilyze/index.html', import.meta.url)),
         studios: fileURLToPath(new URL('./anilyze/studios/index.html', import.meta.url)),
+        directors: fileURLToPath(new URL('./anilyze/directors/index.html', import.meta.url)),
         studiosRedirect: fileURLToPath(new URL('./studios/index.html', import.meta.url)),
       },
     },

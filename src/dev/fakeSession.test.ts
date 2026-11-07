@@ -6,10 +6,11 @@ import { memoryStorage } from '../persistence/memoryStorage.ts'
 import { loadLastMediaType, saveLastMediaType } from '../persistence/progress.ts'
 import { anchorsOf } from '../pool/anchors.ts'
 import { DEFAULT_STATUSES, LIST_STATUSES, OFFERED_STATUSES } from '../pool/pool.ts'
+import { loadTopDirectors } from '../directors/loadTopDirectors.ts'
 import { KEEP_MY_SCALE } from '../ranking/engine.ts'
 import { GATE, loadTopStudios } from '../studios/loadTopStudios.ts'
 import { startView } from '../ui/start/startView.ts'
-import { fakeSession, fakeStudiosSession } from './fakeSession.ts'
+import { fakeSession, fakeToolSession } from './fakeSession.ts'
 
 async function signedIn() {
   const gateway = createAniListGateway(fakeSession(memoryStorage(), fakeClock()))
@@ -95,7 +96,7 @@ describe('the fake session', () => {
 // The same fake on the Top Studios page (#93): the fixed list read by user name, with studios, franchises and favourites.
 describe('the fake on Top Studios', () => {
   async function fakeZensStudios() {
-    const loaded = await loadTopStudios(fakeStudiosSession(fakeClock()), 'Fake Zen')
+    const loaded = await loadTopStudios(fakeToolSession(fakeClock()), 'Fake Zen')
     if (!loaded.ok) throw new Error(`no ranking: ${JSON.stringify(loaded.failure)}`)
     return loaded.topStudios
   }
@@ -119,7 +120,38 @@ describe('the fake on Top Studios', () => {
   })
 
   it('knows no other user', async () => {
-    const loaded = await loadTopStudios(fakeStudiosSession(fakeClock()), 'someone else')
+    const loaded = await loadTopStudios(fakeToolSession(fakeClock()), 'someone else')
     expect(loaded).toEqual({ ok: false, failure: { kind: 'no-such-user' } })
+  })
+})
+
+// The same fake on the Top Directors page (#103): the fixed list carries staff credits.
+describe('the fake on Top Directors', () => {
+  async function fakeZensDirectors() {
+    const loaded = await loadTopDirectors(fakeToolSession(fakeClock()), 'Fake Zen')
+    if (!loaded.ok) throw new Error(`no ranking: ${JSON.stringify(loaded.failure)}`)
+    return loaded.topDirectors
+  }
+
+  it("ranks some of the fake user's Directors, on a lowered gate and with a watchlist", async () => {
+    const { directors, gate, watchlist } = await fakeZensDirectors()
+    expect(directors.length).toBeGreaterThanOrEqual(4)
+    expect(new Set(directors.map((d) => d.label)).size).toBeGreaterThanOrEqual(2)
+    expect(gate).toBe(3)
+    expect(watchlist).toHaveLength(5)
+  })
+
+  it('counts only Directors: co-directors in full, never an episode or opening director', async () => {
+    const { directors, watchlist } = await fakeZensDirectors()
+    const everyone = [...directors, ...watchlist]
+    const votesOf = (mediaId: number) => everyone.filter((d) => d.votes.some((v) => v.title.mediaId === mediaId)).length
+    expect(everyone.some((d) => d.votes.some((v) => votesOf(v.title.mediaId) >= 2))).toBe(true)
+    expect(everyone.map((d) => d.name)).not.toContain('Episode Director Only')
+    expect(everyone.map((d) => d.name)).not.toContain('Opening Director Only')
+  })
+
+  it('has Directors with and without a picture', async () => {
+    const { directors } = await fakeZensDirectors()
+    expect(directors.some((d) => d.image === null)).toBe(true)
   })
 })

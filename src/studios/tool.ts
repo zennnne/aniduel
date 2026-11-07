@@ -26,4 +26,5 @@ export const TOP_STUDIOS: Tool = {
     // Labels compare a studio's rates with the top 20 ranked studios', high only 6 points above theirs.
     labels: { pool: 20, margin: 0.06 },
   },
+  crossLink: { tool: 'directors', text: '🎬 Top Directors →' },
 }

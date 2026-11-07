@@ -96,6 +96,8 @@ export type WhoScore<T extends ListTitle = ListTitle> = {
   name: string
   /** Their own picture, when `countsFor` gave one (see Who). */
   image?: string | null
+  /** Their own AniList page, when `countsFor` gave one (see Who). */
+  siteUrl?: string
   /** The Studio Score or Director Score S. 0 is average for this user. */
   score: number
   /** The counted titles, in list order. Their count is what the Gate reads. */
@@ -224,6 +226,7 @@ export function scoreList<T extends ListTitle>(
       id,
       name: who.name,
       ...('image' in who ? { image: who.image } : {}),
+      ...('siteUrl' in who ? { siteUrl: who.siteUrl } : {}),
       votes: group.votes.map(({ title, z, w, scored, favourite, mid }, i): Vote<T> => {
         const weight = Math.sqrt(w) * rescale * (size.get(franchises[i]) ?? 1) ** -FRANCHISE_P
         return { title, z, weight, rateWeight: mid ? weight / Math.sqrt(MID_WEIGHT) : weight, favourite, scored }

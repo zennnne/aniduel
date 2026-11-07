@@ -17,7 +17,7 @@ if (theme) document.documentElement.dataset.theme = theme
 // production build drops this branch, and the fake with it (vite.config.test.ts).
 const session =
   import.meta.env.DEV && new URLSearchParams(window.location.search).has('fake-anilist')
-    ? (await import('../dev/fakeSession.ts')).fakeStudiosSession()
+    ? (await import('../dev/fakeSession.ts')).fakeToolSession()
     : {
         fetch: (input: RequestInfo | URL, init?: RequestInit) => window.fetch(input, init),
         token: storage ? storedToken(storage) : null,
