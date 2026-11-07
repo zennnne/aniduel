@@ -748,7 +748,7 @@ export function App({ storage, fake }: { storage: Storage; fake?: AniListSession
           switchSortGoal: requestSortGoal,
           openCatchUp,
           clearPassed: () => setDialog('clear-passed'),
-          openTopStudios: () => window.location.assign(sitePage('studios')),
+          openAniLyze: () => window.location.assign(sitePage('anilyze')),
         },
       )
     : []

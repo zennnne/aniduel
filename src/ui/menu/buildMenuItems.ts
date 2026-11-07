@@ -43,8 +43,8 @@ export type MenuActions = {
   openCatchUp: () => void
   /** Asks before emptying Catch-up's Passed history. */
   clearPassed: () => void
-  /** Top Studios, a page of its own on the same site (ADR 0015). */
-  openTopStudios: () => void
+  /** AniLyze, the hub of the analysis tools such as Top Studios, a page of its own on the same site (ADR 0016). */
+  openAniLyze: () => void
 }
 
 /** The one list behind the account menu and the Ctrl+K palette, for a logged-in user. */
@@ -168,12 +168,12 @@ export function buildMenuItems(context: MenuContext, actions: MenuActions): Menu
       run: actions.openCatchUp,
     },
     {
-      id: 'top-studios',
+      id: 'anilyze',
       group: 'App',
       icon: '★',
-      title: 'Top Studios',
-      description: 'Your top animation studios, ranked from your AniList list',
-      run: actions.openTopStudios,
+      title: 'AniLyze',
+      description: 'Your top animation studios and more, from your AniList list',
+      run: actions.openAniLyze,
     },
     {
       id: 'theme',

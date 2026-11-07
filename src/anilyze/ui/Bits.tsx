@@ -1,5 +1,5 @@
-// Small pieces the Top Studios page repeats: the mochi, hearts, a label pill.
-import type { StudioLabel } from '../loadTopStudios.ts'
+// Small pieces the AniLyze pages repeat: the mochi, hearts, a label pill.
+import type { Label } from '../scoring.ts'
 import { LABELS, signed } from './labels.ts'
 
 /** AniDuel!'s mochi, as a plain pink dome with a face. Decorative. */
@@ -26,12 +26,12 @@ export function Mochi({ face = 'ok', size = 34, className }: { face?: 'ok' | 'sa
   )
 }
 
-/** The Studio Score as 0–5 hearts; the raw S only in the tooltip. */
-export function Hearts({ hearts, score, big }: { hearts: number; score: number; big?: boolean }) {
+/** The Studio Score or Director Score (`scoreName`) as 0–5 hearts; the raw S only in the tooltip. */
+export function Hearts({ hearts, score, scoreName, big }: { hearts: number; score: number; scoreName: string; big?: boolean }) {
   return (
     <span
       className={big ? 'st-hearts big' : 'st-hearts'}
-      title={`Studio Score ${signed(score)}`}
+      title={`${scoreName} ${signed(score)}`}
       role="img"
       aria-label={`${hearts} of 5 hearts`}
     >
@@ -41,7 +41,7 @@ export function Hearts({ hearts, score, big }: { hearts: number; score: number; 
   )
 }
 
-export function LabelPill({ label }: { label: StudioLabel }) {
+export function LabelPill({ label }: { label: Label }) {
   const { icon, name } = LABELS[label]
   return (
     <span className={`st-lab ${label}`}>
