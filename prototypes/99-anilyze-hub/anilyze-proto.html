@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PROTOTYPE · AniLyze hub + Top Directors (#99)</title>
+<style>
+:root{--bg:#edf1f5;--fg:#fafafa;--fg2:#e5ebf1;--tx:#5c728a;--tx-strong:#2b2d42;--blue:#3db4f2;--nav:#2b2d42;--navtx:#bcbedc;--danger:#e05555;--good:#3fae5a;--on-accent:#fff;--shadow:#0002;--band-ink:#4a3b52;--mochi:#ffb3c8;--mochi-cheek:#ff7fa3;--heart:#f27d9b;--elite:#7cc6f5;--bold:#f5a46b;--reliable:#8fd19e;--meh:#b9b3c9;--ink:#2b2d42;--warnbg:#ffe08a;color-scheme:light}
+:root[data-theme=dark]{--bg:#0b1622;--fg:#151f2e;--fg2:#1f2a3c;--tx:#9fadbd;--tx-strong:#edf1f5;--nav:#0b1622;--navtx:#9fadbd;--shadow:#0006;--ink:#edf1f5;color-scheme:dark}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Overpass,system-ui,-apple-system,'Segoe UI',sans-serif;font-size:14px;background:#888;color:var(--tx)}
+:root[data-theme=dark] body{background:#000}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input{font:inherit}
+ol,ul{list-style:none}
+.fine{opacity:.7}.small{font-size:12px}.strong{color:var(--tx-strong)}
+.frame{background:var(--bg);min-height:100vh;margin:0 auto;container-type:inline-size;position:relative;overflow:hidden;--line:var(--ink)}
+.frame.phone{width:390px;min-height:820px;margin:20px auto;border-radius:24px;box-shadow:0 0 0 10px #222}
+.mochi .body{fill:var(--mochi)}.mochi .cheek{fill:var(--mochi-cheek);opacity:.6}.mochi .ink{fill:var(--band-ink)}.mochi .line{fill:none;stroke:var(--band-ink);stroke-width:3;stroke-linecap:round}
+.mochi.bob{animation:bob .9s ease-in-out infinite}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid #8886;border-top-color:var(--blue);animation:sp .8s linear infinite;display:inline-block;vertical-align:middle;flex:none}
+@keyframes sp{to{transform:rotate(360deg)}}
+@keyframes bob{50%{transform:translateY(-8px)}}
+
+/* header (Top Studios', shared by all pages per Q3 H1 / Q4 b) */
+.hdr{background:var(--nav);color:var(--navtx);padding:10px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:relative;z-index:2}
+.hub .hdr{border-bottom:3px solid var(--line)}
+.logo{font-weight:900;color:#fff;font-size:18px;display:flex;align-items:center;gap:8px}
+.logo b{color:var(--blue)}
+.back{font-size:12px;color:var(--navtx);text-decoration:underline}
+.hform{display:flex;gap:6px;margin-left:auto}
+.hform input{padding:6px 10px;border-radius:6px;border:none;background:#ffffff1a;color:#fff;width:170px}
+.hgo{background:var(--blue);color:#fff;border-radius:6px;padding:6px 12px;font-weight:800}
+
+/* ===== HUB (settled: A4 sticker, H1, C3 🏢🎬, S2, phone mochi 72) ===== */
+.dots-bg{position:absolute;inset:0;background-image:radial-gradient(var(--fg2) 1.5px,transparent 1.5px);background-size:18px 18px;z-index:0}
+.wrap{position:relative;z-index:1;max-width:680px;margin:0 auto;padding:40px 20px 60px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.h1{color:var(--tx-strong);font-size:34px;font-weight:900;letter-spacing:-.5px;margin:12px 0 6px}
+.h1 span{background:var(--mochi);color:#2b2d42;padding:0 10px;border-radius:10px;border:3px solid var(--line);display:inline-block;transform:rotate(-2deg)}
+.lede{max-width:460px;margin-bottom:18px}
+.fieldrow{width:100%;max-width:440px;display:flex;flex-direction:column;gap:8px;align-items:center}
+.field{width:100%;font-size:16px;padding:12px 16px;border-radius:14px;border:3px solid var(--line);background:var(--fg);color:var(--tx-strong);outline:none;box-shadow:4px 4px 0 var(--line)}
+.field:focus{box-shadow:4px 4px 0 var(--blue)}
+.you{font-size:12px}.you b{color:var(--tx-strong)}
+.mwrap{position:relative;display:inline-block}
+.mwrap .mochi{width:100px;height:76px}
+.spark{position:absolute;font-size:18px}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:22px;width:100%;margin-top:44px;text-align:left}
+@container (max-width:560px){.cards{grid-template-columns:1fr;gap:34px}.h1{font-size:28px}.wrap{padding-top:26px}.mwrap .mochi{width:72px;height:55px}}
+.card{display:flex;flex-direction:column;gap:6px;position:relative;background:var(--fg);border:3px solid var(--line);border-radius:18px;padding:22px 18px 18px;box-shadow:6px 6px 0 var(--line);transition:transform .1s,box-shadow .1s}
+.card:hover{transform:translate(-2px,-2px);box-shadow:8px 8px 0 var(--line)}
+.card:active{transform:translate(4px,4px);box-shadow:2px 2px 0 var(--line)}
+.card .ic{width:54px;height:54px;border-radius:50%;display:grid;place-items:center;font-size:28px;background:var(--c);border:3px solid var(--line);position:absolute;right:14px;top:-22px}
+.card .q{font-size:21px;font-weight:900;color:var(--tx-strong);line-height:1.2;padding-right:40px;word-break:break-word}
+.card .q em{font-style:normal;background:var(--c);border-radius:6px;padding:0 5px;color:#2b2d42}
+.card .tool{font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;opacity:.6}
+.cta{display:inline-flex;align-self:flex-start;align-items:center;gap:6px;margin-top:auto;border:2.5px solid var(--line);border-radius:12px;padding:7px 14px;background:var(--c);color:#2b2d42;font-weight:900;box-shadow:3px 3px 0 var(--line)}
+
+/* ===== TOOL PAGE (Top Studios’ result layout, mocked) ===== */
+.tw{max-width:1100px;margin:0 auto;padding:20px}
+.who{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.who h1{font-size:22px;color:var(--tx-strong);font-weight:800}
+.sure{background:var(--fg);border-radius:12px;padding:10px 14px;margin-bottom:12px;box-shadow:0 1px 3px var(--shadow);font-size:13px;display:flex;gap:10px}
+.sure b{color:var(--tx-strong)}.sure .d{color:var(--good);letter-spacing:2px}.sure .d s{text-decoration:none;color:var(--fg2)}
+.lay{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:18px;align-items:start}
+@container (max-width:760px){.lay{grid-template-columns:1fr}.lay .right{order:-1}}
+.map{position:relative;border-radius:16px;overflow:hidden;aspect-ratio:1/.62;display:grid;grid-template-columns:1fr 1fr}
+.map .qd{display:flex;padding:10px;font-weight:900;font-size:12px;color:#2b2d42}
+.map .qd:nth-child(1){background:color-mix(in srgb,var(--bold) 45%,var(--fg))}
+.map .qd:nth-child(2){background:color-mix(in srgb,var(--elite) 45%,var(--fg));justify-content:flex-end}
+.map .qd:nth-child(3){background:color-mix(in srgb,var(--meh) 45%,var(--fg));align-items:flex-end}
+.map .qd:nth-child(4){background:color-mix(in srgb,var(--reliable) 45%,var(--fg));align-items:flex-end;justify-content:flex-end}
+.bub{position:absolute;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px #0004;transform:translate(-50%,-50%);line-height:0}
+.bub.on{border-color:var(--blue);z-index:2}
+.pnl{margin-top:14px;background:var(--fg);border-radius:10px;box-shadow:0 1px 3px var(--shadow);overflow:hidden}
+.pnl .ban{height:90px;background-size:cover;background-position:center}
+.pnl .dh{display:flex;gap:12px;align-items:flex-end;padding:0 16px 12px;margin-top:-30px}
+.pnl .dh h2{color:var(--tx-strong);font-size:20px}
+.pnl .side{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.pnl .say{display:flex;gap:10px;align-items:center;padding:0 16px 16px}
+.lab{display:inline-flex;gap:4px;padding:2px 8px;border-radius:99px;font-size:12px;font-weight:700;color:#2b2d42;white-space:nowrap}
+.hearts{color:var(--heart);font-size:12px;letter-spacing:-1px;white-space:nowrap}.hearts s{text-decoration:none;opacity:.25}.hearts.big{font-size:18px}
+.podium{display:flex;flex-direction:column;gap:8px;margin-bottom:10px}
+.tc{display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;color:#fff;background-size:cover;background-position:center;text-align:left;width:100%;min-height:64px;position:relative}
+.tc.on{outline:3px solid var(--blue)}
+.tc .nm{flex:1;min-width:0;display:flex;flex-direction:column}
+.tc .nm span{font-size:11px;opacity:.85}
+.tc .medal{font-size:20px}
+.rows{background:var(--fg);border-radius:10px;box-shadow:0 1px 3px var(--shadow);padding:6px}
+.it{display:flex;align-items:center;gap:8px;padding:6px;border-radius:8px;width:100%;text-align:left}
+.it:hover{background:var(--fg2)}
+.it .rk{width:18px;font-weight:800;text-align:center}
+.it .nm{flex:1;min-width:0;color:var(--tx-strong);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wlh{font-size:13px;padding:8px 6px 2px}
+.av{flex:none;display:block;position:relative;background:var(--fg2)}
+.av img,.av svg{display:block;width:100%;height:100%;object-fit:cover}
+.av.round{border-radius:50%;overflow:hidden}
+.av.port{border-radius:6px;overflow:hidden}
+.av .badge{position:absolute;right:-4px;bottom:-4px;width:55%;height:55%;border-radius:4px;border:2px solid var(--fg);overflow:hidden}
+.av.withbadge{overflow:visible;background:none}
+.av.withbadge>.face{display:block;border-radius:50%;overflow:hidden;width:100%;height:100%}
+.ptc{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.ptc button{border-radius:10px;overflow:hidden;position:relative;aspect-ratio:2/3;color:#fff;text-align:left}
+.ptc button>svg,.ptc button>.noimg{position:absolute;inset:0;width:100%;height:100%}
+.ptc button.on{outline:3px solid var(--blue)}
+.ptc .ov{position:absolute;inset:auto 0 0 0;padding:20px 6px 6px;background:linear-gradient(#0000,#000c);display:flex;flex-direction:column;gap:2px;font-size:11px}
+.ptc .ov b{font-size:12px;line-height:1.1}
+.ptc .medal{position:absolute;top:4px;left:4px;font-size:18px}
+.noimg{display:grid;place-items:center;font-weight:900;color:#2b2d42;width:100%;height:100%}
+/* cross-link styles */
+.xl-nav{font-size:12px;color:#fff;font-weight:800;background:#ffffff1a;border-radius:6px;padding:4px 10px}
+.seg{display:flex;background:#ffffff14;border-radius:8px;padding:3px;gap:2px}
+.seg a{padding:4px 10px;border-radius:6px;font-size:12px;font-weight:800;color:var(--navtx)}
+.seg a.on{background:var(--blue);color:#fff}
+.xl-who{font-size:13px;color:var(--blue);font-weight:800;text-decoration:underline}
+.xl-foot{margin:40px auto 10px;max-width:440px}
+.xl-foot .card{text-align:left}
+.xl-float{position:absolute;left:16px;bottom:16px;z-index:5;transform:rotate(-3deg)}
+.stk{display:inline-flex;align-items:center;gap:6px;border:2.5px solid var(--line);border-radius:99px;padding:5px 14px;font-weight:900;font-size:13px;background:var(--fg);color:var(--tx-strong);box-shadow:3px 3px 0 var(--line)}
+
+/* picker */
+#picker{position:fixed;right:18px;bottom:18px;z-index:99;background:#1c1f2b;color:#eee;border-radius:12px;padding:10px 12px;box-shadow:0 6px 24px #0008;font-size:12px;width:320px;user-select:none}
+#picker .grip{cursor:move;font-size:10px;opacity:.5;text-align:center;margin:-4px 0 4px}
+#picker .nm{display:flex;align-items:center;gap:8px}
+#picker .nm b{flex:1;text-align:center;font-size:14px}
+#picker .nm button{background:#333a50;border-radius:6px;padding:2px 10px;color:#fff}
+#picker .desc{opacity:.7;margin:4px 0 8px;text-align:center}
+#picker .grp{display:flex;gap:3px;margin-top:4px;align-items:center}
+#picker .grp span{width:50px;opacity:.6;flex:none}
+#picker .grp button{flex:1;background:#2a3044;border-radius:6px;padding:3px 4px;color:#ccc;font-size:11px}
+#picker .grp button.on{background:var(--blue);color:#fff;font-weight:800}
+#picker .ldesc{opacity:.7;margin-top:4px;font-size:11px}
+#picker .href{margin-top:8px;font-family:monospace;font-size:11px;background:#0006;padding:4px 6px;border-radius:6px;word-break:break-all;min-height:2.2em}
+</style>
+</head>
+<body>
+<div id="frame" class="frame"></div>
+<div id="picker"></div>
+<script>
+// PROTOTYPE — throwaway. One file, everything mocked (no AniList). Issue #99.
+// Round 6: hub settled. Top Directors page: ←/→ = where a Director's picture goes; "Link" row = where the cross-link to the other tool sits.
+const PICS=[
+ {k:'P1',name:'P1 · Face swaps in',desc:'Wherever a studio shows a cover, a Director shows their face (round). Banners stay from their best title.'},
+ {k:'P2',name:'P2 · Face + title badge',desc:'Round face with their best title’s cover as a small badge on the corner.'},
+ {k:'P3',name:'P3 · Portrait podium',desc:'Top 3 become tall portrait cards (AniList staff pictures are 2:3). Rows and map use faces.'},
+ {k:'P4',name:'P4 · Covers, face in panel',desc:'Like studios: map, rows and podium show their best title’s cover. The face appears only in the open panel.'},
+ {k:'P5',name:'P5 · Face over banner',desc:'Podium: best title’s banner behind, face in a white ring on it. Panel: a bigger face over the banner.'},
+];
+const LINKS=[
+ ['L1','Header link','“🏢 Top Studios →” in the dark header, next to ← AniLyze.'],
+ ['L2','Header tabs','A Studios | Directors switch in the header, the current one lit.'],
+ ['L3','Under the name','In the line under “Zen’s top directors”: “also: 🏢 Zen’s top studios →”.'],
+ ['L4','Card at the end','A hub-style C3 card after the results: “Which studios does Zen really love?”.'],
+ ['L5','Floating sticker','A sticker button fixed bottom-left: “🏢 Zen’s studios”.'],
+];
+const S=Object.assign({page:'dir',v:0,link:'L1',login:'in',vp:'wide',theme:'light',nopic:false},JSON.parse(decodeURIComponent(location.hash.slice(1)||'{}')||'{}'));
+if(S.v>=PICS.length)S.v=0; if(!S.page)S.page='dir';
+S.typed=null;
+const save=()=>{const {typed,...keep}=S;history.replaceState(null,'','#'+encodeURIComponent(JSON.stringify(keep)))};
+const ME='Zen', USER='Zen';
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const mochi=(s=34,cls='')=>`<svg class="mochi ${cls}" width="${s}" height="${s*.76}" viewBox="0 0 100 76"><path d="M4 60 C2 26 26 4 50 4 C74 4 98 26 96 60 C95 72 84 74 50 74 C16 74 5 72 4 60 Z" class="body"/><ellipse cx="28" cy="48" rx="6" ry="3.5" class="cheek"/><ellipse cx="72" cy="48" rx="6" ry="3.5" class="cheek"/><g class="ink"><circle cx="38" cy="40" r="3.6"/><circle cx="62" cy="40" r="3.6"/><path d="M45 47 q5 5 10 0" class="line"/></g></svg>`;
+const LAB={elite:['💎','Elite'],bold:['🎲','Bold'],reliable:['🛡️','Reliable'],meh:['💤','Meh']};
+const hearts=(h,big)=>`<span class="hearts ${big?'big':''}">${'♥'.repeat(h)}<s>${'♥'.repeat(5-h)}</s></span>`;
+// mock Directors: [name, label, hearts, best title, title colours, skin, hair, map pos]
+const D=[
+ ['Naoko Yamada','elite',5,'Liz and the Blue Bird',['#9ad0f5','#f7c1d9'],'#f1d3b8','#3b2a20',[72,28]],
+ ['Masaaki Yuasa','bold',5,'The Tatami Galaxy',['#f5a46b','#e85d75'],'#e8c39e','#222',[22,26]],
+ ['Shinichiro Watanabe','elite',4,'Cowboy Bebop',['#2e4a7a','#e0b14a'],'#dcb48f','#1a1a1a',[64,40]],
+ ['Hiroyuki Imaishi','bold',4,'Gurren Lagann',['#d83a3a','#f2c94c'],'#e9c49d','#3a2a1a',[30,58]],
+ ['Mamoru Hosoda','reliable',4,'Summer Wars',['#7ed0f0','#bff0b0'],'#efcfac','#2b1d10',[70,70]],
+ ['Tatsuya Yoshihara','reliable',3,'Chainsaw Man',['#555','#e74c3c'],'#e1bb96','#111',[58,78]],
+ ['Kenji Nagasaki','meh',2,'My Hero Academia',['#3a7d44','#f0e14a'],'#e4c29f','#4a3020',[18,80]],
+];
+const WL=[['Shingo Yamashita','elite',4,'Chainsaw Man',['#444','#f39c12'],'#e2bf9a','#222',[84,20]]];
+let gid=0;
+function faceSvg(d){if(S.nopic&&d[0]==='Masaaki Yuasa')return null;const skin=d[5],hair=d[6];return `<svg viewBox="0 0 60 90" preserveAspectRatio="xMidYMid slice"><rect width="60" height="90" fill="#cfd6df"/><ellipse cx="30" cy="92" rx="28" ry="26" fill="#4a5568"/><ellipse cx="30" cy="42" rx="15" ry="18" fill="${skin}"/><path d="M14 40 C12 18 48 16 46 40 C44 28 18 26 14 40Z" fill="${hair}"/></svg>`}
+const coverSvg=d=>{const id='g'+(gid++);return `<svg viewBox="0 0 60 90" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${d[4][0]}"/><stop offset="1" stop-color="${d[4][1]}"/></linearGradient></defs><rect width="60" height="90" fill="url(#${id})"/></svg>`};
+const bannerCss=d=>`linear-gradient(120deg,${d[4][0]},${d[4][1]})`;
+const initials=d=>d[0].split(' ').map(w=>w[0]).join('');
+const noFace=(d,size)=>`<span class="noimg" style="background:var(--mochi);font-size:${Math.max(10,Math.round(size/3))}px">${initials(d)}</span>`;
+function face(d,size,shape='round'){
+ return `<span class="av ${shape}" style="width:${size}px;height:${shape==='port'?size*1.5:size}px">${faceSvg(d)??noFace(d,size)}</span>`;
+}
+const cover=(d,size)=>`<span class="av round" style="width:${size}px;height:${size}px">${coverSvg(d)}</span>`;
+const faceBadge=(d,size)=>`<span class="av withbadge" style="width:${size}px;height:${size}px"><span class="face">${faceSvg(d)??noFace(d,size)}</span><span class="badge">${coverSvg(d)}</span></span>`;
+const K=()=>PICS[S.v].k;
+function pic(d,size,where){
+ if(K()==='P2') return faceBadge(d,size);
+ if(K()==='P4') return where==='panel'?face(d,size):cover(d,size);
+ return face(d,size);
+}
+let openI=0;
+function podium(){
+ const k=K(), top=D.slice(0,3), M=['🥇','🥈','🥉'];
+ if(k==='P3') return `<div class="ptc">${top.map((d,i)=>`<button class="${i===openI?'on':''}" data-o="${i}">${faceSvg(d)??noFace(d,66)}<span class="medal">${M[i]}</span><span class="ov"><b>${d[0]}</b><span>${LAB[d[1]][0]} ${hearts(d[2])}</span></span></button>`).join('')}</div>`;
+ const lead=d=>k==='P5'?`<span style="border:3px solid #fff;border-radius:50%;display:block;line-height:0">${face(d,40)}</span>`:k==='P2'?faceBadge(d,40):k==='P4'?'':face(d,40);
+ return `<ol class="podium">${top.map((d,i)=>`<li><button class="tc ${i===openI?'on':''}" data-o="${i}" style="background-image:linear-gradient(90deg,#000c,#0004),${bannerCss(d)}"><span class="medal">${M[i]}</span>${lead(d)}<span class="nm"><b>${d[0]}</b><span>${LAB[d[1]][0]} ${LAB[d[1]][1]} · ${8-i} titles</span></span>${hearts(d[2],true)}</button></li>`).join('')}</ol>`;
+}
+const row=(d,i,rk)=>`<li><button class="it" data-o="${i}"><span class="rk">${rk}</span>${pic(d,30,'row')}<span class="nm">${d[0]}</span><span>${LAB[d[1]][0]}</span>${hearts(d[2])}</button></li>`;
+function panel(){
+ const d=D[openI]??D[0], k=K();
+ const big=k==='P2'?faceBadge(d,72):k==='P3'?face(d,64,'port'):face(d,k==='P5'?84:72);
+ return `<section class="pnl"><div class="ban" style="background-image:${bannerCss(d)}"></div><div class="dh"><span style="border:3px solid var(--fg);border-radius:${k==='P3'?'9px':'50%'};display:block;line-height:0">${big}</span><div><div class="small fine">#${openI+1} · 8 titles · 62% hits · 6% flops</div><h2>${d[0]}</h2></div><div class="side"><span class="lab" style="background:var(--${d[1]})">${LAB[d[1]][0]} ${LAB[d[1]][1]}</span>${hearts(d[2],true)}</div></div>
+ <div class="say">${mochi(46)}<p>${d[0]} is your <b>#${openI+1}</b>. <b>6</b> of their 8 titles beat your usual, led by <b>${d[3]}</b>.</p></div></section>`;
+}
+function map(){
+ const all=[...D,...WL];
+ return `<div class="map"><div class="qd">🎲 Bold</div><div class="qd">💎 Elite</div><div class="qd">💤 Meh</div><div class="qd">🛡️ Reliable</div>${all.map((d,i)=>`<button class="bub ${i===openI?'on':''}" data-o="${i<D.length?i:0}" style="left:${d[7][0]}%;top:${d[7][1]}%">${pic(d,i<3?46:34,'map')}</button>`).join('')}</div>`;
+}
+const otherTool=()=>S.page==='dir'?{ic:'🏢',name:'Top Studios',noun:'studios',id:'studios',c:'elite'}:{ic:'🎬',name:'Top Directors',noun:'directors',id:'directors',c:'bold'};
+const thisTool=()=>S.page==='dir'?{word:'Directors',noun:'directors'}:{word:'Studios',noun:'studios'};
+const xhref=()=>`/aniduel/anilyze/${otherTool().id}/?user=${USER}`;
+function toolPage(){
+ const o=otherTool(),t=thisTool(),L=S.link;
+ const hdrLink=L==='L1'?`<a class="xl-nav" data-x href="#">${o.ic} ${o.name} →</a>`:L==='L2'?`<span class="seg"><a href="#" ${S.page==='studios'?'class="on"':'data-x'}>🏢 Studios</a><a href="#" ${S.page==='dir'?'class="on"':'data-x'}>🎬 Directors</a></span>`:'';
+ const whoLink=L==='L3'?`<a class="xl-who" data-x href="#">also: ${o.ic} ${USER}’s top ${o.noun} →</a>`:'';
+ const foot=L==='L4'?`<div class="xl-foot"><a class="card" data-x href="#" style="--c:var(--${o.c})"><span class="ic">${o.ic}</span><span class="tool">${o.name}</span><span class="q">Which <em>${o.noun}</em> does ${USER} really love?</span><span class="cta">Show ${USER}’s top ${o.noun} →</span></a></div>`:'';
+ const flt=L==='L5'?`<a class="stk xl-float" data-x href="#">${o.ic} ${USER}’s ${o.noun}</a>`:'';
+ const body=S.page==='dir'?`<div class="lay"><div>${map()}<p class="small fine" style="margin:6px 4px 0">A label compares a Director’s share of hits and flops with your top Directors here.</p>${panel()}</div>
+  <nav class="right">${podium()}<div class="rows"><ol>${D.slice(3).map((d,i)=>row(d,i+3,i+4)).join('')}</ol><h2 class="wlh"><b style="color:var(--good)">🌱 Watchlist</b> <span class="fine">· strong, but fewer than 3 titles</span></h2><ul>${WL.map(d=>row(d,0,'🌱')).join('')}</ul></div></nav></div>`
+  :`<div class="rows fine" style="padding:40px;text-align:center">(Top Studios’ result, unchanged. Only the header and the cross-link matter on this page.)</div>`;
+ return `<div class="tool"><header class="hdr"><span class="logo">${mochi()} Top <b>${t.word}</b></span><a class="back" href="#">← AniLyze</a>${hdrLink}<form class="hform" onsubmit="return false"><input value="${USER}"><button class="hgo">Show</button></form></header>
+ <main class="tw"><div class="who"><h1>${USER}’s top ${t.noun}</h1><span class="fine small">214 titles watched · 7 ${t.noun} ranked</span>${whoLink}</div>
+ <div class="sure"><b>How sure is this?</b><span class="d">●●●●<s>●</s></span><b>Fairly sure</b></div>${body}${foot}</main>${flt}</div>`;
+}
+// hub (final)
+const TOOLS=[
+ {id:'studios',c:'var(--elite)',ic:'🏢',name:'Top Studios',noun:'studios',blurb:'Ranked from scores, drops, rewatches and favourites.'},
+ {id:'directors',c:'var(--bold)',ic:'🎬',name:'Top Directors',noun:'directors',blurb:'Same rules as Top Studios, for the people who directed them.'},
+];
+function name(){ if(S.typed!==null) return S.typed; return S.login==='in'?ME:''; }
+const nm=()=>esc(name().trim());
+const isMe=()=>S.login==='in'&&name().trim().toLowerCase()===ME.toLowerCase();
+const href=t=>{const n=name().trim();return `/aniduel/anilyze/${t.id}/`+(n?`?user=${encodeURIComponent(n)}`:'')};
+function hub(){
+ const L=S.login;
+ const line=L==='checking'?`<span class="you fine"><span class="spin"></span> ${S.typed!==null?'Checking your login… (keeping what you typed)':'Checking your login… your name will fill in'}</span>`:L==='in'?(isMe()?`<span class="you fine">Logged in as <b>${ME}</b> · type any name to look someone else up</span>`:`<span class="you fine">Logged in as <b>${ME}</b></span>`):`<span class="you fine">Any AniList user · no login needed</span>`;
+ const whoQ=name().trim()?(isMe()?'do you':'does '+nm()):'does this fan';
+ const btn=t=>name().trim()?`Show ${isMe()?'my':nm()+'’s'} top ${t.noun}`:`Open ${t.name}`;
+ return `<div class="hub"><div class="dots-bg"></div><header class="hdr"><span class="logo">${mochi()} <span>Ani<b>Lyze</b></span></span><a class="back" href="#">← AniDuel!</a></header>
+ <main class="wrap"><div class="mwrap">${mochi(100,L==='checking'?'bob':'')}<span class="spark" style="left:-18px;top:-6px">✨</span><span class="spark" style="right:-16px;top:10px">💗</span></div><h1 class="h1">Whose <span>list?</span></h1><p class="lede fine">Type a username, pick a tool, find out what they really love.</p>
+ <div class="fieldrow"><input class="field" id="f" placeholder="AniList username" value="${esc(name())}" autocomplete="off" spellcheck="false">${line}</div>
+ <div class="cards">${TOOLS.map(t=>`<a class="card" data-t="${t.id}" href="#" style="--c:${t.c}"><span class="ic">${t.ic}</span><span class="tool">${t.name}</span><span class="q">Which <em>${t.noun}</em> ${whoQ} really love?</span><p class="fine">${t.blurb}</p><span class="cta">${btn(t)} →</span></a>`).join('')}</div></main></div>`;
+}
+let hov='';
+function render(keepFocus){
+ document.documentElement.dataset.theme=S.theme;
+ const f=document.getElementById('frame');
+ const pos=keepFocus&&document.activeElement&&document.activeElement.id==='f'?document.activeElement.selectionStart:null;
+ f.className='frame'+(S.vp==='phone'?' phone':'');
+ f.innerHTML=S.page==='hub'?hub():toolPage();
+ const inp=f.querySelector('#f');
+ if(inp){inp.oninput=e=>{S.typed=e.target.value;render(true)}; if(pos!==null){inp.focus();inp.setSelectionRange(pos,pos)}}
+ f.querySelectorAll('[data-t]').forEach(a=>{const t=TOOLS.find(x=>x.id===a.dataset.t);a.onmouseenter=()=>{hov=href(t);picker()};a.onclick=e=>{e.preventDefault();hov='clicked → '+href(t);picker()}});
+ f.querySelectorAll('[data-x]').forEach(a=>{a.onmouseenter=()=>{hov=xhref();picker()};a.onclick=e=>{e.preventDefault();hov='clicked → '+xhref();picker()}});
+ f.querySelectorAll('[data-o]').forEach(b=>b.onclick=e=>{e.preventDefault();openI=+b.dataset.o;render()});
+ f.querySelectorAll('a[href="#"]:not([data-t]):not([data-x])').forEach(a=>a.onclick=e=>e.preventDefault());
+ picker(); save();
+}
+function grp(label,key,opts){return `<div class="grp"><span>${label}</span>${opts.map(([v,l])=>`<button class="${S[key]===v?'on':''}" data-k="${key}" data-v="${v}">${l}</button>`).join('')}</div>`}
+function picker(){
+ const p=document.getElementById('picker'),V=PICS[S.v],Lk=LINKS.find(l=>l[0]===S.link)||LINKS[0];
+ const head=S.page==='dir'?`<div class="nm"><button id="pv">←</button><b>${V.name}</b><button id="nx">→</button></div><div class="desc">${V.desc}</div>`:`<div class="desc" style="font-weight:800">${S.page==='hub'?'Hub: settled (A4 · H1 · C3 · S2)':'Top Studios: only the cross-link is shown'}</div>`;
+ p.innerHTML=`<div class="grip">⋮⋮ drag ⋮⋮</div>${head}
+ ${grp('Page','page',[['hub','Hub'],['studios','Top Studios'],['dir','Top Directors']])}
+ ${S.page!=='hub'?grp('Link','link',LINKS.map(l=>[l[0],l[0]]))+`<div class="ldesc">${Lk[0]} · ${Lk[1]}: ${Lk[2]}</div>`:grp('Login','login',[['in','Logged in'],['out','Logged out'],['checking','Checking']])}
+ ${S.page==='dir'?`<div class="grp"><span>Picture</span><button class="${!S.nopic?'on':''}" data-np="0">All have one</button><button class="${S.nopic?'on':''}" data-np="1">#2 has none</button></div>`:''}
+ ${grp('Screen','vp',[['wide','Wide'],['phone','Phone']])}
+ ${grp('Theme','theme',[['light','Light'],['dark','Dark']])}
+ <div class="href">${hov||'hover a card / cross-link → its href shows here'}</div>`;
+ const pv=p.querySelector('#pv'),nx=p.querySelector('#nx'); if(pv){pv.onclick=()=>step(-1);nx.onclick=()=>step(1)}
+ p.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{S[b.dataset.k]=b.dataset.v;S.typed=null;hov='';render()});
+ p.querySelectorAll('[data-np]').forEach(b=>b.onclick=()=>{S.nopic=b.dataset.np==='1';render()});
+}
+function step(d){if(S.page!=='dir')return;S.v=(S.v+d+PICS.length)%PICS.length;hov='';render()}
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowLeft')step(-1);if(e.key==='ArrowRight')step(1)});
+(()=>{const p=document.getElementById('picker');let d=null;p.addEventListener('mousedown',e=>{if(!e.target.classList.contains('grip'))return;const r=p.getBoundingClientRect();d={x:e.clientX-r.left,y:e.clientY-r.top};e.preventDefault()});
+document.addEventListener('mousemove',e=>{if(!d)return;p.style.left=(e.clientX-d.x)+'px';p.style.top=(e.clientY-d.y)+'px';p.style.right='auto';p.style.bottom='auto'});document.addEventListener('mouseup',()=>d=null)})();
+render();
+</script>
+</body>
+</html>
