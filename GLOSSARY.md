@@ -183,7 +183,7 @@ A tool in AniLyze that ranks one AniList user's anime directors by how much that
 _Avoid_: Top Director, director ranking, favourite directors, Top Staff
 
 **Director**:
-Someone credited on a title as its Director, Chief Director or Series Director, including a credit for only part of the episodes. Episode, assistant, sound and art directors are not Directors, and neither is someone credited as Director of only the opening or ending. Every Director of a title counts in full; a title with none counts for no one.
+Someone credited on a title as its Director, Chief Director or Series Director, including a credit for only part of the episodes. Episode, assistant, sound and art directors are not Directors, and neither is a credit that names an opening or ending in its brackets, even beside episodes ("Director (OP)", "Director (eps 1-12, OP)"). Every Director of a title counts in full; a title with none counts for no one.
 _Avoid_: Staff, creator, episode director
 
 **Director Score**:

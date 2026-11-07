@@ -1,9 +1,7 @@
-// Studio data gateway: reads one user's anime list with each title's main studios (and franchise links), and their
-// favourite anime, by user name, over the list read every AniLyze tool shares (src/anilyze/listGateway.ts).
+// Studio data gateway: reads one user's anime list with each title's main studios (and franchise links) by user name,
+// over the list read every AniLyze tool shares (src/anilyze/listGateway.ts).
 import { readToolList } from '../anilyze/listGateway.ts'
 import type { Studio, StudioTitle, TopStudiosSession } from './types.ts'
-
-export { readFavouriteAnime } from '../anilyze/listGateway.ts'
 
 const STUDIO_FIELDS = 'studios { edges { isMain node { id name } } }'
 

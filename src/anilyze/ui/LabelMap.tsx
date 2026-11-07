@@ -1,10 +1,10 @@
 // The label map (#89): picture bubbles on hit rate × flop rate, the four labels as its corners, overlapping bubbles of
 // one label stacked under a "+N" that fans them out. On a phone, four label tiles instead; a tile zooms into its corner.
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Label } from '../scoring.ts'
 import { countOf, type ToolWords } from '../tool.ts'
 import { useWidth } from './useWidth.ts'
-import { cornerMap, labelMap, type LabelLines, type MapBubble } from './labelMap.ts'
+import { cornerMap, labelMap, nameTagShift, type LabelLines, type MapBubble } from './labelMap.ts'
 import { CORNERS, LABELS, signed } from './labels.ts'
 import type { Picture } from './Picture.tsx'
 import type { RankCard } from './resultView.ts'
@@ -28,6 +28,8 @@ type PinProps = Look & {
   x: number
   y: number
   r: number
+  /** The map's width, which the name tag stays inside. */
+  boxWidth: number
   open: boolean
   /** The name tag under the bubble, if any. */
   name: string | null
@@ -39,7 +41,7 @@ type PinProps = Look & {
   children?: ReactNode
 }
 
-function Pin({ words, Picture, card, x, y, r, open, name, onOpen, className, autoFocus, stack, children }: PinProps) {
+function Pin({ words, Picture, card, x, y, r, boxWidth, open, name, onOpen, className, autoFocus, stack, children }: PinProps) {
   const style: CSSProperties = { left: x, top: y, width: r * 2, height: r * 2 }
   return (
     <div className={`st-pin ${className ?? ''}`} style={style} data-stack={stack ?? card.id}>
@@ -58,13 +60,22 @@ function Pin({ words, Picture, card, x, y, r, open, name, onOpen, className, aut
           {rankText(card)}
         </span>
       </button>
-      {name && (
-        <span className="nmtag" aria-hidden="true">
-          {name}
-        </span>
-      )}
+      {name && <NameTag name={name} x={x} boxWidth={boxWidth} />}
       {children}
     </div>
+  )
+}
+
+/** The name under a bubble, moved in from the map's sides so it never runs off the map (#104). */
+function NameTag({ name, x, boxWidth }: { name: string; x: number; boxWidth: number }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [width, setWidth] = useState(0)
+  useLayoutEffect(() => setWidth(ref.current?.offsetWidth ?? 0), [name])
+  const shift = nameTagShift(x, width, { width: boxWidth })
+  return (
+    <span ref={ref} className="nmtag" aria-hidden="true" style={shift ? { transform: `translateX(calc(-50% + ${shift}px))` } : undefined}>
+      {name}
+    </span>
   )
 }
 
@@ -112,7 +123,7 @@ export function LabelMap({ words, Picture, cards, lines, openId, onOpen }: MapPr
   return (
     <div className="st-map card" ref={ref} style={{ height: height || undefined }} role="group" aria-label="Label map: hit rate up, flop rate across">
       <Corners />
-      {bubbles.map((b) => (b === fanned ? null : <StackPin key={b.members[0].id} words={words} Picture={Picture} bubble={b} openId={openId} onOpen={open} onFan={setFan} />))}
+      {bubbles.map((b) => (b === fanned ? null : <StackPin key={b.members[0].id} words={words} Picture={Picture} bubble={b} boxWidth={width} openId={openId} onOpen={open} onFan={setFan} />))}
       {fanned && <Fan words={words} Picture={Picture} bubble={fanned} box={{ width, height }} openId={openId} onOpen={open} onClose={() => setFan(null)} />}
       <span className="st-maphint" aria-hidden="true">
         Tap a “+N” to fan out a stack
@@ -121,7 +132,7 @@ export function LabelMap({ words, Picture, cards, lines, openId, onOpen }: MapPr
   )
 }
 
-function StackPin({ words, Picture, bubble, openId, onOpen, onFan }: Look & { bubble: MapBubble; openId: number; onOpen: (id: number) => void; onFan: (id: number) => void }) {
+function StackPin({ words, Picture, bubble, boxWidth, openId, onOpen, onFan }: Look & { bubble: MapBubble; boxWidth: number; openId: number; onOpen: (id: number) => void; onFan: (id: number) => void }) {
   const top = bubble.members[0]
   // A stack holding the open card shows that card on its face, with the ring and its name.
   const openMember = bubble.members.find((m) => m.id === openId)
@@ -129,7 +140,7 @@ function StackPin({ words, Picture, bubble, openId, onOpen, onFan }: Look & { bu
   const rest = bubble.members.filter((m) => m !== face)
   const name = openMember || (top.rank !== null && top.rank <= NAMED) ? face.name : null
   return (
-    <Pin words={words} Picture={Picture} card={face} x={bubble.x} y={bubble.y} r={bubble.r} open={Boolean(openMember)} name={name} onOpen={onOpen} stack={top.id}>
+    <Pin words={words} Picture={Picture} card={face} x={bubble.x} y={bubble.y} r={bubble.r} boxWidth={boxWidth} open={Boolean(openMember)} name={name} onOpen={onOpen} stack={top.id}>
       {rest.length > 0 && (
         <button
           type="button"
@@ -157,7 +168,7 @@ function Fan({ words, Picture, bubble, box, openId, onOpen, onClose }: Look & { 
         const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n
         const x = Math.min(box.width - r, Math.max(r, bubble.x + (i ? Math.cos(angle) * ring : 0)))
         const y = Math.min(box.height - r, Math.max(r, bubble.y + (i ? Math.sin(angle) * ring : 0)))
-        return <Pin key={card.id} words={words} Picture={Picture} card={card} x={x} y={y} r={r} open={card.id === openId} name={card.name} onOpen={onOpen} className="fanned" autoFocus={i === 0} />
+        return <Pin key={card.id} words={words} Picture={Picture} card={card} x={x} y={y} r={r} boxWidth={box.width} open={card.id === openId} name={card.name} onOpen={onOpen} className="fanned" autoFocus={i === 0} />
       })}
     </>
   )
@@ -216,6 +227,7 @@ function ZoomedCorner({ words, Picture, cards, lines, openId, onOpen, label, onB
           x={x}
           y={y}
           r={r}
+          boxWidth={width}
           open={card.id === openId}
           name={(card.rank !== null && card.rank <= 10) || card.id === openId ? card.name : null}
           onOpen={onOpen}

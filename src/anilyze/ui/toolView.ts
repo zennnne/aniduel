@@ -3,22 +3,22 @@
 // page renders it and does what it says.
 import { toolLink } from '../../sitePages.ts'
 import { pluralWord } from '../../ui/meta.ts'
-import type { ToolFailure } from '../load.ts'
+import type { ToolFailure, ToolLoad } from '../load.ts'
 import type { OwnName } from '../login.ts'
-import { MIN_SCORED, type Ranking } from '../scoring.ts'
+import { MIN_SCORED, type ToolResult } from '../scoring.ts'
 import type { Tool } from '../tool.ts'
 import { rankCards, type CardPicture, type RankCard } from './resultView.ts'
 
-export type LoadState<Loaded> =
+export type LoadState =
   | { kind: 'idle' }
   | { kind: 'loading'; userName: string }
-  | { kind: 'loaded'; userName: string; loaded: Loaded }
+  | { kind: 'loaded'; userName: string; loaded: ToolLoad }
 
-export type ToolViewInput<Loaded> = {
+export type ToolViewInput = {
   /** `location.search`: `?user=<name>` is the share link. */
   search: string
   own: OwnName
-  load: LoadState<Loaded>
+  load: LoadState
 }
 
 /** What the search page says under the field when a name can't be ranked; `retry` offers to load it again. */
@@ -32,7 +32,7 @@ export type ToolScreen =
   | { kind: 'search'; error: FailureMessage | null }
   | { kind: 'loading'; userName: string }
   /** `cards`: the ranked from #1, then the watchlist (#92's layout draws the map and list from them). */
-  | { kind: 'result'; userName: string; ranking: Ranking; cards: RankCard[]; howSure: HowSure }
+  | { kind: 'result'; userName: string; result: ToolResult; cards: RankCard[]; howSure: HowSure }
 
 export type ToolView = {
   /** A name to load now: a shared `?user=` link before anything has loaded. */
@@ -43,9 +43,6 @@ export type ToolView = {
   /** The header's link to the other tool, for the `?user=` looked up (blank when there is none). */
   crossLink: { text: string; href: string }
 }
-
-/** How a tool reads its own load: the Ranking it holds, or why there is none. */
-export type ReadLoad<Loaded> = (loaded: Loaded) => { ok: true; ranking: Ranking } | { ok: false; failure: ToolFailure }
 
 const WORDS = ['', 'Very rough', 'Rough', 'Fair', 'Good', 'Solid']
 
@@ -61,30 +58,24 @@ export function searchFor(search: string, userName: string): string {
   return `?${params}`
 }
 
-export function toolView<Loaded>(
-  { search, own, load }: ToolViewInput<Loaded>,
-  tool: Tool,
-  read: ReadLoad<Loaded>,
-  picture?: CardPicture,
-): ToolView {
+export function toolView({ search, own, load }: ToolViewInput, tool: Tool, picture?: CardPicture): ToolView {
   const shared = userOf(search)
   const formName = shared ?? (own.kind === 'known' ? own.name : '')
   const crossLink = { text: tool.crossLink.text, href: toolLink(tool.crossLink.tool, shared ?? '', search) }
-  return { loadNow: load.kind === 'idle' ? shared : null, formName, screen: screenOf(load, own, tool, read, picture), crossLink }
+  return { loadNow: load.kind === 'idle' ? shared : null, formName, screen: screenOf(load, own, tool, picture), crossLink }
 }
 
-function screenOf<Loaded>(load: LoadState<Loaded>, own: OwnName, tool: Tool, read: ReadLoad<Loaded>, picture?: CardPicture): ToolScreen {
+function screenOf(load: LoadState, own: OwnName, tool: Tool, picture?: CardPicture): ToolScreen {
   switch (load.kind) {
     case 'idle':
       return { kind: 'search', error: null }
     case 'loading':
       return { kind: 'loading', userName: load.userName }
     case 'loaded': {
-      const { userName } = load
-      const loaded = read(load.loaded)
+      const { userName, loaded } = load
       if (!loaded.ok) return { kind: 'search', error: failureMessage(loaded.failure, userName, own, tool) }
-      const { ranking } = loaded
-      return { kind: 'result', userName, ranking, cards: rankCards(ranking, picture), howSure: howSure(ranking, tool) }
+      const { result } = loaded
+      return { kind: 'result', userName, result, cards: rankCards(result, picture), howSure: howSure(result, tool) }
     }
   }
 }
@@ -130,7 +121,7 @@ function failureMessage(failure: ToolFailure, userName: string, own: OwnName, { 
  * −1 when the gate was lowered from the tool's starting Gate, −1 more when fewer rank than the Gate aims for (as too
  * few to compare), −2 when under half the counted titles are scored.
  */
-function howSure(result: Ranking, { words, scoring: { gate } }: Tool): HowSure {
+function howSure(result: ToolResult, { words, scoring: { gate } }: Tool): HowSure {
   let dots = 5
   const notes: string[] = []
   if (result.gate < gate.start) {

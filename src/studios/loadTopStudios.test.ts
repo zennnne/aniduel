@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { loadTopStudios, type TopStudios, type TopStudiosLoad } from './loadTopStudios.ts'
-import { entropicMean, K } from './scoring.ts'
+import { entropicMean } from '../anilyze/scoring.ts'
+import { K } from './tool.ts'
 
 type Call = { url: string; init: RequestInit; body: { query: string; variables: Record<string, unknown> } }
 type Canned = { status?: number; json: unknown }
@@ -97,11 +98,11 @@ async function load(entries: unknown[], favourites: number[] = []): Promise<TopS
 
 function ranked(loaded: TopStudiosLoad): TopStudios {
   if (!loaded.ok) throw new Error(`expected a ranking, got ${loaded.failure.kind}`)
-  return loaded.topStudios
+  return loaded.result
 }
 
-const scoreOf = (result: TopStudios, studio: Studio) => result.studios.find((s) => s.id === studio[0])?.score
-const names = (result: TopStudios) => result.studios.map((s) => s.name)
+const scoreOf = (result: TopStudios, studio: Studio) => result.ranked.find((s) => s.id === studio[0])?.score
+const names = (result: TopStudios) => result.ranked.map((s) => s.name)
 
 describe('loadTopStudios: ranking', () => {
   it('ranks studios by Studio Score, love count included, as the prototype does', async () => {
@@ -130,7 +131,7 @@ describe('loadTopStudios: ranking', () => {
 
   it('gives each counted title of a studio its z and weight, and the user its average vote utility', async () => {
     const result = await load(handMadeList())
-    const swing = result.studios[0]
+    const swing = result.ranked[0]
 
     expect(swing.votes).toHaveLength(6)
     expect(swing.votes.map((v) => v.title.score)).toEqual([10, 9.5, 4, 5, 3, 6])
@@ -143,8 +144,8 @@ describe('loadTopStudios: ranking', () => {
 
   it('rescales vote weights so the mean W over every vote of every studio is 1, mid-scores at half weight', async () => {
     const result = await load(handMadeList())
-    const swing = result.studios[0]
-    const safe = result.studios[1]
+    const swing = result.ranked[0]
+    const safe = result.ranked[1]
 
     // All titles are 12 × 24 min; an 8 (z +0.46) is a mid-score, so its w is halved and its W is √½ of the others.
     expect(swing.votes[0].weight).toBeCloseTo(1.17, 2)
@@ -182,7 +183,7 @@ describe('loadTopStudios: love count', () => {
 
     // A joined title weighs less (the Franchise factor), so compare only the love bonus: S less the first term.
     const loveBonus = (studio: Studio) => {
-      const s = result.studios.find((x) => x.id === studio[0])!
+      const s = result.ranked.find((x) => x.id === studio[0])!
       return s.score - (entropicMean(s.votes, K, result.averageUtility) - Math.log(result.averageUtility))
     }
     expect(loveBonus(SAFE)).toBeCloseTo(loveBonus(SWING), 12)
@@ -213,7 +214,7 @@ describe('loadTopStudios: gate and watchlist', () => {
       return Array.from({ length: size }, (_, j) => entry(6 + (j % 3) + i / 10, studio))
     })
   }
-  const sizes = (result: TopStudios) => result.studios.map((s) => s.votes.length)
+  const sizes = (result: TopStudios) => result.ranked.map((s) => s.votes.length)
 
   it('keeps the gate at 6 when ten studios pass it', async () => {
     const result = await load(studiosOfSize(...Array(10).fill(6), 5))
@@ -251,7 +252,7 @@ describe('loadTopStudios: gate and watchlist', () => {
     expect(result.watchlist.every((s) => s.votes.length < result.gate)).toBe(true)
     // Studios 20–26 differ only by their shift, so the best five are 26 down to 22.
     expect(result.watchlist.map((s) => s.name)).toEqual(['Studio 26', 'Studio 25', 'Studio 24', 'Studio 23', 'Studio 22'])
-    expect(result.studios.every((s) => s.votes.length >= result.gate)).toBe(true)
+    expect(result.ranked.every((s) => s.votes.length >= result.gate)).toBe(true)
   })
 })
 
@@ -272,7 +273,7 @@ describe('loadTopStudios: labels', () => {
     ...tenTitles(RELIABLE, 0, 0),
     ...tenTitles(MEH, 0, 3),
   ]
-  const studio = (result: TopStudios, [id]: Studio) => result.studios.find((s) => s.id === id)!
+  const studio = (result: TopStudios, [id]: Studio) => result.ranked.find((s) => s.id === id)!
 
   it('labels each studio from its hit and flop rates against the pooled rates of the ranked studios', async () => {
     // Pooled: 6 hits and 6 flops in 40 titles, 15% each; a rate is high above 21%.
@@ -308,8 +309,8 @@ describe('loadTopStudios: labels', () => {
     const flopping = Array.from({ length: 5 }, (_, i) => tenTitles([200 + i, `Flopping ${i}`], 0, 10)).flat()
     const result = await load([...plain, ...tenTitles(BOLD, 2, 1), ...flopping])
 
-    expect(result.studios).toHaveLength(25)
-    expect(result.studios.slice(20).every((s) => s.name.startsWith('Flopping'))).toBe(true)
+    expect(result.ranked).toHaveLength(25)
+    expect(result.ranked.slice(20).every((s) => s.name.startsWith('Flopping'))).toBe(true)
     expect(studio(result, BOLD)).toMatchObject({ label: 'bold', hitRate: expect.closeTo(0.2, 12), flopRate: expect.closeTo(0.1, 12) })
   })
 
@@ -337,14 +338,14 @@ describe('loadTopStudios: which entries count', () => {
       entry(0, SWING, { status: 'PAUSED', progress: 6 }),
     ])
 
-    expect(withUnscored.studios).toEqual(base.studios)
+    expect(withUnscored.ranked).toEqual(base.ranked)
     expect(withUnscored.averageUtility).toBe(base.averageUtility)
   })
 
   it('counts an unscored drop against the studio at z −1', async () => {
     const base = await load(handMadeList())
     const withDrop = await load([...handMadeList(), entry(0, SAFE, { status: 'DROPPED', progress: 3 })])
-    const safe = withDrop.studios.find((s) => s.id === SAFE[0])!
+    const safe = withDrop.ranked.find((s) => s.id === SAFE[0])!
 
     expect(safe.votes).toHaveLength(7)
     expect(safe.votes.at(-1)?.z).toBeCloseTo(-1, 12)
@@ -353,7 +354,7 @@ describe('loadTopStudios: which entries count', () => {
 
   it('counts an unscored rewatch in the studio’s favour at z +0.5', async () => {
     const withRewatch = await load([...handMadeList(), entry(0, MIDDLE, { repeat: 1 })])
-    const middle = withRewatch.studios.find((s) => s.id === MIDDLE[0])!
+    const middle = withRewatch.ranked.find((s) => s.id === MIDDLE[0])!
 
     expect(middle.votes).toHaveLength(7)
     expect(middle.votes.at(-1)?.z).toBeCloseTo(0.5, 12)
@@ -376,7 +377,7 @@ describe('loadTopStudios: which entries count', () => {
     const list = handMadeList()
     const base = await load(list)
     const withFavourite = await load(list, [list[6].mediaId])
-    const vote = (r: TopStudios) => r.studios.find((s) => s.id === SAFE[0])!.votes[0]
+    const vote = (r: TopStudios) => r.ranked.find((s) => s.id === SAFE[0])!.votes[0]
 
     expect(vote(withFavourite).favourite).toBe(true)
     expect(vote(withFavourite).z - vote(base).z).toBeCloseTo(0.5, 9)
@@ -403,8 +404,8 @@ describe('loadTopStudios: which entries count', () => {
       entry(9, SWING, { studios: [SWING, SAFE] }),
     ])
 
-    expect(result.studios.find((s) => s.id === SWING[0])!.votes).toHaveLength(7)
-    expect(result.studios.find((s) => s.id === SAFE[0])!.votes).toHaveLength(7)
+    expect(result.ranked.find((s) => s.id === SWING[0])!.votes).toHaveLength(7)
+    expect(result.ranked.find((s) => s.id === SAFE[0])!.votes).toHaveLength(7)
   })
 })
 
@@ -443,8 +444,8 @@ describe('loadTopStudios: reading AniList', () => {
       { userName: 'zen', page: 1 },
       { userName: 'zen', page: 2 },
     ])
-    expect(result.studios.flatMap((s) => s.votes)).toHaveLength(18)
-    expect(result.studios[0].votes[0].favourite).toBe(true)
+    expect(result.ranked.flatMap((s) => s.votes)).toHaveLength(18)
+    expect(result.ranked[0].votes[0].favourite).toBe(true)
   })
 
   it('asks for scores on the 10-point decimal scale and for main-studio flags', async () => {

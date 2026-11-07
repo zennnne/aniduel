@@ -5,14 +5,14 @@ import type { ToolWords } from '../tool.ts'
 import { Hearts, LabelPill, Mochi } from './Bits.tsx'
 import type { Picture } from './Picture.tsx'
 import { useWidth } from './useWidth.ts'
-import { pushText, type CountedTitle, type OpenEntry } from './resultView.ts'
+import { pushText, type CountedTitle, type OpenWho } from './resultView.ts'
 import { swarm } from './swarm.ts'
 
 const percent = (rate: number) => `${Math.round(rate * 100)}%`
 
-type Props = { opened: OpenEntry; words: ToolWords; Picture: Picture }
+type Props = { opened: OpenWho; words: ToolWords; Picture: Picture }
 
-export const EntryPanel = forwardRef<HTMLElement, Props>(function EntryPanel({ opened, words, Picture }, ref) {
+export const WhoPanel = forwardRef<HTMLElement, Props>(function WhoPanel({ opened, words, Picture }, ref) {
   const { card, summary, lifted, heldBack, titles } = opened
   const [allOpen, setAllOpen] = useState(false)
   return (
@@ -99,7 +99,7 @@ function TitleRow({ heading, up, titles }: { heading: string; up: boolean; title
 /** Hover or focus a cover for its name, how it was marked and how it pushed the score. */
 const tip = (t: CountedTitle) => `${t.name} · ${t.how} · ${pushText(t)}`
 
-function Swarm({ opened }: { opened: OpenEntry }) {
+function Swarm({ opened }: { opened: OpenWho }) {
   const [ref, width] = useWidth<HTMLDivElement>()
   const box = width < 480 ? 240 : 220
   const scored = useMemo(() => opened.titles.filter((t): t is CountedTitle & { score: number } => t.score !== null), [opened])

@@ -1,8 +1,13 @@
 // The AniLyze hub's view (ADR 0016, look picked in #99): from the AniDuel! login and what the visitor typed, what the
 // one username field holds, the line under it, and a card per tool that opens it with that name. Pure: the page
 // renders it. The hub fetches nothing for the tools.
-import { toolLink, type Tool } from '../sitePages.ts'
+// The tools' own wording only: their tool.ts files hold no code beyond it, so nothing else of a tool (nor the fake
+// AniList) comes into the hub.
+import { TOP_DIRECTORS } from '../directors/tool.ts'
+import { toolLink } from '../sitePages.ts'
+import { TOP_STUDIOS } from '../studios/tool.ts'
 import type { OwnName } from './login.ts'
+import type { Tool, ToolName } from './tool.ts'
 
 export type HubViewInput = {
   own: OwnName
@@ -17,7 +22,7 @@ export type HubLogin =
   | { kind: 'logged-out' }
 
 export type HubCard = {
-  tool: Tool
+  tool: ToolName
   icon: string
   name: string
   noun: string
@@ -30,15 +35,14 @@ export type HubCard = {
 
 export type HubView = { field: string; login: HubLogin; cards: HubCard[] }
 
-/** The tools that exist, in the hub's order (no "coming soon"). */
-const TOOLS: ReadonlyArray<Pick<HubCard, 'tool' | 'icon' | 'name' | 'noun' | 'blurb'>> = [
-  { tool: 'studios', icon: '🏢', name: 'Top Studios', noun: 'studios', blurb: 'Ranked from scores, drops, rewatches and favourites.' },
+/** The tools that exist, in the hub's order (no "coming soon"), each card's name and noun from the tool's own words. */
+const TOOLS: ReadonlyArray<Pick<HubCard, 'tool' | 'icon' | 'blurb'> & { words: Tool['words'] }> = [
+  { tool: 'studios', icon: '🏢', words: TOP_STUDIOS.words, blurb: 'Ranked from scores, drops, rewatches and favourites.' },
   {
     tool: 'directors',
     icon: '🎬',
-    name: 'Top Directors',
-    noun: 'directors',
-    blurb: 'Same rules as Top Studios, for the people who directed them.',
+    words: TOP_DIRECTORS.words,
+    blurb: `Same rules as ${TOP_STUDIOS.words.name}, for the people who directed them.`,
   },
 ]
 
@@ -52,11 +56,15 @@ export function hubView({ own, typed }: HubViewInput): HubView {
       : own.kind === 'known'
         ? { kind: 'logged-in', name: own.name, ownNameInField }
         : { kind: 'logged-out' }
-  const cards = TOOLS.map((tool) => ({
-    ...tool,
+  const cards = TOOLS.map(({ tool, icon, words, blurb }): HubCard => ({
+    tool,
+    icon,
+    name: words.name,
+    noun: words.many,
+    blurb,
     who: !name ? 'does this fan' : ownNameInField ? 'do you' : `does ${name}`,
-    button: !name ? `Open ${tool.name} →` : `Show ${ownNameInField ? 'my' : `${name}’s`} top ${tool.noun} →`,
-    href: toolLink(tool.tool, name),
+    button: !name ? `Open ${words.name} →` : `Show ${ownNameInField ? 'my' : `${name}’s`} top ${words.many} →`,
+    href: toolLink(tool, name),
   }))
   return { field, login, cards }
 }

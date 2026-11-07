@@ -1,7 +1,8 @@
 // The studio data gateway: what it keeps of AniList's answer, and how it follows chunks and pages. The ranking built
 // on it is pinned in loadTopStudios.test.ts.
 import { describe, expect, it } from 'vitest'
-import { readFavouriteAnime, readStudioList } from './studioGateway.ts'
+import { readFavouriteAnime } from '../anilyze/listGateway.ts'
+import { readStudioList } from './studioGateway.ts'
 
 // A fake `fetch` answering from a queue of JSON bodies; it records each request's variables.
 function fakeFetch(...bodies: unknown[]) {

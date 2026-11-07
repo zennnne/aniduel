@@ -90,14 +90,8 @@ export type Vote<T extends ListTitle = ListTitle> = {
   scored: boolean
 }
 
-/** A studio's or Director's score on this user's list. */
-export type WhoScore<T extends ListTitle = ListTitle> = {
-  id: number
-  name: string
-  /** Their own picture, when `countsFor` gave one (see Who). */
-  image?: string | null
-  /** Their own AniList page, when `countsFor` gave one (see Who). */
-  siteUrl?: string
+/** A studio's or Director's score on this user's list: who they are, as the tool's `countsFor` gave them, and how they scored. */
+export type WhoScore<T extends ListTitle = ListTitle, W extends Who = Who> = W & {
   /** The Studio Score or Director Score S. 0 is average for this user. */
   score: number
   /** The counted titles, in list order. Their count is what the Gate reads. */
@@ -110,11 +104,12 @@ export type WhoScore<T extends ListTitle = ListTitle> = {
   label: Label
 }
 
-export type Ranking<T extends ListTitle = ListTitle> = {
+/** What a tool makes of one user's list: those ranked, the Watchlist, and what the page reads beside them. */
+export type ToolResult<T extends ListTitle = ListTitle, W extends Who = Who> = {
   /** Those with at least `gate` Votes, best first. */
-  ranked: WhoScore<T>[]
+  ranked: WhoScore<T, W>[]
   /** The best below the Gate, best first: promising, but too little seen to rank. */
-  watchlist: WhoScore<T>[]
+  watchlist: WhoScore<T, W>[]
   /** Votes needed to be ranked: the params' `gate.start`, or lower for a short list. */
   gate: number
   /** The hit and flop rates one must pass to read high: the pooled rates of the top ranked + the margin. */
@@ -131,8 +126,8 @@ export type Ranking<T extends ListTitle = ListTitle> = {
   countedScoredCount: number
 }
 
-export type Scoring<T extends ListTitle = ListTitle> =
-  | { ok: true; ranking: Ranking<T> }
+export type Scoring<T extends ListTitle = ListTitle, W extends Who = Who> =
+  | { ok: true; result: ToolResult<T, W> }
   | { ok: false; reason: 'too-few-scored'; scored: number }
 
 const WATCHING: ReadonlySet<ListStatus> = new Set(['CURRENT', 'PAUSED'])
@@ -179,12 +174,12 @@ function titleVote(
  * Ranks whoever the user's titles count for by Studio Score v2.8: each title casts its Vote for everyone `countsFor`
  * returns for it, in full; a title it returns no one for counts for no one.
  */
-export function scoreList<T extends ListTitle>(
+export function scoreList<T extends ListTitle, W extends Who>(
   list: readonly T[],
   favouriteIds: Iterable<number>,
-  countsFor: (title: T) => readonly Who[],
+  countsFor: (title: T) => readonly W[],
   params: ScoringParams,
-): Scoring<T> {
+): Scoring<T, W> {
   const watched = list.filter((e) => e.status !== 'PLANNING')
   const scores = watched.filter((e) => e.score > 0).map((e) => e.score)
   if (scores.length < MIN_SCORED) return { ok: false, reason: 'too-few-scored', scored: scores.length }
@@ -193,7 +188,7 @@ export function scoreList<T extends ListTitle>(
 
   // Every title casts its own Vote for each one it counts for (sequels, films and recaps included).
   type GroupVote = { title: T; z: number; w: number; scored: boolean; favourite: boolean; mid: boolean }
-  const byWho = new Map<number, { who: Who; votes: GroupVote[] }>()
+  const byWho = new Map<number, { who: W; votes: GroupVote[] }>()
   let countedCount = 0
   let countedScoredCount = 0
   for (const title of watched) {
@@ -217,16 +212,13 @@ export function scoreList<T extends ListTitle>(
   // W = √w, rescaled so the mean W over every vote is 1: k then reads as "k average Votes", before the Franchise factor.
   const rootWeights = [...byWho.values()].flatMap((g) => g.votes.map((v) => Math.sqrt(v.w)))
   const rescale = rootWeights.length / rootWeights.reduce((a, b) => a + b, 0)
-  const everyone = [...byWho].map(([id, group]) => {
+  const everyone = [...byWho.values()].map((group) => {
     const franchises = franchisesOf(group.votes)
     const size = new Map<number, number>()
     for (const f of franchises) size.set(f, (size.get(f) ?? 0) + 1)
     const { who } = group
     return {
-      id,
-      name: who.name,
-      ...('image' in who ? { image: who.image } : {}),
-      ...('siteUrl' in who ? { siteUrl: who.siteUrl } : {}),
+      ...who,
       votes: group.votes.map(({ title, z, w, scored, favourite, mid }, i): Vote<T> => {
         const weight = Math.sqrt(w) * rescale * (size.get(franchises[i]) ?? 1) ** -FRANCHISE_P
         return { title, z, weight, rateWeight: mid ? weight / Math.sqrt(MID_WEIGHT) : weight, favourite, scored }
@@ -262,11 +254,11 @@ export function scoreList<T extends ListTitle>(
   }
   const hitLine = pooled((s) => s.hitRate) + params.labels.margin
   const flopLine = pooled((s) => s.flopRate) + params.labels.margin
-  const labelled = (s: (typeof scored)[number]): WhoScore<T> => ({ ...s, label: labelOf(s.hitRate > hitLine, s.flopRate > flopLine) })
+  const labelled = (s: (typeof scored)[number]): WhoScore<T, W> => ({ ...s, label: labelOf(s.hitRate > hitLine, s.flopRate > flopLine) })
 
   return {
     ok: true,
-    ranking: {
+    result: {
       ranked: ranked.map(labelled),
       watchlist: watchlist.map(labelled),
       gate,

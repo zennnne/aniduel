@@ -8,7 +8,8 @@ import { anchorsOf } from '../pool/anchors.ts'
 import { DEFAULT_STATUSES, LIST_STATUSES, OFFERED_STATUSES } from '../pool/pool.ts'
 import { loadTopDirectors } from '../directors/loadTopDirectors.ts'
 import { KEEP_MY_SCALE } from '../ranking/engine.ts'
-import { GATE, loadTopStudios } from '../studios/loadTopStudios.ts'
+import { loadTopStudios } from '../studios/loadTopStudios.ts'
+import { GATE } from '../studios/tool.ts'
 import { startView } from '../ui/start/startView.ts'
 import { fakeSession, fakeToolSession } from './fakeSession.ts'
 
@@ -98,11 +99,11 @@ describe('the fake on Top Studios', () => {
   async function fakeZensStudios() {
     const loaded = await loadTopStudios(fakeToolSession(fakeClock()), 'Fake Zen')
     if (!loaded.ok) throw new Error(`no ranking: ${JSON.stringify(loaded.failure)}`)
-    return loaded.topStudios
+    return loaded.result
   }
 
   it("ranks the fake user's studios, every label among them, on a lowered gate and with a watchlist", async () => {
-    const { studios, gate, watchlist } = await fakeZensStudios()
+    const { ranked: studios, gate, watchlist } = await fakeZensStudios()
     expect(studios.length).toBeGreaterThanOrEqual(4)
     expect(new Set(studios.map((s) => s.label))).toEqual(new Set(['elite', 'bold', 'reliable', 'meh']))
     expect(gate).toBeLessThan(GATE)
@@ -110,7 +111,7 @@ describe('the fake on Top Studios', () => {
   })
 
   it('counts main studios only, favourites, unscored drops and rewatches, and joins sequels into franchises', async () => {
-    const { studios, watchlist } = await fakeZensStudios()
+    const { ranked: studios, watchlist } = await fakeZensStudios()
     const votes = [...studios, ...watchlist].flatMap((s) => s.votes)
     expect([...studios, ...watchlist].map((s) => s.name)).not.toContain('Aniplex') // credited, but never as main studio
     expect(votes.some((v) => v.favourite && !v.scored)).toBe(true)
@@ -130,11 +131,11 @@ describe('the fake on Top Directors', () => {
   async function fakeZensDirectors() {
     const loaded = await loadTopDirectors(fakeToolSession(fakeClock()), 'Fake Zen')
     if (!loaded.ok) throw new Error(`no ranking: ${JSON.stringify(loaded.failure)}`)
-    return loaded.topDirectors
+    return loaded.result
   }
 
   it("ranks some of the fake user's Directors, on a lowered gate and with a watchlist", async () => {
-    const { directors, gate, watchlist } = await fakeZensDirectors()
+    const { ranked: directors, gate, watchlist } = await fakeZensDirectors()
     expect(directors.length).toBeGreaterThanOrEqual(4)
     expect(new Set(directors.map((d) => d.label)).size).toBeGreaterThanOrEqual(2)
     expect(gate).toBe(3)
@@ -142,7 +143,7 @@ describe('the fake on Top Directors', () => {
   })
 
   it('counts only Directors: co-directors in full, never an episode or opening director', async () => {
-    const { directors, watchlist } = await fakeZensDirectors()
+    const { ranked: directors, watchlist } = await fakeZensDirectors()
     const everyone = [...directors, ...watchlist]
     const votesOf = (mediaId: number) => everyone.filter((d) => d.votes.some((v) => v.title.mediaId === mediaId)).length
     expect(everyone.some((d) => d.votes.some((v) => votesOf(v.title.mediaId) >= 2))).toBe(true)
@@ -151,12 +152,12 @@ describe('the fake on Top Directors', () => {
   })
 
   it('has Directors with and without a picture', async () => {
-    const { directors } = await fakeZensDirectors()
+    const { ranked: directors } = await fakeZensDirectors()
     expect(directors.some((d) => d.image === null)).toBe(true)
   })
 
   it('gives each Director an AniList page, which the open panel links to', async () => {
-    const { directors } = await fakeZensDirectors()
+    const { ranked: directors } = await fakeZensDirectors()
     expect(directors.map((d) => d.siteUrl)).toEqual(directors.map((d) => `https://anilist.co/staff/${d.id}`))
   })
 })

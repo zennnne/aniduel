@@ -31,8 +31,6 @@ type PythonTooFew = { user: string; too_few_scored: number }
 
 /** One ranked studio or Director on the TypeScript side. */
 type TsOne = { id: number; name: string; score: number; label: Label; votes: unknown[] }
-/** A tool's result as the comparison reads it. */
-type TsResult = { gate: number; averageUtility: number; ranked: TsOne[]; watchlist: TsOne[] }
 
 const args = process.argv.slice(2)
 let cacheDir = PROTOTYPE_DIR
@@ -124,7 +122,7 @@ type Tool = {
   by: 'studio' | 'director'
   /** Whether a user can be checked, and why not. */
   missing: (user: string) => string | null
-  load: (user: string) => Promise<ToolLoad<{ ok: true; result: TsResult }>>
+  load: (user: string) => Promise<ToolLoad>
 }
 
 const TOOLS: Tool[] = [
@@ -132,12 +130,7 @@ const TOOLS: Tool[] = [
     title: 'Top Studios',
     by: 'studio',
     missing: () => null,
-    load: async (user) => {
-      const loaded = await loadTopStudios({ fetch: cachedAniList(user), token: null }, user)
-      if (!loaded.ok) return loaded
-      const { studios, watchlist, gate, averageUtility } = loaded.topStudios
-      return { ok: true, result: { ranked: studios, watchlist, gate, averageUtility } }
-    },
+    load: (user) => loadTopStudios({ fetch: cachedAniList(user), token: null }, user),
   },
   {
     title: 'Top Directors',
@@ -145,10 +138,7 @@ const TOOLS: Tool[] = [
     missing: (user) => (existsSync(join(cacheDir, `directors_${user}.json`)) ? null : `no directors_${user}.json`),
     load: async (user) => {
       const credits: CachedCredits = JSON.parse(readFileSync(join(cacheDir, `directors_${user}.json`), 'utf8'))
-      const loaded = await loadTopDirectors({ fetch: cachedAniList(user, credits), token: null }, user)
-      if (!loaded.ok) return loaded
-      const { directors, watchlist, gate, averageUtility } = loaded.topDirectors
-      return { ok: true, result: { ranked: directors, watchlist, gate, averageUtility } }
+      return loadTopDirectors({ fetch: cachedAniList(user, credits), token: null }, user)
     },
   },
 ]

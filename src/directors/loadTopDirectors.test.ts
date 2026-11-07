@@ -98,12 +98,12 @@ async function load(entries: unknown[], favourites: number[] = []): Promise<TopD
 
 function ranked(loaded: TopDirectorsLoad): TopDirectors {
   if (!loaded.ok) throw new Error(`expected a ranking, got ${loaded.failure.kind}`)
-  return loaded.topDirectors
+  return loaded.result
 }
 
-const everyone = (result: TopDirectors) => [...result.directors, ...result.watchlist]
+const everyone = (result: TopDirectors) => [...result.ranked, ...result.watchlist]
 const votesOf = (result: TopDirectors, person: Person) => everyone(result).find((d) => d.id === person[0])?.votes.length ?? 0
-const names = (result: TopDirectors) => result.directors.map((d) => d.name)
+const names = (result: TopDirectors) => result.ranked.map((d) => d.name)
 
 // Ten plain titles for the filler Director, so the list has a scale and the ones under test can be read off.
 const filler = () => [5, 6, 7, 8, 9, 5, 6, 7, 8, 9].map((s) => entry(s, PARTNER))
@@ -178,7 +178,7 @@ describe('loadTopDirectors: who is a Director', () => {
     nextId = 1000
     const result = await load(filler())
 
-    expect(result.directors[0]).toMatchObject({
+    expect(result.ranked[0]).toMatchObject({
       id: 9,
       name: 'Partner Director',
       image: 'https://img/staff/9.jpg',
@@ -195,12 +195,12 @@ describe('loadTopDirectors: ranking', () => {
     expect(names(result)).toEqual(['Swing Director', 'Safe Director', 'Middle Director'])
     expect(result.gate).toBe(3)
     expect(result.averageUtility).toBeCloseTo(1.620706286, 6)
-    expect(result.directors.map((d) => d.score)).toEqual([
+    expect(result.ranked.map((d) => d.score)).toEqual([
       expect.closeTo(0.078933569, 6),
       expect.closeTo(-0.083431097, 6),
       expect.closeTo(-0.279168054, 6),
     ])
-    expect(result.directors.map((d) => d.label)).toEqual(['bold', 'reliable', 'reliable'])
+    expect(result.ranked.map((d) => d.label)).toEqual(['bold', 'reliable', 'reliable'])
     expect(result.watchlist.map((d) => [d.name, d.score, d.label])).toEqual([['Tiny Director', expect.closeTo(0.519711683, 6), 'elite']])
   })
 })
@@ -240,8 +240,8 @@ describe('loadTopDirectors: Franchise and love count', () => {
   it('joins a sequel by the same Director into their Franchise, which weighs its titles less', async () => {
     // The same six titles each; for Safe, the two 9s it opens with are one Franchise.
     const joined = await load([...sixTitles(SAFE, 2000, chain(2000, 2)), ...sixTitles(SWING, 3000)])
-    const safe = joined.directors.find((d) => d.id === SAFE[0])!
-    const swing = joined.directors.find((d) => d.id === SWING[0])!
+    const safe = joined.ranked.find((d) => d.id === SAFE[0])!
+    const swing = joined.ranked.find((d) => d.id === SWING[0])!
 
     expect(safe.votes[0].weight).toBeLessThan(swing.votes[0].weight)
     expect(safe.votes[2].weight).toBeCloseTo(swing.votes[2].weight, 12)
@@ -252,7 +252,7 @@ describe('loadTopDirectors: Franchise and love count', () => {
     const favourite = await load([...sixTitles(SAFE, 2000), ...sixTitles(SWING, 3000)], [2003])
 
     expect(scoreOf(favourite, SAFE)).toBeGreaterThan(scoreOf(plain, SAFE))
-    expect(favourite.directors.find((d) => d.id === SAFE[0])!.votes[3].favourite).toBe(true)
+    expect(favourite.ranked.find((d) => d.id === SAFE[0])!.votes[3].favourite).toBe(true)
   })
 })
 
@@ -265,7 +265,7 @@ describe('loadTopDirectors: gate and watchlist', () => {
       return Array.from({ length: size }, (_, j) => entry(6 + (j % 3) + i / 10, person))
     })
   }
-  const sizes = (result: TopDirectors) => result.directors.map((d) => d.votes.length)
+  const sizes = (result: TopDirectors) => result.ranked.map((d) => d.votes.length)
 
   it('keeps the gate at 4 when ten Directors pass it', async () => {
     const result = await load(directorsOfSize(...Array(10).fill(4), 3))
@@ -345,8 +345,8 @@ describe('loadTopDirectors: labels', () => {
     const flopping = Array.from({ length: 5 }, (_, i) => titles([200 + i, `Flopping ${i}`], 10, 0, 10)).flat()
     const result = await load([...plain, ...titles(BOLD, 10, 3, 2), ...flopping])
 
-    expect(result.directors).toHaveLength(25)
-    expect(result.directors.slice(20).every((d) => d.name.startsWith('Flopping'))).toBe(true)
+    expect(result.ranked).toHaveLength(25)
+    expect(result.ranked.slice(20).every((d) => d.name.startsWith('Flopping'))).toBe(true)
     expect(director(result, BOLD)).toMatchObject({ label: 'bold', hitRate: expect.closeTo(0.3, 12), flopRate: expect.closeTo(0.2, 12) })
   })
 
@@ -369,7 +369,7 @@ describe('loadTopDirectors: the watchlist', () => {
 
     expect(result.gate).toBe(4)
     expect(result.watchlist.map((d) => [d.name, d.votes.length])).toEqual([['Tiny Director', 3]])
-    expect(result.directors[0].name).toBe('Swing Director')
+    expect(result.ranked[0].name).toBe('Swing Director')
   })
 })
 
@@ -401,7 +401,7 @@ describe('loadTopDirectors: reading AniList', () => {
       { userName: 'zen', page: 1 },
       { userName: 'zen', page: 2 },
     ])
-    expect(result.directors[0].votes[0].favourite).toBe(true)
+    expect(result.ranked[0].votes[0].favourite).toBe(true)
   })
 
   it('sends the token only when given one', async () => {

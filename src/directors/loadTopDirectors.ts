@@ -1,26 +1,21 @@
-// The Top Directors page's single entry point: reads a user's list from AniList and ranks their Directors.
-import { loadTool, type ToolFailure, type ToolLoad } from '../anilyze/load.ts'
-import { readDirectorList, readFavouriteAnime } from './directorGateway.ts'
-import { scoreDirectors, type TopDirectors } from './scoring.ts'
-import type { TopDirectorsSession } from './types.ts'
+// The Top Directors page's single entry point: reads a user's list from AniList and ranks their Directors by the
+// Director Score, the shared AniLyze scoring over each title's Directors with Top Directors' numbers (./tool.ts).
+import { loadTool, type ToolLoad } from '../anilyze/load.ts'
+import type { ToolResult } from '../anilyze/scoring.ts'
+import { readDirectorList } from './directorGateway.ts'
+import { TOP_DIRECTORS } from './tool.ts'
+import type { Director, DirectorTitle, TopDirectorsSession } from './types.ts'
 
-export type { DirectorScore, DirectorVote, TopDirectors } from './scoring.ts'
-export type { TopDirectorsSession } from './types.ts'
+/** The user's Directors ranked, each with their picture (or null) and AniList page from the gateway. */
+export type TopDirectors = ToolResult<DirectorTitle, Director>
 
-export type TopDirectorsFailure = ToolFailure
-
-export type TopDirectorsLoad = ToolLoad<{ ok: true; topDirectors: TopDirectors }>
+export type TopDirectorsLoad = ToolLoad<DirectorTitle, Director>
 
 /**
- * Reads the user's list fresh (nothing is cached) and ranks their Directors. A token AniList refuses is dropped and
- * the list read again without it, so a stale AniDuel! login never stands between the page and a public list.
+ * Reads the user's list fresh (nothing is cached) and ranks their Directors: each title counts for each of its
+ * Directors, in full. A token AniList refuses is dropped and the list read again without it, so a stale AniDuel! login
+ * never stands between the page and a public list.
  */
 export function loadTopDirectors(session: TopDirectorsSession, userName: string): Promise<TopDirectorsLoad> {
-  return loadTool<{ ok: true; topDirectors: TopDirectors }>(session, async (session) => {
-    const list = await readDirectorList(session, userName)
-    const favourites = await readFavouriteAnime(session, userName)
-    const scoring = scoreDirectors(list, favourites)
-    if (!scoring.ok) return { ok: false, failure: { kind: 'too-few-scored', scored: scoring.scored } }
-    return { ok: true, topDirectors: scoring.topDirectors }
-  })
+  return loadTool(session, userName, TOP_DIRECTORS, readDirectorList, (title) => title.directors)
 }

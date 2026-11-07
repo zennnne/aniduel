@@ -1,11 +1,11 @@
 // The label map (#89): studios as cover bubbles on hit rate × flop rate, the four labels as its corners.
 import { describe, expect, it } from 'vitest'
-import type { StudioLabel } from '../loadTopStudios.ts'
-import { cornerMap, labelMap, type MapBubble } from './labelMap.ts'
-import type { StudioCard } from './resultView.ts'
+import type { Label } from '../scoring.ts'
+import { cornerMap, labelMap, nameTagShift, type MapBubble } from './labelMap.ts'
+import type { RankCard } from './resultView.ts'
 
 let nextId = 1
-function card(label: StudioLabel, hitRate: number, flopRate: number, score = 0.2, rank: number | null = nextId): StudioCard {
+function card(label: Label, hitRate: number, flopRate: number, score = 0.2, rank: number | null = nextId): RankCard {
   const id = nextId++
   return { id, name: `S${id}`, rank, label, score, hearts: 3, votes: 8, hitRate, flopRate, cover: null, coverColor: null, banner: null, page: null }
 }
@@ -13,7 +13,7 @@ function card(label: StudioLabel, hitRate: number, flopRate: number, score = 0.2
 const lines = { hit: 0.2, flop: 0.2 }
 const size = { width: 600, height: 468 }
 
-const corner = ({ x, y }: MapBubble, { width, height } = size): StudioLabel =>
+const corner = ({ x, y }: MapBubble, { width, height } = size): Label =>
   y < height / 2 ? (x < width / 2 ? 'elite' : 'bold') : x < width / 2 ? 'reliable' : 'meh'
 
 const overlapping = (bubbles: MapBubble[]) =>
@@ -80,6 +80,28 @@ describe('the label map', () => {
     )
     expect(best.r).toBeGreaterThan(worse.r)
     expect(watch.r).toBeLessThan(worse.r)
+  })
+})
+
+describe('a bubble’s name tag', () => {
+  const box = { width: 600, height: 468 }
+
+  it('sits centred under its bubble where it fits', () => {
+    expect(nameTagShift(300, 110, box)).toBe(0)
+  })
+
+  it('moves in from the left edge rather than run off the map (#104: "noru Hatakeyama")', () => {
+    // A #1 bubble 42px from the edge: centred, a 110px tag would start at −13; it starts 6px in, so moves 19px right.
+    expect(nameTagShift(42, 110, box)).toBe(19)
+  })
+
+  it('moves in from the right edge the same way', () => {
+    // Centred at 580, it would end at 635; it ends 6px in, at 594.
+    expect(nameTagShift(580, 110, box)).toBe(-41)
+  })
+
+  it('centres a tag wider than the map on the map', () => {
+    expect(nameTagShift(42, 700, box)).toBe(258)
   })
 })
 

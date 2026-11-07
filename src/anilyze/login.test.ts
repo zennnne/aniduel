@@ -1,6 +1,6 @@
-// The AniDuel! login as Top Studios sees it: the stored token, and the user's own name from the Viewer query.
+// The AniDuel! login as an AniLyze tool sees it: the stored token, and the user's own name from the Viewer query.
 import { describe, expect, it } from 'vitest'
-import { checkLogin } from './studiosLogin.ts'
+import { checkLogin } from './login.ts'
 
 function fakeFetch(...responses: Array<{ status?: number; json: unknown } | 'offline'>) {
   const calls: RequestInit[] = []

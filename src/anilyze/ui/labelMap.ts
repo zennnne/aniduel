@@ -1,7 +1,7 @@
 // Where the label map (#89) draws each studio or Director: a bubble on hit rate (up) × flop rate (across), the label lines
 // through the middle so the four corners are the four labels. Bubbles of one label that would overlap merge into a
 // "+N" stack. Pure geometry in pixels of the box it is given; the map component measures the box.
-import { labelRates, type Label, type Ranking } from '../scoring.ts'
+import { labelRates, type Label, type ToolResult } from '../scoring.ts'
 import type { RankCard } from './resultView.ts'
 
 /** A bubble on the map: one card, or a stack of them with the best on top. */
@@ -9,7 +9,7 @@ export type MapBubble = { members: RankCard[]; x: number; y: number; r: number }
 
 export type Box = { width: number; height: number }
 /** The rates one must pass to read high. */
-export type LabelLines = Ranking['labelLines']
+export type LabelLines = ToolResult['labelLines']
 
 /** Room left at the top and bottom of the map for the corner names (14px padding and two lines, in tool.css), and a little air. */
 const LABEL_ROOM = 42
@@ -103,6 +103,17 @@ export function labelMap(cards: readonly RankCard[], lines: LabelLines, { width,
     p.y = hitsHigh ? clamp(p.y, m + LABEL_ROOM, height / 2 - m) : clamp(p.y, height / 2 + m, height - m - LABEL_ROOM - NAME_ROOM)
   }
   return settled(pack(groups, keep))
+}
+
+/**
+ * How far right (negative: left) a name tag `width` wide moves from centred under its bubble at `x`, so the whole tag
+ * stays inside the box, `EDGE` in from its sides. A tag wider than that room is centred on the box.
+ */
+export function nameTagShift(x: number, width: number, box: Pick<Box, 'width'>): number {
+  const room = box.width - 2 * EDGE
+  if (width > room) return box.width / 2 - x
+  const left = x - width / 2
+  return Math.max(EDGE - left, Math.min(0, box.width - EDGE - (left + width)))
 }
 
 /** Room at the top of a zoomed corner for its back button and name. */

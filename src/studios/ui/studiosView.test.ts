@@ -1,9 +1,11 @@
 // The Top Studios page's view: who is looked up, what it says when it can't rank, and how sure a result is.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { TopStudiosFailure, TopStudiosLoad } from '../loadTopStudios.ts'
-import { searchFor, studiosView, type StudiosViewInput } from './studiosView.ts'
+import type { ToolFailure } from '../../anilyze/load.ts'
+import { searchFor, type ToolViewInput } from '../../anilyze/ui/toolView.ts'
+import type { TopStudiosLoad } from '../loadTopStudios.ts'
+import { studiosView } from './studiosView.ts'
 
-const view = (input: Partial<StudiosViewInput>) => studiosView({ search: '', own: { kind: 'none' }, load: { kind: 'idle' }, ...input })
+const view = (input: Partial<ToolViewInput>) => studiosView({ search: '', own: { kind: 'none' }, load: { kind: 'idle' }, ...input })
 const zen = { kind: 'known', name: 'zen' } as const
 
 describe('who the page looks up', () => {
@@ -85,8 +87,8 @@ const tooFew: TopStudiosLoad = { ok: false, failure: { kind: 'too-few-scored', s
 function ranked({ gate = 6, studios = 10, counted = 100, countedScored = 80 } = {}): TopStudiosLoad {
   return {
     ok: true,
-    topStudios: {
-      studios: Array.from({ length: studios }, (_, i) => ({
+    result: {
+      ranked: Array.from({ length: studios }, (_, i) => ({
         id: i,
         name: `Studio ${i}`,
         score: 0,
@@ -108,7 +110,7 @@ function ranked({ gate = 6, studios = 10, counted = 100, countedScored = 80 } = 
   }
 }
 
-const failed = (failure: TopStudiosFailure, own: StudiosViewInput['own'] = { kind: 'none' }) =>
+const failed = (failure: ToolFailure, own: ToolViewInput['own'] = { kind: 'none' }) =>
   view({ own, load: { kind: 'loaded', userName: 'Friend', loaded: { ok: false, failure } } }).screen
 
 describe('what the page says when it can’t rank', () => {

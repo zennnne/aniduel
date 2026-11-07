@@ -1,10 +1,12 @@
 // The Top Directors page's view: who is looked up, the share link, what it says when it can't rank, how sure a
 // result is, each Director's picture, and the link to Top Studios.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { TopDirectorsFailure, TopDirectorsLoad } from '../loadTopDirectors.ts'
-import { directorsView, searchFor, type DirectorsViewInput } from './directorsView.ts'
+import type { ToolFailure } from '../../anilyze/load.ts'
+import { searchFor, type ToolViewInput } from '../../anilyze/ui/toolView.ts'
+import type { TopDirectorsLoad } from '../loadTopDirectors.ts'
+import { directorsView } from './directorsView.ts'
 
-const view = (input: Partial<DirectorsViewInput>) =>
+const view = (input: Partial<ToolViewInput>) =>
   directorsView({ search: '', own: { kind: 'none' }, load: { kind: 'idle' }, ...input })
 const zen = { kind: 'known', name: 'zen' } as const
 
@@ -28,8 +30,8 @@ const director = (i: number, score: number) => ({
 function ranked({ gate = 4, directors = 10, watchlist = 0, counted = 100, countedScored = 80 } = {}): TopDirectorsLoad {
   return {
     ok: true,
-    topDirectors: {
-      directors: Array.from({ length: directors }, (_, i) => director(i, -i / 10)),
+    result: {
+      ranked: Array.from({ length: directors }, (_, i) => director(i, -i / 10)),
       // Scored above the #1, as a Director with few titles can be.
       watchlist: Array.from({ length: watchlist }, (_, i) => director(100 + i, 1 - i / 10)),
       gate,
@@ -94,7 +96,7 @@ describe('each Director’s card', () => {
   })
 })
 
-const failed = (failure: TopDirectorsFailure, own: DirectorsViewInput['own'] = { kind: 'none' }) =>
+const failed = (failure: ToolFailure, own: ToolViewInput['own'] = { kind: 'none' }) =>
   view({ own, load: { kind: 'loaded', userName: 'Friend', loaded: { ok: false, failure } } }).screen
 
 describe('what the page says when it can’t rank', () => {

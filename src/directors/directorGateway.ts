@@ -4,8 +4,6 @@
 import { readToolList } from '../anilyze/listGateway.ts'
 import type { Director, DirectorTitle, TopDirectorsSession } from './types.ts'
 
-export { readFavouriteAnime } from '../anilyze/listGateway.ts'
-
 /**
  * The first page of 25 credits, by RELEVANCE: a title's Directors come first there (a title has 100 to 1,000 credits,
  * and paging them all would cost hundreds of requests). The prototype reads the same page, so parity holds.

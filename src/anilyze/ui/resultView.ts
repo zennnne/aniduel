@@ -1,7 +1,7 @@
 // What an AniLyze tool's result shows (#92, layout picked in #89): every ranked studio or Director as a card (rank,
 // hearts, picture), and an opened one's counted titles with how each pushed its score. Pure: the result components
 // render it.
-import { scoreWorth, utility, type Label, type Ranking, type Vote, type WhoScore } from '../scoring.ts'
+import { scoreWorth, utility, type Label, type ToolResult, type Vote, type WhoScore } from '../scoring.ts'
 import { isDropped, rewatchesOf } from '../types.ts'
 
 export type RankCard = {
@@ -56,7 +56,7 @@ export type CountedTitle = {
   dropped: boolean
 }
 
-export type OpenEntry = {
+export type OpenWho = {
   card: RankCard
   /** The mochi's sentence: how many titles beat the user's usual, and the one that lifted / held it back most. */
   summary: { beatUsual: number; of: number; best: string | null; worst: string | null }
@@ -91,7 +91,7 @@ function byPush<V extends Vote>(who: { votes: V[] }, averageUtility: number): V[
  * The ranked from #1, then the watchlist. `picture` gives a card its picture; by default, the cover of the title that
  * lifts it most.
  */
-export function rankCards(top: Ranking, picture: CardPicture = leadCover): RankCard[] {
+export function rankCards(top: ToolResult, picture: CardPicture = leadCover): RankCard[] {
   const best = Math.max(...top.ranked.map((s) => s.score), ...(top.ranked.length ? [] : top.watchlist.map((s) => s.score)))
   const card = (studio: WhoScore, rank: number | null): RankCard => {
     const votes = byPush(studio, top.averageUtility)
@@ -127,7 +127,7 @@ function heartsOf(score: number, best: number): number {
 }
 
 /** The one with this id (ranked or on the watchlist) opened, or null when it isn't on the result. */
-export function openEntry(top: Ranking, id: number, picture: CardPicture = leadCover): OpenEntry | null {
+export function openWho(top: ToolResult, id: number, picture: CardPicture = leadCover): OpenWho | null {
   const card = rankCards(top, picture).find((c) => c.id === id)
   const studio = [...top.ranked, ...top.watchlist].find((s) => s.id === id)
   if (!card || !studio) return null

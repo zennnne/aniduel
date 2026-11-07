@@ -3,20 +3,20 @@
 // watchlist at the end. In the tool's words, with its picture for each card.
 import { useEffect, useRef, useState } from 'react'
 import { useMobile } from '../../ui/useMobile.ts'
-import type { Label, Ranking } from '../scoring.ts'
+import type { Label, ToolResult } from '../scoring.ts'
 import type { Tool, ToolWords } from '../tool.ts'
 import { Hearts } from './Bits.tsx'
-import { EntryPanel } from './EntryPanel.tsx'
+import { WhoPanel } from './WhoPanel.tsx'
 import { LabelMap, LabelTiles } from './LabelMap.tsx'
 import { LABELS } from './labels.ts'
 import type { Picture } from './Picture.tsx'
-import { openEntry, type CardPicture, type RankCard } from './resultView.ts'
+import { openWho, type CardPicture, type RankCard } from './resultView.ts'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 const PODIUM = 3
 
 type Props = {
-  ranking: Ranking
+  result: ToolResult
   cards: RankCard[]
   tool: Tool
   /** Draws each card's picture. */
@@ -25,7 +25,7 @@ type Props = {
   cardPicture?: CardPicture
 }
 
-export function RankingResult({ ranking, cards, tool, Picture, cardPicture }: Props) {
+export function ResultSection({ result, cards, tool, Picture, cardPicture }: Props) {
   const { words } = tool
   const phone = useMobile()
   // The user's #1 is open to start with.
@@ -33,12 +33,12 @@ export function RankingResult({ ranking, cards, tool, Picture, cardPicture }: Pr
   const [zoom, setZoom] = useState<Label | null>(null)
   const panel = useRef<HTMLElement>(null)
   const scrollToPanel = useRef(false)
-  const opened = openEntry(ranking, openId, cardPicture) ?? (cards[0] ? openEntry(ranking, cards[0].id, cardPicture) : null)
+  const opened = openWho(result, openId, cardPicture) ?? (cards[0] ? openWho(result, cards[0].id, cardPicture) : null)
 
   // A new result opens its own #1.
-  const [shown, setShown] = useState(ranking)
-  if (shown !== ranking) {
-    setShown(ranking)
+  const [shown, setShown] = useState(result)
+  if (shown !== result) {
+    setShown(result)
     setOpenId(cards[0]?.id ?? -1)
     setZoom(null)
   }
@@ -58,7 +58,7 @@ export function RankingResult({ ranking, cards, tool, Picture, cardPicture }: Pr
 
   if (!cards.length) return <p className="card st-empty">No {words.one} has enough titles to rank yet.</p>
 
-  const lines = ranking.labelLines
+  const lines = result.labelLines
   return (
     <div className="st-lay">
       <div>
@@ -72,9 +72,9 @@ export function RankingResult({ ranking, cards, tool, Picture, cardPicture }: Pr
           of each with the top {tool.scoring.labels.pool} {words.many} here; a share counts as high only{' '}
           {Math.round(tool.scoring.labels.margin * 100)} points above theirs.
         </p>
-        {opened && <EntryPanel ref={panel} opened={opened} words={words} Picture={Picture} />}
+        {opened && <WhoPanel ref={panel} opened={opened} words={words} Picture={Picture} />}
       </div>
-      <RankedList words={words} Picture={Picture} cards={cards} gate={ranking.gate} openId={openId} onOpen={openFromList} />
+      <RankedList words={words} Picture={Picture} cards={cards} gate={result.gate} openId={openId} onOpen={openFromList} />
     </div>
   )
 }

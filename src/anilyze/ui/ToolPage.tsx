@@ -10,35 +10,35 @@ import type { ToolSession } from '../types.ts'
 import { Mochi } from './Bits.tsx'
 import { HowSureCard } from './HowSureCard.tsx'
 import type { Picture } from './Picture.tsx'
-import { RankingResult } from './RankingResult.tsx'
+import { ResultSection } from './ResultSection.tsx'
 import type { CardPicture } from './resultView.ts'
 import { searchFor, type LoadState, type ToolView, type ToolViewInput } from './toolView.ts'
 
 /** The load a page with this query starts on: the view's `loadNow` already loading, else nothing yet. */
-function landingOn<Loaded>(view: (input: ToolViewInput<Loaded>) => ToolView, search: string): LoadState<Loaded> {
+function landingOn(view: (input: ToolViewInput) => ToolView, search: string): LoadState {
   const { loadNow } = view({ search, own: { kind: 'none' }, load: { kind: 'idle' } })
   return loadNow ? { kind: 'loading', userName: loadNow } : { kind: 'idle' }
 }
 
-type Props<Result extends { ok: true }> = {
+type Props = {
   session: ToolSession
   tool: Tool
   /** Reads and ranks a user's list (`loadTopStudios`, …). */
-  load: (session: ToolSession, userName: string) => Promise<ToolLoad<Result>>
+  load: (session: ToolSession, userName: string) => Promise<ToolLoad>
   /** The tool's view over its load (`studiosView`, …). */
-  view: (input: ToolViewInput<ToolLoad<Result>>) => ToolView
+  view: (input: ToolViewInput) => ToolView
   /** Draws each card's picture. */
   Picture: Picture
   /** The cards' picture data, as the view made them (the cover of the title that lifts it most by default). */
   cardPicture?: CardPicture
 }
 
-export function ToolPage<Result extends { ok: true }>({ session, tool, load: loadList, view: toolView, Picture, cardPicture }: Props<Result>) {
+export function ToolPage({ session, tool, load: loadList, view: toolView, Picture, cardPicture }: Props) {
   const { words } = tool
   const [search, setSearch] = useState(() => window.location.search)
   const [own, setOwn] = useState<OwnName>(() => (session.token ? { kind: 'checking' } : { kind: 'none' }))
   // A shared `?user=` link starts loading straight away.
-  const [load, setLoad] = useState<LoadState<ToolLoad<Result>>>(() => landingOn(toolView, window.location.search))
+  const [load, setLoad] = useState<LoadState>(() => landingOn(toolView, window.location.search))
   // What the user typed; null until they type, so the field shows the view's name (a shared one, or their own).
   const [typed, setTyped] = useState<string | null>(null)
   // The token lookups send: the stored one, dropped once AniList refuses it.
@@ -53,7 +53,7 @@ export function ToolPage<Result extends { ok: true }>({ session, tool, load: loa
     const { userName } = load
     let live = true
     loadList({ fetch: session.fetch, token: token.current }, userName)
-      .catch((error: unknown): ToolLoad<Result> => ({ ok: false, failure: { kind: 'api', message: String(error) } }))
+      .catch((error: unknown): ToolLoad => ({ ok: false, failure: { kind: 'api', message: String(error) } }))
       .then((loaded) => live && setLoad({ kind: 'loaded', userName, loaded }))
     return () => void (live = false)
   }, [load, loadList, session])
@@ -141,11 +141,11 @@ export function ToolPage<Result extends { ok: true }>({ session, tool, load: loa
               {screen.userName}’s top {words.many}
             </h1>
             <span className="fine small">
-              {screen.ranking.watchedCount} titles watched · {screen.ranking.ranked.length} {words.many} ranked
+              {screen.result.watchedCount} titles watched · {screen.result.ranked.length} {words.many} ranked
             </span>
           </div>
           <HowSureCard howSure={screen.howSure} tool={tool} />
-          <RankingResult ranking={screen.ranking} cards={screen.cards} tool={tool} Picture={Picture} cardPicture={cardPicture} />
+          <ResultSection result={screen.result} cards={screen.cards} tool={tool} Picture={Picture} cardPicture={cardPicture} />
         </main>
       ) : (
         <main className="st-wrap st-search">
