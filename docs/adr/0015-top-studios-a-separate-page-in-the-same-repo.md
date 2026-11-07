@@ -1,5 +1,7 @@
 # Top Studios: a separate page in the same repo, scoring with v2.7 as is
 
+> The page's path and links are superseded by ADR 0016 (AniLyze): Top Studios moves to `/aniduel/anilyze/studios/`, and `/aniduel/studios/` forwards there.
+
 Top Studios ranks one AniList user's animation studios from their list (#87). It came out of a research prototype in Python (`scripts/top-studio-score/prototype.py`, spec `docs/research/top-studio-score.md`), and it has little in common with AniDuel!'s Rankings: no Duel log, no Pool, nothing saved, and it can look up anyone's list, not only the logged-in user's. It should still feel like part of the same site and reuse what AniDuel! already has.
 
 ## Decision

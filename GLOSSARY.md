@@ -136,18 +136,24 @@ _Avoid_: Era answer, start year, age
 Anime or Manga. Each Pool, and so each Ranking, contains only one Media Type.
 _Avoid_: Category, kind
 
+## AniLyze
+
+**AniLyze**:
+The part of the AniDuel! site that gathers tools for analysing one AniList user's list. Any username can be looked up and none needs a login; the username is typed once and carried to each tool. Its tools are Top Studios and Top Directors.
+_Avoid_: Analyze, AniLyse, stats page, dashboard
+
 ## Top Studios
 
 **Top Studios**:
-A page of its own on the AniDuel! site that ranks one AniList user's animation studios by how much that user liked their titles, read from the user's scores, drops, rewatches and favourite anime. It needs no login, and any username can be looked up. Only a title's main studios count, each in full.
+A tool in AniLyze that ranks one AniList user's animation studios by how much that user liked their titles, read from the user's scores, drops, rewatches and favourite anime. It needs no login, and any username can be looked up. Only a title's main studios count, each in full.
 _Avoid_: Favourite studios (AniList's own list, filled in by hand), studio ranking, studio stats
 
 **Vote**:
-One Watched title on the user's list, as it counts for each of its main studios: how far it sits from the user's own average, and a weight from its length, rewatches and, for a drop or an unfinished title, how much of it was watched. A favourite counts a little higher. An unscored title casts a Vote only if it was dropped (against the studio, at half weight), rewatched (for it) or is a favourite. Every title of a Franchise weighs a little less the longer the Franchise is, all by the same amount whatever their order; each still counts as one Vote toward the Gate.
+One Watched title on the user's list, as it counts for each of its main studios on Top Studios, or for each of its Directors on Top Directors: how far it sits from the user's own average, and a weight from its length, rewatches and, for a drop or an unfinished title, how much of it was watched. A favourite counts a little higher. An unscored title casts a Vote only if it was dropped (against the studio or Director, at half weight), rewatched (for it) or is a favourite. Every title of a Franchise weighs a little less the longer the Franchise is, all by the same amount whatever their order; each still counts as one Vote toward the Gate.
 _Avoid_: Entry, title score, rating
 
 **Franchise**:
-A studio's titles on the user's list joined by sequel or prequel, counted per studio. A spin-off or a new story in the same universe is part of it when the link says sequel.
+A studio's or Director's titles on the user's list joined by sequel or prequel, counted per studio or per Director. A spin-off or a new story in the same universe is part of it when the link says sequel.
 _Avoid_: Series, chain, universe
 
 **Studio Score**:
@@ -155,17 +161,31 @@ A studio's number on Top Studios: an average of its Votes that leans toward the 
 _Avoid_: Studio rating, S (outside code and the research spec)
 
 **Love count**:
-How many works by a studio the user loved. A Franchise counts once, from its best title, unless two or more of its titles are favourites, which then count one each. It gives the Studio Score a small bonus for breadth.
+How many works by a studio or Director the user loved. A Franchise counts once, from its best title, unless two or more of its titles are favourites, which then count one each. It gives the Studio Score or Director Score a small bonus for breadth.
 _Avoid_: Hit count, favourites count
 
 **Gate**:
-The fewest Votes a studio needs to be ranked: 6, stepping down to 5 and then 4 while fewer than 10 studios would be ranked. The page says so when the Gate was lowered.
+The fewest Votes a studio or Director needs to be ranked. For studios: 6, stepping down to 5 and then 4 while fewer than 10 studios would be ranked. The page says so when the Gate was lowered.
 _Avoid_: Threshold, minimum, cutoff
 
 **Label**:
-What a ranked studio is like for this user, from its share of hits (Votes well above the user's average) and of flops (well below), each share weighed by how much was watched, so a long show counts for more than a short OVA, and compared with the same share across the user's top 20 studios: 💎 Elite (many hits, few flops), 🎲 Bold (many of both), 🛡️ Reliable (few of either), 💤 Meh (few hits, many flops). A share counts as many only 6 points above the top 20's.
+What a ranked studio or Director is like for this user, from its share of hits (Votes well above the user's average) and of flops (well below), each share weighed by how much was watched, so a long show counts for more than a short OVA, and compared with the same share across the user's top ranked studios or Directors (top 20 for studios): 💎 Elite (many hits, few flops), 🎲 Bold (many of both), 🛡️ Reliable (few of either), 💤 Meh (few hits, many flops). For studios, a share counts as many only 6 points above the top 20's.
 _Avoid_: Badge, tag, category, type
 
 **Watchlist**:
-Up to 5 studios with a high Studio Score that don't reach the Gate, shown after the ranking, apart from it.
+Up to 5 studios or Directors with a high Studio Score or Director Score that don't reach the Gate, shown after the ranking, apart from it.
 _Avoid_: Rising studios, honourable mentions, unranked
+
+## Top Directors
+
+**Top Directors**:
+A tool in AniLyze that ranks one AniList user's anime directors by how much that user liked their titles, the way Top Studios ranks studios.
+_Avoid_: Top Director, director ranking, favourite directors, Top Staff
+
+**Director**:
+Someone credited on a title as its Director, Chief Director or Series Director, including a credit for only part of the episodes. Episode, assistant, sound and art directors are not Directors. Every Director of a title counts in full; a title with none counts for no one.
+_Avoid_: Staff, creator, episode director
+
+**Director Score**:
+A Director's number on Top Directors, worked out the way a Studio Score is from the Director's Votes and Love count. 0 is an average Director for this user. The page shows it as 0–5 hearts against the user's #1.
+_Avoid_: Director rating
