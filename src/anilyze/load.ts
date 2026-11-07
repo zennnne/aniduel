@@ -21,8 +21,24 @@ export type ToolLoad<T extends ListTitle = ListTitle, W extends Who = Who> =
   | { ok: true; result: ToolResult<T, W> }
   | { ok: false; failure: ToolFailure }
 
-/** How a tool reads the user's list: every title, with who each one counts for on it. */
-export type ToolListReader<T extends ListTitle> = (session: ToolSession, userName: string) => Promise<T[]>
+/**
+ * How far a load has got, for the page to show while it waits: the list read `titles` deep (after each chunk), then
+ * the whole list read and the favourites being read. Scoring follows at once.
+ */
+export type LoadProgress = { step: 'list'; titles: number } | { step: 'favourites'; titles: number }
+
+/** Hears a load's progress. */
+export type OnProgress = (progress: LoadProgress) => void
+
+/**
+ * How a tool reads the user's list: every title, with who each one counts for on it, telling `onChunk` how many titles
+ * are read so far after each chunk.
+ */
+export type ToolListReader<T extends ListTitle> = (
+  session: ToolSession,
+  userName: string,
+  onChunk?: (titles: number) => void,
+) => Promise<T[]>
 
 /** The token sent was refused (expired or revoked): the same name may still load without it. */
 const TOKEN_REFUSED = 'token-refused'
@@ -48,7 +64,7 @@ function failureOf(error: AniListError, sentToken: boolean): ToolFailure | typeo
 /**
  * Reads `userName`'s list with `readList` and their favourite anime, and scores whoever `countsFor` says each title
  * counts for, with the tool's numbers. AniList's errors become failures; a token AniList refuses is dropped and the
- * list read again without it.
+ * list read again without it (its progress starting over). `onProgress` hears how far the read has got.
  */
 export async function loadTool<T extends ListTitle, W extends Who>(
   session: ToolSession,
@@ -56,9 +72,11 @@ export async function loadTool<T extends ListTitle, W extends Who>(
   tool: Tool,
   readList: ToolListReader<T>,
   countsFor: (title: T) => readonly W[],
+  onProgress?: OnProgress,
 ): Promise<ToolLoad<T, W>> {
   const read = async (session: ToolSession): Promise<ToolLoad<T, W>> => {
-    const list = await readList(session, userName)
+    const list = await readList(session, userName, onProgress && ((titles) => onProgress({ step: 'list', titles })))
+    onProgress?.({ step: 'favourites', titles: list.length })
     const favourites = await readFavouriteAnime(session, userName)
     const scoring = scoreList(list, favourites, countsFor, tool.scoring)
     if (!scoring.ok) return { ok: false, failure: { kind: 'too-few-scored', scored: scoring.scored } }

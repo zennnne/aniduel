@@ -3,7 +3,7 @@
 // page renders it and does what it says.
 import { toolLink } from '../../sitePages.ts'
 import { pluralWord } from '../../ui/meta.ts'
-import type { ToolFailure, ToolLoad } from '../load.ts'
+import type { LoadProgress, ToolFailure, ToolLoad } from '../load.ts'
 import type { OwnName } from '../login.ts'
 import { MIN_SCORED, type ToolResult } from '../scoring.ts'
 import type { Tool } from '../tool.ts'
@@ -11,7 +11,8 @@ import { rankCards, type CardPicture, type RankCard } from './resultView.ts'
 
 export type LoadState =
   | { kind: 'idle' }
-  | { kind: 'loading'; userName: string }
+  /** `progress`: how far the read has got, once AniList has answered anything. */
+  | { kind: 'loading'; userName: string; progress?: LoadProgress }
   | { kind: 'loaded'; userName: string; loaded: ToolLoad }
 
 export type ToolViewInput = {
@@ -30,7 +31,8 @@ export type HowSure = { dots: number; word: string; notes: string[] }
 export type ToolScreen =
   /** The big search: before a result, or with the reason a name couldn't be ranked. */
   | { kind: 'search'; error: FailureMessage | null }
-  | { kind: 'loading'; userName: string }
+  /** `progress`: the line under the heading saying how far the read has got. */
+  | { kind: 'loading'; userName: string; progress: string }
   /** `cards`: the ranked from #1, then the watchlist (#92's layout draws the map and list from them). */
   | { kind: 'result'; userName: string; result: ToolResult; cards: RankCard[]; howSure: HowSure }
 
@@ -70,7 +72,7 @@ function screenOf(load: LoadState, own: OwnName, tool: Tool, picture?: CardPictu
     case 'idle':
       return { kind: 'search', error: null }
     case 'loading':
-      return { kind: 'loading', userName: load.userName }
+      return { kind: 'loading', userName: load.userName, progress: progressLine(load.progress) }
     case 'loaded': {
       const { userName, loaded } = load
       if (!loaded.ok) return { kind: 'search', error: failureMessage(loaded.failure, userName, own, tool) }
@@ -78,6 +80,13 @@ function screenOf(load: LoadState, own: OwnName, tool: Tool, picture?: CardPictu
       return { kind: 'result', userName, result, cards: rankCards(result, picture), howSure: howSure(result, tool) }
     }
   }
+}
+
+/** A long list is read 500 titles a chunk, seconds each: the count after each one shows the read moving. */
+function progressLine(progress: LoadProgress | undefined): string {
+  if (!progress) return 'Asking AniList for the list…'
+  const titles = `${progress.titles.toLocaleString('en-US')} ${pluralWord(progress.titles, 'title')}`
+  return progress.step === 'list' ? `${titles} so far…` : `${titles} read. Checking favourites…`
 }
 
 function failureMessage(failure: ToolFailure, userName: string, own: OwnName, { words }: Tool): FailureMessage {

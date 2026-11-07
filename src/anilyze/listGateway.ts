@@ -100,13 +100,15 @@ function toListTitle<Media>(raw: RawEntry<Media>): ListTitle {
 
 /**
  * The user's whole anime list, every status, following every chunk. `mediaFields` is the GraphQL selection the tool
- * adds to each title's media; `extend` reads what the tool keeps from it.
+ * adds to each title's media; `extend` reads what the tool keeps from it. `onChunk` hears how many titles are read so
+ * far after each chunk (a chunk with staff takes seconds, and a long list has several).
  */
 export async function readToolList<Media, Extra>(
   session: ToolSession,
   userName: string,
   mediaFields: string,
   extend: (media: RawEntry<Media>['media']) => Extra,
+  onChunk?: (titles: number) => void,
 ): Promise<Array<ListTitle & Extra>> {
   const query = listQuery(mediaFields)
   const byMediaId = new Map<number, ListTitle & Extra>()
@@ -122,6 +124,7 @@ export async function readToolList<Media, Extra>(
         if (!byMediaId.has(raw.mediaId)) byMediaId.set(raw.mediaId, { ...toListTitle(raw), ...extend(raw.media) })
       }
     }
+    onChunk?.(byMediaId.size)
     if (!collection.hasNextChunk) break
   }
   return [...byMediaId.values()]

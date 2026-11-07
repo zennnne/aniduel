@@ -45,6 +45,10 @@ function directorsOf(media: StaffMedia): { directors: Director[] } {
 }
 
 /** The user's whole anime list, every status, following every chunk, with each title's Directors. */
-export function readDirectorList(session: TopDirectorsSession, userName: string): Promise<DirectorTitle[]> {
-  return readToolList<StaffMedia, { directors: Director[] }>(session, userName, STAFF_FIELDS, directorsOf)
+export function readDirectorList(
+  session: TopDirectorsSession,
+  userName: string,
+  onChunk?: (titles: number) => void,
+): Promise<DirectorTitle[]> {
+  return readToolList<StaffMedia, { directors: Director[] }>(session, userName, STAFF_FIELDS, directorsOf, onChunk)
 }

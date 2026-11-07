@@ -1,6 +1,6 @@
 // The Top Studios page's view: who is looked up, what it says when it can't rank, and how sure a result is.
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { ToolFailure } from '../../anilyze/load.ts'
+import type { LoadProgress, ToolFailure } from '../../anilyze/load.ts'
 import { searchFor, type ToolViewInput } from '../../anilyze/ui/toolView.ts'
 import type { TopStudiosLoad } from '../loadTopStudios.ts'
 import { studiosView } from './studiosView.ts'
@@ -52,8 +52,22 @@ describe('who the page looks up', () => {
     ])
   })
 
-  it('shows the name being read while it loads', () => {
-    expect(view({ load: { kind: 'loading', userName: 'Friend' } }).screen).toEqual({ kind: 'loading', userName: 'Friend' })
+  it('shows the name being read while it loads, and that AniList is asked before the first chunk lands', () => {
+    expect(view({ load: { kind: 'loading', userName: 'Friend' } }).screen).toEqual({
+      kind: 'loading',
+      userName: 'Friend',
+      progress: 'Asking AniList for the list…',
+    })
+  })
+
+  it('counts the titles read so far after each chunk, then says the favourites are next', () => {
+    const progress = (p: LoadProgress) => view({ load: { kind: 'loading', userName: 'Friend', progress: p } }).screen
+    expect(progress({ step: 'list', titles: 500 })).toMatchObject({ progress: '500 titles so far…' })
+    expect(progress({ step: 'list', titles: 1 })).toMatchObject({ progress: '1 title so far…' })
+    expect(progress({ step: 'list', titles: 2345 })).toMatchObject({ progress: '2,345 titles so far…' })
+    expect(progress({ step: 'favourites', titles: 2345 })).toMatchObject({ progress: '2,345 titles read. Checking favourites…' })
+    // A list read in one chunk goes straight from asking to its whole size.
+    expect(progress({ step: 'favourites', titles: 1 })).toMatchObject({ progress: '1 title read. Checking favourites…' })
   })
 })
 

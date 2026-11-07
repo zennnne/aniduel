@@ -448,6 +448,25 @@ describe('loadTopStudios: reading AniList', () => {
     expect(result.ranked[0].votes[0].favourite).toBe(true)
   })
 
+  it('reports how many titles it has read after each chunk, then that it is on to the favourites', async () => {
+    const list = handMadeList()
+    // The second chunk repeats a title from a custom list: it is counted once.
+    const { fetch } = fakeFetch(
+      listChunk(true, list.slice(0, 10)),
+      listChunk(false, [list[0], ...list.slice(10)]),
+      favouritesPage(false, []),
+    )
+    const progress: unknown[] = []
+
+    ranked(await loadTopStudios({ fetch, token: null }, 'zen', (p) => progress.push(p)))
+
+    expect(progress).toEqual([
+      { step: 'list', titles: 10 },
+      { step: 'list', titles: 20 },
+      { step: 'favourites', titles: 20 },
+    ])
+  })
+
   it('asks for scores on the 10-point decimal scale and for main-studio flags', async () => {
     const { fetch, calls } = fakeFetch(listChunk(false, handMadeList()), favouritesPage(false, []))
     await loadTopStudios({ fetch, token: null }, 'zen')

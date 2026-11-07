@@ -17,6 +17,10 @@ function mainStudios(media: StudioMedia): { studios: Studio[] } {
 }
 
 /** The user's whole anime list, every status, following every chunk. */
-export function readStudioList(session: TopStudiosSession, userName: string): Promise<StudioTitle[]> {
-  return readToolList<StudioMedia, { studios: Studio[] }>(session, userName, STUDIO_FIELDS, mainStudios)
+export function readStudioList(
+  session: TopStudiosSession,
+  userName: string,
+  onChunk?: (titles: number) => void,
+): Promise<StudioTitle[]> {
+  return readToolList<StudioMedia, { studios: Studio[] }>(session, userName, STUDIO_FIELDS, mainStudios, onChunk)
 }

@@ -226,6 +226,13 @@ img {
 .st-intro {
   max-width: 520px;
 }
+/* How far a lookup has read, after each chunk of the list */
+.st-progress {
+  color: var(--tx-strong);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 4px 0 2px;
+}
 .st-try {
   display: flex;
   gap: 6px;

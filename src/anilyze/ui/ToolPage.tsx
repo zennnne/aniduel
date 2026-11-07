@@ -3,7 +3,7 @@
 // by the tool's view (#91); the wording and each card's picture are the tool's.
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { sitePage } from '../../sitePages.ts'
-import type { ToolLoad } from '../load.ts'
+import type { LoadProgress, OnProgress, ToolLoad } from '../load.ts'
 import { checkLogin, type OwnName } from '../login.ts'
 import { capital, type Tool } from '../tool.ts'
 import type { ToolSession } from '../types.ts'
@@ -23,8 +23,8 @@ function landingOn(view: (input: ToolViewInput) => ToolView, search: string): Lo
 type Props = {
   session: ToolSession
   tool: Tool
-  /** Reads and ranks a user's list (`loadTopStudios`, …). */
-  load: (session: ToolSession, userName: string) => Promise<ToolLoad>
+  /** Reads and ranks a user's list (`loadTopStudios`, …), telling `onProgress` how far it has got. */
+  load: (session: ToolSession, userName: string, onProgress?: OnProgress) => Promise<ToolLoad>
   /** The tool's view over its load (`studiosView`, …). */
   view: (input: ToolViewInput) => ToolView
   /** Draws each card's picture. */
@@ -41,18 +41,25 @@ export function ToolPage({ session, tool, load: loadList, view: toolView, Pictur
   const [load, setLoad] = useState<LoadState>(() => landingOn(toolView, window.location.search))
   // What the user typed; null until they type, so the field shows the view's name (a shared one, or their own).
   const [typed, setTyped] = useState<string | null>(null)
+  // How far the lookup in `load` has got; kept apart so it doesn't start the lookup again, and dropped with it.
+  const [progress, setProgress] = useState<{ of: LoadState; progress: LoadProgress } | null>(null)
   // The token lookups send: the stored one, dropped once AniList refuses it.
   const token = useRef(session.token)
 
+  const shown = useMemo(
+    (): LoadState => (load.kind === 'loading' && progress?.of === load ? { ...load, progress: progress.progress } : load),
+    [load, progress],
+  )
   // Memoised: the result's map packs its bubbles from the cards, which should only change with the lookup.
-  const view = useMemo(() => toolView({ search, own, load }), [toolView, search, own, load])
+  const view = useMemo(() => toolView({ search, own, load: shown }), [toolView, search, own, shown])
 
   // Each lookup reads fresh from AniList; one that is no longer the latest is dropped when it lands.
   useEffect(() => {
     if (load.kind !== 'loading') return
     const { userName } = load
     let live = true
-    loadList({ fetch: session.fetch, token: token.current }, userName)
+    const onProgress = (next: LoadProgress) => live && setProgress({ of: load, progress: next })
+    loadList({ fetch: session.fetch, token: token.current }, userName, onProgress)
       .catch((error: unknown): ToolLoad => ({ ok: false, failure: { kind: 'api', message: String(error) } }))
       .then((loaded) => live && setLoad({ kind: 'loaded', userName, loaded }))
     return () => void (live = false)
@@ -169,9 +176,16 @@ export function ToolPage({ session, tool, load: loadList, view: toolView, Pictur
               )}
             </div>
           ) : (
-            <p className="fine st-intro" aria-live="polite">
-              {screen.kind === 'loading' ? words.reading : words.intro}
-            </p>
+            <>
+              {screen.kind === 'loading' && (
+                <p className="st-progress" role="status">
+                  {screen.progress}
+                </p>
+              )}
+              <p className="fine st-intro" aria-live="polite">
+                {screen.kind === 'loading' ? words.reading : words.intro}
+              </p>
+            </>
           )}
           {screen.kind === 'search' && ownName && (
             <div className="st-try">

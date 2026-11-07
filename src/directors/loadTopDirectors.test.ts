@@ -404,6 +404,26 @@ describe('loadTopDirectors: reading AniList', () => {
     expect(result.ranked[0].votes[0].favourite).toBe(true)
   })
 
+  it('reports the titles read after each chunk, a one-chunk list once, then the favourites step', async () => {
+    const list = handMadeList()
+    const chunked = fakeFetch(listChunk(true, list.slice(0, 10)), listChunk(false, list.slice(10)), favouritesPage(false, []))
+    const inChunks: unknown[] = []
+    ranked(await loadTopDirectors({ fetch: chunked.fetch, token: null }, 'zen', (p) => inChunks.push(p)))
+    const whole = fakeFetch(listChunk(false, handMadeList()), favouritesPage(false, []))
+    const inOne: unknown[] = []
+    ranked(await loadTopDirectors({ fetch: whole.fetch, token: null }, 'zen', (p) => inOne.push(p)))
+
+    expect(inChunks).toEqual([
+      { step: 'list', titles: 10 },
+      { step: 'list', titles: 20 },
+      { step: 'favourites', titles: 20 },
+    ])
+    expect(inOne).toEqual([
+      { step: 'list', titles: 20 },
+      { step: 'favourites', titles: 20 },
+    ])
+  })
+
   it('sends the token only when given one', async () => {
     const anonymous = fakeFetch(listChunk(false, handMadeList()), favouritesPage(false, []))
     await loadTopDirectors({ fetch: anonymous.fetch, token: null }, 'zen')
