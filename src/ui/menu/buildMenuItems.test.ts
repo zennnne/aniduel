@@ -28,7 +28,7 @@ const actions: MenuActions = {
   switchSortGoal: noop,
   openCatchUp: noop,
   clearPassed: noop,
-  openTopStudios: noop,
+  openAniLyze: noop,
 }
 
 const ids = (log: DuelLog) =>
@@ -177,26 +177,26 @@ describe('Clear Passed in the menu', () => {
   })
 })
 
-// #94: Top Studios, a page of its own (ADR 0015), from the App group, whichever Ranking is open.
-describe('Top Studios in the menu', () => {
-  const items = (openTopStudios = noop) =>
+// #94, #102: AniLyze, the hub of Top Studios and the other tools (ADR 0016), from the App group, whichever Ranking is open.
+describe('AniLyze in the menu', () => {
+  const items = (openAniLyze = noop) =>
     buildMenuItems(
       { mediaType: 'MANGA', statuses: ['COMPLETED'], hasLog: false, hasProgress: false, ranking: null, choosingBand: false, splitOffers: [] },
-      { ...actions, openTopStudios },
+      { ...actions, openAniLyze },
     )
 
   it('is offered in App, right after Catch-up', () => {
     const all = items()
-    const item = all.find((i) => i.id === 'top-studios')!
+    const item = all.find((i) => i.id === 'anilyze')!
     expect(item.group).toBe('App')
-    expect(item.title).toBe('Top Studios')
+    expect(item.title).toBe('AniLyze')
     expect(all[all.indexOf(item) - 1].id).toBe('catch-up')
   })
 
-  it('opens the Top Studios page', () => {
+  it('opens the AniLyze hub', () => {
     let opened = 0
     items(() => opened++)
-      .find((i) => i.id === 'top-studios')!
+      .find((i) => i.id === 'anilyze')!
       .run()
     expect(opened).toBe(1)
   })

@@ -116,7 +116,7 @@ export function StartScreen(props: {
                 <Reassure />
               </>
             )}
-            <TopStudiosLink />
+            <AniLyzeLink />
           </div>
           {form?.catchUp && <StartMochi {...form.catchUp} />}
         </div>
@@ -131,11 +131,11 @@ function Reassure() {
   )
 }
 
-/** The way into Top Studios (ADR 0015) that needs no login: the menu link only shows inside a Ranking. */
-function TopStudiosLink() {
+/** The way into AniLyze and its tools (ADR 0016) that needs no login: the menu link only shows inside a Ranking. */
+function AniLyzeLink() {
   return (
-    <a className="small start-studios" href={sitePage('studios')}>
-      ★ Top Studios: anyone's top animation studios, from their AniList →
+    <a className="small start-studios" href={sitePage('anilyze')}>
+      ★ AniLyze: anyone's top animation studios and more, from their AniList →
     </a>
   )
 }

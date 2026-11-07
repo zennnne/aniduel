@@ -1,0 +1,192 @@
+/* The AniLyze hub in the look picked in #99 (A4, Sticker): thick ink outlines, hard offset shadows, dotted paper.
+   Its header, mochi and username field are Top Studios' (studios.css). */
+.al-hub {
+  --line: var(--tx-strong);
+  min-height: 100%;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--fg2) 1.5px, transparent 1.5px);
+  background-size: 18px 18px;
+  container-type: inline-size;
+}
+.al-hub .st-hdr {
+  border-bottom: 3px solid var(--line);
+}
+
+.al-wrap {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px 20px 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.al-mochi {
+  position: relative;
+  display: inline-block;
+}
+.al-spark {
+  position: absolute;
+  font-size: 18px;
+}
+.al-spark.left {
+  left: -18px;
+  top: -6px;
+}
+.al-spark.right {
+  right: -16px;
+  top: 10px;
+}
+.al-h1 {
+  color: var(--tx-strong);
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  margin: 12px 0 6px;
+}
+.al-h1 span {
+  display: inline-block;
+  background: var(--mochi);
+  color: #2b2d42;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 3px solid var(--line);
+  transform: rotate(-2deg);
+}
+.al-lede {
+  max-width: 460px;
+  margin-bottom: 18px;
+}
+.al-fieldrow {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.al-fieldrow .st-sticker {
+  width: 100%;
+}
+.al-you {
+  font-size: 12px;
+}
+.al-you b {
+  color: var(--tx-strong);
+}
+.al-spin {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #8886;
+  border-top-color: var(--blue);
+  animation: st-spin 0.8s linear infinite;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Cards: two side by side when wide, one per row on a phone. */
+.al-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+  width: 100%;
+  margin-top: 44px;
+  text-align: left;
+}
+/* A lone card (one tool so far) sits in the middle, at a side-by-side card's width. */
+.al-cards:has(> :only-child) {
+  grid-template-columns: minmax(0, 329px);
+  justify-content: center;
+}
+.al-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+  background: var(--fg);
+  color: var(--tx);
+  text-decoration: none;
+  border: 3px solid var(--line);
+  border-radius: 18px;
+  padding: 22px 18px 18px;
+  box-shadow: 6px 6px 0 var(--line);
+  transition:
+    transform 0.1s,
+    box-shadow 0.1s;
+}
+.al-card:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 8px 8px 0 var(--line);
+}
+.al-card:active {
+  transform: translate(4px, 4px);
+  box-shadow: 2px 2px 0 var(--line);
+}
+.al-ic {
+  position: absolute;
+  right: 14px;
+  top: -22px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  background: var(--c);
+  border: 3px solid var(--line);
+}
+.al-tool {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.al-q {
+  font-size: 21px;
+  font-weight: 900;
+  color: var(--tx-strong);
+  line-height: 1.2;
+  padding-right: 40px;
+  overflow-wrap: anywhere;
+}
+.al-q em {
+  font-style: normal;
+  background: var(--c);
+  border-radius: 6px;
+  padding: 0 5px;
+  color: #2b2d42;
+}
+.al-cta {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  border: 2.5px solid var(--line);
+  border-radius: 12px;
+  padding: 7px 14px;
+  background: var(--c);
+  color: #2b2d42;
+  font-weight: 900;
+  box-shadow: 3px 3px 0 var(--line);
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 560px) {
+  .al-wrap {
+    padding-top: 26px;
+  }
+  .al-h1 {
+    font-size: 28px;
+  }
+  .al-mochi .st-mochi {
+    width: 72px;
+    height: 55px;
+  }
+  .al-cards {
+    grid-template-columns: 1fr;
+    gap: 34px;
+  }
+}

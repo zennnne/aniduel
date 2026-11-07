@@ -2,6 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Top Studios' old path (ADR 0015), kept for good (ADR 0016): it only forwards to /aniduel/anilyze/studios/, with
+         the query and hash kept (src/studiosRedirect.ts). The head is Top Studios' own (anilyze/studios/index.html),
+         so a link shared before the move still previews the same. -->
+    <script type="module" src="/src/studiosRedirect.ts"></script>
+    <!-- Without a script: a static tag can't carry the query, so this lands on the bare page. -->
+    <noscript>
+      <meta http-equiv="refresh" content="0; url=/aniduel/anilyze/studios/" />
+    </noscript>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Top Studios · AniDuel!</title>
@@ -9,21 +17,18 @@
       name="description"
       content="Type an AniList username and see that user's top animation studios, ranked from their own scores, drops, rewatches and favourite anime."
     />
-    <!-- Link previews (Discord, X, …). They need full URLs: the page is https://zennnne.github.io/aniduel/studios/ (ADR 0004, ADR 0015). -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="AniDuel!" />
     <meta property="og:title" content="Top Studios · AniDuel!" />
     <meta property="og:description" content="Type an AniList username and see their top animation studios." />
-    <meta property="og:url" content="https://zennnne.github.io/aniduel/studios/" />
+    <meta property="og:url" content="https://zennnne.github.io/aniduel/anilyze/studios/" />
     <meta property="og:image" content="https://zennnne.github.io/aniduel/og.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <!-- The image is AniDuel!'s own (no Top Studios image yet): the alt text says so rather than describe this page. -->
     <meta property="og:image:alt" content="AniDuel!, the site Top Studios is part of: its name beside two title cards facing each other" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/src/studios/main.tsx"></script>
+    <p>Top Studios has moved to <a href="/aniduel/anilyze/studios/">AniLyze</a>.</p>
   </body>
 </html>

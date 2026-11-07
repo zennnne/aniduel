@@ -99,8 +99,8 @@ export function StudiosPage({ session }: { session: TopStudiosSession }) {
           <Mochi size={34} />
           Top <b>Studios</b>
         </span>
-        <a className="st-back" href={sitePage('aniduel')}>
-          ← AniDuel!
+        <a className="st-back" href={sitePage('anilyze')}>
+          ← AniLyze
         </a>
         {screen.kind === 'result' && (
           <form className="st-hdr-form" onSubmit={submit} role="search">
