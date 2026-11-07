@@ -119,8 +119,8 @@ export function ToolPage<Result extends { ok: true }>({ session, tool, load: loa
           <Mochi size={34} />
           Top <b>{capital(words.many)}</b>
         </span>
-        <a className="st-back" href={sitePage('aniduel')}>
-          ← AniDuel!
+        <a className="st-back" href={sitePage('anilyze')}>
+          ← AniLyze
         </a>
         {screen.kind === 'result' && (
           <form className="st-hdr-form" onSubmit={submit} role="search">

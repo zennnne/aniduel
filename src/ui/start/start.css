@@ -391,7 +391,7 @@
   background: repeating-linear-gradient(90deg, var(--fg2) 0 6px, transparent 6px 10px);
 }
 
-/* The Top Studios link under the Start panel (ADR 0015): the one way in that needs no login. */
+/* The AniLyze link under the Start panel (ADR 0016): the one way in that needs no login. */
 .start-studios {
   display: block;
   margin-top: 18px;

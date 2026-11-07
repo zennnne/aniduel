@@ -143,31 +143,42 @@ img {
 }
 .st-hero {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
   max-width: 440px;
   margin-bottom: 10px;
 }
-.st-hero input {
+/* The sticker-style username field (#99), shared by AniLyze's hub and its tools' search: thick ink outline, hard
+   offset shadow. */
+.st-hero input,
+.st-sticker {
   flex: 1;
   min-width: 0;
   font: inherit;
   font-size: 16px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: 2px solid var(--fg2);
+  padding: 12px 16px;
+  border-radius: 14px;
+  border: 3px solid var(--tx-strong);
   background: var(--fg);
   color: var(--tx-strong);
+  outline: none;
+  box-shadow: 4px 4px 0 var(--tx-strong);
+}
+.st-hero input:focus-visible,
+.st-sticker:focus-visible {
+  box-shadow: 4px 4px 0 var(--blue);
 }
 .st-hero input[aria-invalid='true'] {
   border-color: var(--danger);
 }
 .st-hero .st-go {
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 0 18px;
   min-width: 70px;
   display: grid;
   place-items: center;
+  border: 3px solid var(--tx-strong);
+  box-shadow: 3px 3px 0 var(--tx-strong);
 }
 .st-spin {
   width: 16px;
