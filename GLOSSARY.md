@@ -165,11 +165,11 @@ How many works by a studio or Director the user loved. A Franchise counts once, 
 _Avoid_: Hit count, favourites count
 
 **Gate**:
-The fewest Votes a studio or Director needs to be ranked. For studios: 6, stepping down to 5 and then 4 while fewer than 10 studios would be ranked. The page says so when the Gate was lowered.
+The fewest Votes a studio or Director needs to be ranked. For studios: 6, stepping down to 5 and then 4 while fewer than 10 studios would be ranked. For Directors: 4, stepping down to 3 while fewer than 10 Directors would be ranked. The page says so when the Gate was lowered.
 _Avoid_: Threshold, minimum, cutoff
 
 **Label**:
-What a ranked studio or Director is like for this user, from its share of hits (Votes well above the user's average) and of flops (well below), each share weighed by how much was watched, so a long show counts for more than a short OVA, and compared with the same share across the user's top ranked studios or Directors (top 20 for studios): 💎 Elite (many hits, few flops), 🎲 Bold (many of both), 🛡️ Reliable (few of either), 💤 Meh (few hits, many flops). For studios, a share counts as many only 6 points above the top 20's.
+What a ranked studio or Director is like for this user, from its share of hits (Votes well above the user's average) and of flops (well below), each share weighed by how much was watched, so a long show counts for more than a short OVA, and compared with the same share across the user's top 20 ranked studios or Directors: 💎 Elite (many hits, few flops), 🎲 Bold (many of both), 🛡️ Reliable (few of either), 💤 Meh (few hits, many flops). A share counts as many only when it is more than 6 points above the top 20's for studios, or more than 10 for Directors.
 _Avoid_: Badge, tag, category, type
 
 **Watchlist**:
@@ -183,7 +183,7 @@ A tool in AniLyze that ranks one AniList user's anime directors by how much that
 _Avoid_: Top Director, director ranking, favourite directors, Top Staff
 
 **Director**:
-Someone credited on a title as its Director, Chief Director or Series Director, including a credit for only part of the episodes. Episode, assistant, sound and art directors are not Directors. Every Director of a title counts in full; a title with none counts for no one.
+Someone credited on a title as its Director, Chief Director or Series Director, including a credit for only part of the episodes. Episode, assistant, sound and art directors are not Directors, and neither is someone credited as Director of only the opening or ending. Every Director of a title counts in full; a title with none counts for no one.
 _Avoid_: Staff, creator, episode director
 
 **Director Score**:

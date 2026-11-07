@@ -13,7 +13,7 @@ usage: python -I prototype.py <user> [--detail | --compact | --json] [--alpha=1.
   --gate=<n> --gate-floor=<n> --gate-target=<n> --label-top=<n> --margin=<x>
                   override the Gate (start, floor, how many must rank) and the Label base (top n, margin) of the mode
 Caches AniList responses as list_/favs_/staff_/directors_<user>.json next to this file (gitignore them)."""
-import json, math, os, sys, time, urllib.request, urllib.error
+import json, math, os, re, sys, time, urllib.request, urllib.error
 from collections import defaultdict, Counter
 from statistics import median
 
@@ -31,8 +31,8 @@ LOVE_Z = 0.9  # "liked" entry (≈ 8+ on the owner's scale) for the love-count t
 LOVE_SOFT = 0.15  # soft edge of the love count: sigmoid((Z - LOVE_Z) / LOVE_SOFT), no cliff at LOVE_Z
 USE_STAFF = "--staff" in sys.argv
 PRIOR = next((a.split("=")[1] for a in sys.argv if a.startswith("--prior=")), "user")
-# Per-mode numbers (#101). Directors' values are PENDING OWNER (docs/research/top-director-score.md); until the owner
-# picks, they are the research spec's recommended option.
+# Per-mode numbers (#101). Directors: option B, chosen by the owner on 2026-11-07 (docs/research/top-director-score.md §5):
+# Gate 4 stepping to 3 until 10 rank, k 6, labels against the top 20 with a ±10-point margin.
 MODE = {"studio": dict(k=13.1, gate=6, floor=4, target=10, top=20, margin=0.06),
         "director": dict(k=6.0, gate=4, floor=3, target=10, top=20, margin=0.10)}[BY]
 K_FIXED = MODE["k"]  # pseudo-votes at the prior: "a studio needs this much evidence"; same for every user.
@@ -224,11 +224,15 @@ def main_studios(e): return [ed["node"]["name"] for ed in e["media"]["studios"][
 
 
 DIRECTOR_ROLES = ("Director", "Chief Director", "Series Director")
+# An opening or ending named in the parenthesis: OP, ED, OP2, ED1-ED3, "Opening", "Ending" (owner, #101)
+OP_ED = re.compile(r"\b(?:OP|ED)\d*\b|\b(?i:opening|ending)s?\b")
 
 
 def is_director(role):
-    """#101: the role before any parenthesis is exactly one of DIRECTOR_ROLES ("Director (eps 1-6)" counts)."""
-    return role.split("(")[0].strip() in DIRECTOR_ROLES
+    """#101: the role before any parenthesis is exactly one of DIRECTOR_ROLES ("Director (eps 1-6)" counts),
+    and the parenthesis doesn't name an opening or ending ("Director (OP)", "Director (ED1, ED2)" don't)."""
+    head, _, paren = role.partition("(")
+    return head.strip() in DIRECTOR_ROLES and not OP_ED.search(paren)
 
 
 def directors_of(credits):

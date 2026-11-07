@@ -2,11 +2,11 @@
 
 How Top Directors (spec #98, ticket #101) ranks an AniList user's **Directors**: Studio Score v2.8 (`top-studio-score.md`) with a title counting for each of its Directors instead of its main studios. Only the numbers the research sets apart change: the Gate (start, floor, how many must rank), `k`, and the Label base (top n, margin).
 
-Status: measured on 2026-11-07 in the prototype (`scripts/top-studio-score/prototype.py --by=director`) on the 33 cached users. **The choice of Gate, k and Label base is pending the owner** (§5). Until then the prototype's Director defaults are option B, the recommendation. `GLOSSARY.md` gets the numbers once the owner picks.
+Status: measured on 2026-11-07 in the prototype (`scripts/top-studio-score/prototype.py --by=director`) on the 33 cached users. **The owner chose option B** (§5): Gate 4 stepping down to 3 until 10 Directors rank, k = 6, Label base the top 20 with a ±10-point margin. The owner also narrowed the Director rule to leave out opening and ending directors (§1). Both are in the prototype's `MODE["director"]` and `is_director`, and in `GLOSSARY.md`.
 
 ## 1. What changes from Studio Score v2.8
 
-- **Who a title counts for.** A credit whose role, before any parenthesis, is exactly `Director`, `Chief Director` or `Series Director` ("Director (eps 1-6)" counts; Episode, Assistant, Sound, Art, Animation directors don't). Every Director of a title gets its Vote in full; a person credited twice on one title counts once; a title with none counts for no one. Anime only.
+- **Who a title counts for (the Director rule).** A credit counts when its role, before any parenthesis, is exactly `Director`, `Chief Director` or `Series Director`, **and the parenthesis doesn't name an opening or ending**. So "Director (eps 1-6)" counts, and "Director (OP)", "Director (ED1, ED2)", "Director (OP, ED)" don't. Episode, Assistant, Sound, Art and Animation directors never count. In code, the opening or ending test is `\b(?:OP|ED)\d*\b` (upper case) or the words opening/ending (any case) inside the parenthesis. Every Director of a title gets its Vote in full; a person credited twice on one title counts once; a title with none counts for no one. Anime only. (The OP/ED exclusion was added by the owner after the measurements below; it drops 79 of 21,521 cached Director credits, and B's numbers move by at most 0.01, §5.)
 - Everything else is v2.8 as is: z, w, one Vote per entry, the franchise factor n^−0.3 (Franchise = sequel/prequel chain *within that Director's titles*), the soft love count per Franchise with γ = 0.1, the prior at the user's average, length-weighted hit and flop rates. The `--staff` pseudo-vote is off and not used for Directors.
 - Prototype: `--by=director` shares all the formula code; only the grouping key changes. Directors are keyed by name, or `name (id)` if two Directors on one list share a name. `--json` adds each Director's AniList `id` and an `every` list (id, S, Votes of every Director, ranked or not) for the favourite check. New flags for both modes: `--gate= --gate-floor= --gate-target= --label-top= --margin=`.
 - **Studio output is unchanged**: `--json`, `--detail` and `--compact --top=20` are byte-identical before and after on all 33 users, the studio favourite check still reads 7.81 / 57 of 111 in the top 5, and `npm run parity:top-studios` passes.
@@ -60,12 +60,12 @@ Candidates (32 rankable users; NutsuruSama has 5 scored titles). Label counts ar
 
 **Label base and margin.** With ±6, Directors get more 💎 than studios (47% of top-10 labels at Gate 4 vs 35%), because a Director with 4–6 Votes reaches a high hit share with one or two hits. Top 10 as the base swings the other way (105/17/168/30 at ±6: 33% 💎, 53% 🛡️), and top 30 is more 💎 again (170/20/111/19). A wider margin of **±10 on the top 20** gives 41% / 5% / 46% / 6%, the nearest to the studio mix. On the owner it moves Hideaki Anno and Atsuko Ishizuka 💎 → 🛡️ and Tatsuya Ishihara 💤 → 🛡️ (14% hits, 13% flops on 17 Votes).
 
-## 5. Options (pending owner)
+## 5. Options and the owner's choice
 
 | | Gate | k | Label base | for | against |
 |---|---|---|---|---|---|
 | **A: studio numbers** | 6, stepping to 5 then 4, until 10 rank | 13.1 | top 20, ±6 | One set of numbers for both tools; nothing new to learn. | Directors have half the Votes: half the users drop to Gate 4, the median ranking is 13 and the smallest 3; the owner's 4-Vote Directors (Miyamoto, Amemiya, Miyazaki, Ishizuka) are only on the Watchlist. Labels lean 💎 a little. |
-| **B: scaled to Directors (recommended)** | 4, stepping to 3, until 10 rank | 6 | top 20, ±10 | Scaled by the measured vote ratio (≈ 0.5); a median of 27 ranked, at least 7; no one ranks on 2 titles; label mix closest to studios'. | Two more numbers to keep apart from studios; ±10 differs from studios' ±6 (the rule in words stays "the same, a wider margin"). A 4-title Director can sit above a 24-title one (Miyamoto vs Shinbou is close either way). |
+| **B: scaled to Directors (recommended, chosen)** | 4, stepping to 3, until 10 rank | 6 | top 20, ±10 | Scaled by the measured vote ratio (≈ 0.5); a median of 27 ranked, at least 7; no one ranks on 2 titles; label mix closest to studios'. | Two more numbers to keep apart from studios; ±10 differs from studios' ±6 (the rule in words stays "the same, a wider margin"). A 4-title Director can sit above a 24-title one (Miyamoto vs Shinbou is close either way). |
 | **C: show more names** | 3, stepping to 2, until 10 rank | 4 | top 20, ±10 | The longest rankings (median 56); every favourite with 3+ Votes ranks. | 3-Vote Directors reach the top 10 (owner: Makoto Katou #7); the favourite top-5 count drops 46 → 41; two users rank Directors on 2 titles. |
 
 Variants inside B, if the owner wants: ±6 instead of ±10 (one label rule for both tools, more 💎: owner's Anno and Ishizuka 💎, Ishihara 💤), or k 13.1 instead of 6 (Shinbou #2 over Ikuhara). The favourite check is the same for all of them.
@@ -78,11 +78,20 @@ Variants inside B, if the owner wants: ±6 instead of ±10 (one label rule for b
 
 The owner's favourite Directors who rank: Yamada #1 everywhere; Ikuhara #2–3; Shinbou #2–5; Anno #5–6; Imaishi #6–9; Akira Amemiya (Gridman, 4 Votes) only from Gate 4.
 
-**Decision: pending owner.** Record here which option (or variant) was picked and why, then add the numbers to the Gate and Label entries in `GLOSSARY.md` and set `MODE["director"]` in the prototype to match.
+**Decision (owner, 2026-11-07): B.** Gate 4, stepping down to 3 while fewer than 10 Directors would rank; k = 6; Label base the top 20 ranked Directors, a share counting as many only 10 points above theirs. Why:
+- Directors have about half a studio's Votes, so the studio Gate leaves half the users at the floor and short rankings (A). B scales the Gate and k by that measured ratio.
+- A floor of 3, not 2: nobody gets Directors ranked on 2 titles (C's two smallest lists).
+- ±10 rather than studios' ±6: with fewer Votes per Director, one or two hits already make a high share, and ±6 gave more 💎 than studios. ±10 on the top 20 gives the label mix nearest to studios'.
+- The favourite check can't separate A, B and C (§3), so the owner decided on the scale argument and their own order.
+
+Together with it, **OP/ED credits don't count** (§1, open item 1 resolved): an opening or ending director didn't direct the title.
+
+**Re-run with the OP/ED exclusion, B:** 32 rankable users at Gate 4 (24) or 3 (8), median 27 ranked, min 7; favourite check 46 in top 5, 61 in top 10, 74 ranked, matched 0.900 over 9,457 pairs; top-10 labels 131/16/147/20. Owner's top 10 is the same, Takemoto +0.44 → +0.43: 1. Naoko Yamada 💎 +0.83, 2. Kunihiko Ikuhara 🛡️ +0.76, 3. Akiyuki Shinbou 🛡️ +0.72, 4. Yukihiro Miyamoto 💎 +0.69, 5. Akira Amemiya 💎 +0.68, 6. Hideaki Anno 🛡️ +0.58, 7. Tatsuya Ishihara 🛡️ +0.51, 8. Hiroyuki Imaishi 🛡️ +0.51, 9. Hayao Miyazaki 🛡️ +0.50, 10. Hiroaki Akagi 💤 +0.48. Studio output is still byte-identical on all 33 users.
 
 ## 6. Open
 
-1. **OP/ED directors match the rule.** "Director (OP)", "Director (ED1-ED3, ED5, ED7)" pass "the text before any parenthesis is exactly Director". On the first page of 25 they are rare: 69 of 16,204 Director credits across the 33 lists (0.4%), and no title has *only* OP/ED Directors, so they add a Vote for an opening's director to a title rather than take one away. A stricter rule (drop a parenthesis that names OP or ED) is easy if the owner wants it; not applied, because the ticket's rule is the spec.
-2. **First page only.** Directors credited only past credit 25 under RELEVANCE are lost: on the sample, OP/ED directors and two part-season chief directors of a 26-episode Monogatari season. The port must use the same query (RELEVANCE, first 25) for parity.
+1. ~~**OP/ED directors match the rule.**~~ **Resolved (owner, 2026-11-07): they don't count.** "Director (OP)", "Director (ED1-ED3, ED5, ED7)" passed the ticket's first rule. On the first page of 25 they were 79 of 21,521 cached Director credits (0.4%), and no title had *only* OP/ED Directors. The rule now leaves out any credit whose parenthesis names an opening or ending (§1).
+5. Other parentheses that still count, seen in the caches, for the owner to judge some day: "(English)" / "(English; AnimEigo)" (a dub's director, 6 credits), "(PV)" (1), and segment titles in anthologies or music videos ("(Japon Mignon)", "(Dino Channel)", …).
+2. **First page only.** Directors credited only past credit 25 under RELEVANCE are lost: on the sample, OP/ED directors (left out anyway now) and two part-season chief directors of a 26-episode Monogatari season. The port must use the same query (RELEVANCE, first 25) for parity.
 3. Small co-directors ride on their lead's titles: Madoka's Series Director Yukihiro Miyamoto (4 Votes, all shared with Shinbou) ranks #4 under B. That is the "co-directors count in full" rule working as asked.
 4. The favourite check can't tune Gate, k or labels for Directors either (§3). A Director-specific held-out signal would need more users who favourite Directors.
