@@ -154,4 +154,9 @@ describe('the fake on Top Directors', () => {
     const { directors } = await fakeZensDirectors()
     expect(directors.some((d) => d.image === null)).toBe(true)
   })
+
+  it('gives each Director an AniList page, which the open panel links to', async () => {
+    const { directors } = await fakeZensDirectors()
+    expect(directors.map((d) => d.siteUrl)).toEqual(directors.map((d) => `https://anilist.co/staff/${d.id}`))
+  })
 })

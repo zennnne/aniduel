@@ -26,6 +26,11 @@ export const EntryPanel = forwardRef<HTMLElement, Props>(function EntryPanel({ o
             {percent(card.flopRate)} flops
           </div>
           <h2 id="st-det-name">{card.name}</h2>
+          {card.page && (
+            <a className="small st-page" href={card.page} target="_blank" rel="noreferrer">
+              On AniList ↗
+            </a>
+          )}
         </div>
         <div className="st-dh-side">
           <LabelPill label={card.label} />

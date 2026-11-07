@@ -362,6 +362,15 @@ img {
 .st-av.big.st-noface {
   font-size: 22px;
 }
+/* A Director's face on a dark podium card. */
+.st-av.pod {
+  width: 44px;
+  height: 44px;
+  border: 2px solid #fff;
+}
+.st-av.pod.st-noface {
+  font-size: 15px;
+}
 
 /* The label map */
 .st-map {
@@ -887,6 +896,10 @@ img {
 }
 .st-tc.on {
   outline: 3px solid var(--blue);
+}
+.st-dh-name .st-page {
+  color: var(--blue);
+  font-weight: 700;
 }
 .st-tc .medal {
   font-size: 24px;

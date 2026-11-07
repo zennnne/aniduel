@@ -5,9 +5,10 @@ import type { RankCard } from './resultView.ts'
 
 /**
  * Where it is drawn: a ranked row's avatar, the open panel's big avatar, a label map bubble (inside the bubble, which
- * already shows `coverColor`), or one of a phone label tile's little stack.
+ * already shows `coverColor`), one of a phone label tile's little stack, or a dark podium card for #1–3 (whose banner
+ * is already the best title's, so a studio shows nothing more there).
  */
-export type PicturePlace = 'row' | 'panel' | 'bubble' | 'tile'
+export type PicturePlace = 'row' | 'panel' | 'bubble' | 'tile' | 'podium'
 
 export type PictureProps = { card: RankCard; place: PicturePlace }
 
@@ -35,6 +36,8 @@ export function FacePicture({ card, place }: PictureProps): ReactNode {
       return card.cover ? <img src={card.cover} alt="" loading="lazy" /> : <span className="st-noface">{initials}</span>
     case 'tile':
       return card.cover ? <img src={card.cover} alt="" /> : <i className="st-noface">{initials}</i>
+    case 'podium':
+      return card.cover ? <img className="st-av pod" src={card.cover} alt="" loading="lazy" /> : <span className="st-av pod st-noface">{initials}</span>
   }
 }
 
@@ -50,5 +53,7 @@ export function CoverPicture({ card, place }: PictureProps): ReactNode {
       return card.cover && <img src={card.cover} alt="" loading="lazy" />
     case 'tile':
       return card.cover ? <img src={card.cover} alt="" /> : <i style={background} />
+    case 'podium':
+      return null
   }
 }

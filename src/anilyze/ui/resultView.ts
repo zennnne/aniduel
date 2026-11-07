@@ -26,6 +26,8 @@ export type RankCard = {
   coverColor: string | null
   /** A banner from its best title that has one, else that cover. */
   banner: string | null
+  /** Its own AniList page, linked from the open panel: a Director's; null for a studio, which the tool doesn't read. */
+  page: string | null
 }
 
 /** How a title pushed its studio or Director, in plain terms. */
@@ -106,6 +108,7 @@ export function rankCards(top: Ranking, picture: CardPicture = leadCover): RankC
       flopRate: studio.flopRate,
       ...picture(studio, votes),
       banner: votes.find((v) => v.title.bannerUrl)?.title.bannerUrl ?? lead?.coverUrl ?? null,
+      page: studio.siteUrl ?? null,
     }
   }
   return [...top.ranked.map((s, i) => card(s, i + 1)), ...top.watchlist.map((s) => card(s, null))]

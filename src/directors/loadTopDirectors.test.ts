@@ -328,6 +328,49 @@ describe('loadTopDirectors: labels', () => {
     expect(result.labelLines.hit).toBeCloseTo(8 / 48 + 0.1, 12)
     expect(director(result, NEAR)).toMatchObject({ label: 'reliable', hitRate: expect.closeTo(0.25, 12) })
   })
+
+  it('gives the lines a rate must pass to read high, which the label map draws its corners on', async () => {
+    // Pooled: 6 hits and 6 flops in 40 titles, 15% each, plus the Directors' 10-point margin.
+    const result = await load(fourCorners())
+
+    expect(result.labelLines.hit).toBeCloseTo(0.25, 12)
+    expect(result.labelLines.flop).toBeCloseTo(0.25, 12)
+  })
+
+  it('pools only the top 20 ranked Directors', async () => {
+    // 19 plain Directors and Bold make the top 20, with 1 flop in 200 titles; five all-flop Directors rank below them.
+    // Pooled over the top 20, Bold's 20% flops read high (line 10.5%); pooled over all 25 (51 in 250, line 30.4%) not.
+    nextId = 1000
+    const plain = Array.from({ length: 19 }, (_, i) => titles([100 + i, `Plain ${i}`], 10, 1, 0)).flat()
+    const flopping = Array.from({ length: 5 }, (_, i) => titles([200 + i, `Flopping ${i}`], 10, 0, 10)).flat()
+    const result = await load([...plain, ...titles(BOLD, 10, 3, 2), ...flopping])
+
+    expect(result.directors).toHaveLength(25)
+    expect(result.directors.slice(20).every((d) => d.name.startsWith('Flopping'))).toBe(true)
+    expect(director(result, BOLD)).toMatchObject({ label: 'bold', hitRate: expect.closeTo(0.3, 12), flopRate: expect.closeTo(0.2, 12) })
+  })
+
+  it('labels the watchlist too', async () => {
+    const result = await load([...fourCorners(), ...titles(TINY, 2, 2, 0)])
+
+    expect(result.watchlist).toEqual([expect.objectContaining({ name: 'Tiny Director', label: 'elite', hitRate: 1 })])
+  })
+})
+
+describe('loadTopDirectors: the watchlist', () => {
+  // Ten ranked Directors at the full gate of 4, plus the ones under test, each a plain run of the given scores.
+  const tenRanked = () =>
+    Array.from({ length: 10 }, (_, i) => [6, 7, 8, 7].map((s) => entry(s, [100 + i, `Ranked ${i}`]))).flat()
+  const run = (person: Person, scores: number[]) => scores.map((s) => entry(s, person))
+
+  it('holds Directors below the Gate of 4, never one that reaches it however high it scores', async () => {
+    nextId = 1000
+    const result = await load([...tenRanked(), ...run(TINY, [10, 10, 10]), ...run(SWING, [10, 9.5, 10, 9.5])])
+
+    expect(result.gate).toBe(4)
+    expect(result.watchlist.map((d) => [d.name, d.votes.length])).toEqual([['Tiny Director', 3]])
+    expect(result.directors[0].name).toBe('Swing Director')
+  })
 })
 
 describe('loadTopDirectors: reading AniList', () => {

@@ -83,6 +83,10 @@ describe('the studios as cards', () => {
     expect(cards[0].cover).toBe(best.title.coverUrl)
     expect(cards[0].banner).toBe('https://banner/second.jpg')
   })
+
+  it('links a studio to no page of its own: the open panel shows none', () => {
+    expect(studioCards(topStudios([studio(1, 0.5)]))[0].page).toBeNull()
+  })
 })
 
 describe('an opened studio', () => {

@@ -12,23 +12,26 @@ afterEach(() => vi.unstubAllEnvs())
 
 const tooFew: TopDirectorsLoad = { ok: false, failure: { kind: 'too-few-scored', scored: 7 } }
 
-/** A loaded result: `directors` ranked, the second without a picture on AniList. */
-function ranked({ gate = 4, directors = 10, counted = 100, countedScored = 80 } = {}): TopDirectorsLoad {
+const director = (i: number, score: number) => ({
+  id: i,
+  name: `Director ${i}`,
+  image: i === 1 ? null : `https://img/staff/${i}.jpg`,
+  siteUrl: `https://anilist.co/staff/${i}`,
+  score,
+  votes: [],
+  hitRate: 0,
+  flopRate: 0,
+  label: 'reliable' as const,
+})
+
+/** A loaded result: `directors` ranked, the second without a picture on AniList, then `watchlist` below the Gate. */
+function ranked({ gate = 4, directors = 10, watchlist = 0, counted = 100, countedScored = 80 } = {}): TopDirectorsLoad {
   return {
     ok: true,
     topDirectors: {
-      directors: Array.from({ length: directors }, (_, i) => ({
-        id: i,
-        name: `Director ${i}`,
-        image: i === 1 ? null : `https://img/staff/${i}.jpg`,
-        siteUrl: `https://anilist.co/staff/${i}`,
-        score: -i / 10,
-        votes: [],
-        hitRate: 0,
-        flopRate: 0,
-        label: 'reliable' as const,
-      })),
-      watchlist: [],
+      directors: Array.from({ length: directors }, (_, i) => director(i, -i / 10)),
+      // Scored above the #1, as a Director with few titles can be.
+      watchlist: Array.from({ length: watchlist }, (_, i) => director(100 + i, 1 - i / 10)),
       gate,
       labelLines: { hit: 0.2, flop: 0.2 },
       averageUtility: 1,
@@ -69,6 +72,24 @@ describe('each Director’s card', () => {
     expect(screen.cards.map((c) => [c.name, c.rank, c.cover])).toEqual([
       ['Director 0', 1, 'https://img/staff/0.jpg'],
       ['Director 1', 2, null],
+    ])
+  })
+
+  it('links each Director to their AniList page, the open panel’s link', () => {
+    const { screen } = view({ load: { kind: 'loaded', userName: 'zen', loaded: ranked({ directors: 1, watchlist: 1 }) } })
+    if (screen.kind !== 'result') throw new Error(`expected a result, got ${screen.kind}`)
+    expect(screen.cards.map((c) => c.page)).toEqual(['https://anilist.co/staff/0', 'https://anilist.co/staff/100'])
+  })
+
+  it('puts the watchlist after the ranking, unranked, even when it scores higher', () => {
+    const { screen } = view({ load: { kind: 'loaded', userName: 'zen', loaded: ranked({ directors: 3, watchlist: 2 }) } })
+    if (screen.kind !== 'result') throw new Error(`expected a result, got ${screen.kind}`)
+    expect(screen.cards.map((c) => [c.name, c.rank])).toEqual([
+      ['Director 0', 1],
+      ['Director 1', 2],
+      ['Director 2', 3],
+      ['Director 100', null],
+      ['Director 101', null],
     ])
   })
 })
@@ -124,6 +145,30 @@ describe('How sure is this?', () => {
       dots: 3,
       word: 'Fair',
       notes: ['Your list is short, so a director needed only 3 titles (not 4) to be ranked.', 'Only 7 directors made it.'],
+    })
+  })
+
+  it('takes a dot when fewer than the 10 Directors it aims for rank, even at the full gate', () => {
+    expect(sure({ directors: 9 })).toEqual({ dots: 4, word: 'Good', notes: ['Only 9 directors made it.'] })
+  })
+
+  it('takes two and says the labels may be off when under half the titles that count are scored', () => {
+    expect(sure({ counted: 100, countedScored: 49 })).toEqual({
+      dots: 3,
+      word: 'Fair',
+      notes: ['You scored only 49% of the titles that count, so the labels may be off.'],
+    })
+  })
+
+  it('is Very rough, one dot, with a lowered gate, too few ranked and a low scored share', () => {
+    expect(sure({ gate: 3, directors: 4, counted: 40, countedScored: 10 })).toEqual({
+      dots: 1,
+      word: 'Very rough',
+      notes: [
+        'Your list is short, so a director needed only 3 titles (not 4) to be ranked.',
+        'Only 4 directors made it.',
+        'You scored only 25% of the titles that count, so the labels may be off.',
+      ],
     })
   })
 })

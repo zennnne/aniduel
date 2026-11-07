@@ -100,6 +100,7 @@ function RankedList({ words, Picture, cards, gate, openId, onOpen }: ListProps &
               <span className="medal" role="img" aria-label={`#${card.rank}`}>
                 {MEDALS[i]}
               </span>
+              <Picture card={card} place="podium" />
               <span className="nm">
                 <b>{card.name}</b>
                 <span>

@@ -183,7 +183,7 @@ function studioListEntry(mediaId: number, score: number, status = 'COMPLETED', r
       staff: {
         edges: (more.staff ?? []).map(({ id, name, image, role }) => ({
           role,
-          node: { id, name: { full: name }, image: { large: image }, siteUrl: '' },
+          node: { id, name: { full: name }, image: { large: image }, siteUrl: `https://anilist.co/staff/${id}` },
         })),
       },
     },
