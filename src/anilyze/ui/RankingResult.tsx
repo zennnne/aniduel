@@ -1,32 +1,44 @@
-// Top Studios result in the layout picked in #89: the label map (label tiles on a phone) with the open studio's panel
-// under it, and the ranked list beside it: the top 3 as podium cards, the rest as rows, the 🌱 watchlist at the end.
+// An AniLyze tool's result in the layout picked in #89 for Top Studios: the label map (label tiles on a phone) with the
+// open one's panel under it, and the ranked list beside it: the top 3 as podium cards, the rest as rows, the 🌱
+// watchlist at the end. In the tool's words, with its picture for each card.
 import { useEffect, useRef, useState } from 'react'
-import type { StudioLabel, TopStudios } from '../loadTopStudios.ts'
 import { useMobile } from '../../ui/useMobile.ts'
+import type { Label, Ranking } from '../scoring.ts'
+import type { Tool, ToolWords } from '../tool.ts'
 import { Hearts } from './Bits.tsx'
+import { EntryPanel } from './EntryPanel.tsx'
 import { LabelMap, LabelTiles } from './LabelMap.tsx'
 import { LABELS } from './labels.ts'
-import { openStudio, type StudioCard } from './resultView.ts'
-import { StudioPanel } from './StudioPanel.tsx'
+import type { Picture } from './Picture.tsx'
+import { openEntry, type CardPicture, type RankCard } from './resultView.ts'
 
 const MEDALS = ['🥇', '🥈', '🥉']
 const PODIUM = 3
 
-type Props = { topStudios: TopStudios; cards: StudioCard[] }
+type Props = {
+  ranking: Ranking
+  cards: RankCard[]
+  tool: Tool
+  /** Draws each card's picture. */
+  Picture: Picture
+  /** The cards' picture data, as `cards` were made with (the cover of the title that lifts it most by default). */
+  cardPicture?: CardPicture
+}
 
-export function StudiosResult({ topStudios, cards }: Props) {
+export function RankingResult({ ranking, cards, tool, Picture, cardPicture }: Props) {
+  const { words } = tool
   const phone = useMobile()
   // The user's #1 is open to start with.
   const [openId, setOpenId] = useState(() => cards[0]?.id ?? -1)
-  const [zoom, setZoom] = useState<StudioLabel | null>(null)
+  const [zoom, setZoom] = useState<Label | null>(null)
   const panel = useRef<HTMLElement>(null)
   const scrollToPanel = useRef(false)
-  const opened = openStudio(topStudios, openId) ?? (cards[0] ? openStudio(topStudios, cards[0].id) : null)
+  const opened = openEntry(ranking, openId, cardPicture) ?? (cards[0] ? openEntry(ranking, cards[0].id, cardPicture) : null)
 
   // A new result opens its own #1.
-  const [shown, setShown] = useState(topStudios)
-  if (shown !== topStudios) {
-    setShown(topStudios)
+  const [shown, setShown] = useState(ranking)
+  if (shown !== ranking) {
+    setShown(ranking)
     setOpenId(cards[0]?.id ?? -1)
     setZoom(null)
   }
@@ -37,41 +49,44 @@ export function StudiosResult({ topStudios, cards }: Props) {
     panel.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [openId])
 
-  /** Opening from the list zooms the phone's map to the studio's tile and brings the panel into view. */
-  function openFromList(card: StudioCard) {
+  /** Opening from the list zooms the phone's map to the card's tile and brings the panel into view. */
+  function openFromList(card: RankCard) {
     setOpenId(card.id)
     if (phone) setZoom(card.label)
     scrollToPanel.current = true
   }
 
-  if (!cards.length) return <p className="card st-empty">No studio has enough titles to rank yet.</p>
+  if (!cards.length) return <p className="card st-empty">No {words.one} has enough titles to rank yet.</p>
 
-  const lines = topStudios.labelLines
+  const lines = ranking.labelLines
   return (
     <div className="st-lay">
       <div>
         {phone ? (
-          <LabelTiles cards={cards} lines={lines} openId={openId} onOpen={setOpenId} zoom={zoom} onZoom={setZoom} />
+          <LabelTiles words={words} Picture={Picture} cards={cards} lines={lines} openId={openId} onOpen={setOpenId} zoom={zoom} onZoom={setZoom} />
         ) : (
-          <LabelMap cards={cards} lines={lines} openId={openId} onOpen={setOpenId} />
+          <LabelMap words={words} Picture={Picture} cards={cards} lines={lines} openId={openId} onOpen={setOpenId} />
         )}
         <p className="small fine st-maplegend">
-          A hit is a title liked well above the user’s average, a flop one well below. A label compares a studio’s share
-          of each with the top 20 studios here; a share counts as high only 6 points above theirs.
+          A hit is a title liked well above the user’s average, a flop one well below. A label compares a {words.one}’s share
+          of each with the top {tool.scoring.labels.pool} {words.many} here; a share counts as high only{' '}
+          {Math.round(tool.scoring.labels.margin * 100)} points above theirs.
         </p>
-        {opened && <StudioPanel ref={panel} opened={opened} />}
+        {opened && <EntryPanel ref={panel} opened={opened} words={words} Picture={Picture} />}
       </div>
-      <RankedList cards={cards} gate={topStudios.gate} openId={openId} onOpen={openFromList} />
+      <RankedList words={words} Picture={Picture} cards={cards} gate={ranking.gate} openId={openId} onOpen={openFromList} />
     </div>
   )
 }
 
-function RankedList({ cards, gate, openId, onOpen }: { cards: StudioCard[]; gate: number; openId: number; onOpen: (card: StudioCard) => void }) {
+type ListProps = { words: ToolWords; Picture: Picture; openId: number; onOpen: (card: RankCard) => void }
+
+function RankedList({ words, Picture, cards, gate, openId, onOpen }: ListProps & { cards: RankCard[]; gate: number }) {
   const ranked = cards.filter((c) => c.rank !== null)
   const watchlist = cards.filter((c) => c.rank === null)
   const podium = ranked.slice(0, PODIUM)
   return (
-    <nav className="st-list" aria-label="Ranked studios">
+    <nav className="st-list" aria-label={`Ranked ${words.many}`}>
       <ol className="st-podium">
         {podium.map((card, i) => (
           <li key={card.id}>
@@ -91,7 +106,7 @@ function RankedList({ cards, gate, openId, onOpen }: { cards: StudioCard[]; gate
                   <span aria-hidden="true">{LABELS[card.label].icon}</span> {LABELS[card.label].name} · {card.votes} titles
                 </span>
               </span>
-              <Hearts hearts={card.hearts} score={card.score} big />
+              <Hearts hearts={card.hearts} score={card.score} scoreName={words.score} big />
             </button>
           </li>
         ))}
@@ -101,7 +116,7 @@ function RankedList({ cards, gate, openId, onOpen }: { cards: StudioCard[]; gate
           {ranked.length > PODIUM && (
             <ol start={PODIUM + 1}>
               {ranked.slice(PODIUM).map((card) => (
-                <Row key={card.id} card={card} open={card.id === openId} onOpen={onOpen} />
+                <Row key={card.id} words={words} Picture={Picture} card={card} open={card.id === openId} onOpen={onOpen} />
               ))}
             </ol>
           )}
@@ -112,7 +127,7 @@ function RankedList({ cards, gate, openId, onOpen }: { cards: StudioCard[]; gate
               </h2>
               <ul>
                 {watchlist.map((card) => (
-                  <Row key={card.id} card={card} open={card.id === openId} onOpen={onOpen} />
+                  <Row key={card.id} words={words} Picture={Picture} card={card} open={card.id === openId} onOpen={onOpen} />
                 ))}
               </ul>
             </>
@@ -123,21 +138,17 @@ function RankedList({ cards, gate, openId, onOpen }: { cards: StudioCard[]; gate
   )
 }
 
-function Row({ card, open, onOpen }: { card: StudioCard; open: boolean; onOpen: (card: StudioCard) => void }) {
+function Row({ words, Picture, card, open, onOpen }: Omit<ListProps, 'openId'> & { card: RankCard; open: boolean }) {
   return (
     <li>
       <button type="button" className={open ? 'st-it on' : 'st-it'} aria-pressed={open} onClick={() => onOpen(card)}>
         <span className="rk">{card.rank ?? <span aria-label="Watchlist">🌱</span>}</span>
-        {card.cover ? (
-          <img className="st-av" src={card.cover} alt="" loading="lazy" />
-        ) : (
-          <span className="st-av" style={{ background: card.coverColor ?? undefined }} />
-        )}
+        <Picture card={card} place="row" />
         <span className="nm strong">{card.name}</span>
         <span title={LABELS[card.label].name} role="img" aria-label={LABELS[card.label].name}>
           {LABELS[card.label].icon}
         </span>
-        <Hearts hearts={card.hearts} score={card.score} />
+        <Hearts hearts={card.hearts} score={card.score} scoreName={words.score} />
       </button>
     </li>
   )

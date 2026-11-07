@@ -1,25 +1,25 @@
-// The open studio's panel (#89): its header, the mochi's one-sentence summary, the 3 titles that lifted it most and the 3
+// The open studio's or Director's panel (#89): its header, the mochi's one-sentence summary, the 3 titles that lifted it most and the 3
 // that held it back most (against the user's own average), and "All N titles" folding out a swarm of every title.
 import { forwardRef, useMemo, useState } from 'react'
+import type { ToolWords } from '../tool.ts'
 import { Hearts, LabelPill, Mochi } from './Bits.tsx'
+import type { Picture } from './Picture.tsx'
 import { useWidth } from './useWidth.ts'
-import { pushText, type CountedTitle, type OpenStudio } from './resultView.ts'
+import { pushText, type CountedTitle, type OpenEntry } from './resultView.ts'
 import { swarm } from './swarm.ts'
 
 const percent = (rate: number) => `${Math.round(rate * 100)}%`
 
-export const StudioPanel = forwardRef<HTMLElement, { opened: OpenStudio }>(function StudioPanel({ opened }, ref) {
+type Props = { opened: OpenEntry; words: ToolWords; Picture: Picture }
+
+export const EntryPanel = forwardRef<HTMLElement, Props>(function EntryPanel({ opened, words, Picture }, ref) {
   const { card, summary, lifted, heldBack, titles } = opened
   const [allOpen, setAllOpen] = useState(false)
   return (
     <section className="st-det card" ref={ref} aria-labelledby="st-det-name">
       <div className="st-banner" style={{ backgroundImage: card.banner ? `url("${card.banner}")` : undefined }} />
       <div className="st-dh">
-        {card.cover ? (
-          <img className="st-av big" src={card.cover} alt="" />
-        ) : (
-          <span className="st-av big" style={{ background: card.coverColor ?? undefined }} />
-        )}
+        <Picture card={card} place="panel" />
         <div className="st-dh-name">
           <div className="small fine">
             {card.rank === null ? '🌱 Watchlist' : `#${card.rank}`} · {card.votes} titles · {percent(card.hitRate)} hits ·{' '}
@@ -29,7 +29,7 @@ export const StudioPanel = forwardRef<HTMLElement, { opened: OpenStudio }>(funct
         </div>
         <div className="st-dh-side">
           <LabelPill label={card.label} />
-          <Hearts hearts={card.hearts} score={card.score} big />
+          <Hearts hearts={card.hearts} score={card.score} scoreName={words.score} big />
         </div>
       </div>
       <div className="st-db">
@@ -91,10 +91,10 @@ function TitleRow({ heading, up, titles }: { heading: string; up: boolean; title
   )
 }
 
-/** Hover or focus a cover for its name, how it was marked and how it pushed the studio. */
+/** Hover or focus a cover for its name, how it was marked and how it pushed the score. */
 const tip = (t: CountedTitle) => `${t.name} · ${t.how} · ${pushText(t)}`
 
-function Swarm({ opened }: { opened: OpenStudio }) {
+function Swarm({ opened }: { opened: OpenEntry }) {
   const [ref, width] = useWidth<HTMLDivElement>()
   const box = width < 480 ? 240 : 220
   const scored = useMemo(() => opened.titles.filter((t): t is CountedTitle & { score: number } => t.score !== null), [opened])

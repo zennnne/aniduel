@@ -5,7 +5,7 @@ import { usableStorage } from '../persistence/usableStorage.ts'
 import { storedTheme } from '../ui/theme.ts'
 import { StudiosPage } from './ui/StudiosPage.tsx'
 import '../ui/theme.css'
-import './ui/studios.css'
+import '../anilyze/ui/tool.css'
 
 // Top Studios needs no login, but uses AniDuel!'s if there is one (same origin, #91): the token is sent with each
 // lookup, so the user's own private list loads. A browser that blocks storage simply has no login here.
